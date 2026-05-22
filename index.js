@@ -16,6 +16,15 @@ const client = new Client({
 // Initialize the Audio Player
 const player = new Player(client);
 
+// DEBUGGING: Print audio engine errors to the Railway console
+player.events.on('error', (queue, error) => {
+    console.log(`❌ [Player Error]: ${error.message}`);
+});
+
+player.events.on('playerError', (queue, error) => {
+    console.log(`❌ [Audio Stream Error]: ${error.message}`);
+});
+
 // Defines the slash commands
 const commands = [
     { name: 'play', description: 'Plays a track from a url or search term', options: [{ name: 'query', type: 3, description: 'Song to play', required: true }] },
