@@ -8,14 +8,12 @@
   "dependencies": {
     "@discord-player/extractor": "^4.4.0",
     "@discordjs/opus": "^0.9.0",
-    "@discordjs/voice": "^0.16.1",
-    "@snazzah/davey": "^0.1.11",
+    "@discordjs/voice": "^0.17.0",
     "discord-player": "^6.6.6",
-    "discord-voip": "^0.1.3",
     "discord.js": "^14.14.1",
     "dotenv": "^16.4.5",
     "libsodium-wrappers": "^0.8.4",
-    "tweetnacl": "^1.0.3",
-    "play-dl": "^1.9.7"
+    "play-dl": "^1.9.7",
+    "tweetnacl": "^1.0.3"
   }
 }
