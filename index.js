@@ -76,7 +76,8 @@ client.on('interactionCreate', async interaction => {
                         leaveOnEmpty: true,
                         leaveOnEnd: false
                     },
-                    searchEngine: QueryType.AUTO
+                    // THIS IS THE FIX: Forcing YouTube to bypass Spotify blocks
+                    searchEngine: QueryType.YOUTUBE_SEARCH
                 });
 
                 // PROFESSIONAL UI EMBED
