@@ -41,8 +41,7 @@ function searchTrack(query) {
             target
         ]);
 
-        let out = '';
-        let err = '';
+        let out = '', err = '';
         proc.stdout.on('data', d => out += d);
         proc.stderr.on('data', d => err += d);
 
@@ -75,8 +74,7 @@ function getDirectUrl(pageUrl) {
             pageUrl
         ]);
 
-        let out = '';
-        let err = '';
+        let out = '', err = '';
         proc.stdout.on('data', d => out += d);
         proc.stderr.on('data', d => err += d);
 
@@ -91,16 +89,20 @@ function getDirectUrl(pageUrl) {
     });
 }
 
-function createAudioStream(directUrl) {
+// FFmpeg encodes to Opus itself — Node.js does zero audio work
+function createAudioStream(directUrl, volume = 0.8) {
     const ffmpeg = spawn('ffmpeg', [
         '-reconnect',           '1',
         '-reconnect_streamed',  '1',
         '-reconnect_delay_max', '5',
         '-i',                   directUrl,
         '-vn',
-        '-f',                   's16le',
+        '-acodec',              'libopus',
+        '-f',                   'ogg',
         '-ar',                  '48000',
         '-ac',                  '2',
+        '-b:a',                 '128k',
+        '-filter:a',            `volume=${volume}`,
         '-loglevel',            'error',
         'pipe:1'
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
@@ -123,12 +125,13 @@ async function playNext(guildId) {
 
     try {
         const directUrl = await getDirectUrl(track.url);
-        const stream    = createAudioStream(directUrl);
-        const resource  = createAudioResource(stream, {
-            inputType:    StreamType.Raw,
-            inlineVolume: true
+        const stream    = createAudioStream(directUrl, entry.volume);
+
+        // OggOpus — FFmpeg already encoded it, @discordjs/opus not needed
+        const resource = createAudioResource(stream, {
+            inputType: StreamType.OggOpus
         });
-        resource.volume.setVolume(entry.volume);
+
         entry.currentResource = resource;
         entry.player.play(resource);
     } catch (e) {
@@ -281,8 +284,7 @@ client.on('interactionCreate', async interaction => {
             if (!entry) return interaction.editReply('❌ Nothing is playing!');
             const vol = Math.max(1, Math.min(100, interaction.options.getInteger('amount')));
             entry.volume = vol / 100;
-            entry.currentResource?.volume?.setVolume(entry.volume);
-            return interaction.editReply(`🔊 Volume set to **${vol}%**`);
+            return interaction.editReply(`🔊 Volume set to **${vol}%** (applies to next song)`);
         }
 
         if (commandName === 'queue') {
