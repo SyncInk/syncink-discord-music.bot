@@ -19,10 +19,7 @@ const client = new Client({
     ]
 });
 
-// Map<guildId, { connection, player, tracks[], volume, playing, currentResource }>
 const queues = new Map();
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDuration(seconds) {
     if (!seconds) return 'Live';
@@ -33,14 +30,15 @@ function formatDuration(seconds) {
     return `${m}:${String(s).padStart(2,'0')}`;
 }
 
-// Search YouTube and return track metadata (page URL, not stream URL)
 function searchTrack(query) {
     return new Promise((resolve, reject) => {
         const isUrl = /^https?:\/\//.test(query);
         const target = isUrl ? query : `ytsearch1:${query}`;
 
         const proc = spawn('yt-dlp', [
-            '--no-playlist', '-j', '--no-warnings', target
+            '--no-playlist', '-j', '--no-warnings',
+            '--extractor-args', 'youtube:player_client=android,web',
+            target
         ]);
 
         let out = '';
@@ -68,12 +66,13 @@ function searchTrack(query) {
     });
 }
 
-// Get the direct CDN audio URL (expires in ~6h, fetched right before playing)
 function getDirectUrl(pageUrl) {
     return new Promise((resolve, reject) => {
         const proc = spawn('yt-dlp', [
             '--no-playlist', '-f', 'bestaudio/best',
-            '--get-url', '--no-warnings', pageUrl
+            '--get-url', '--no-warnings',
+            '--extractor-args', 'youtube:player_client=android,web',
+            pageUrl
         ]);
 
         let out = '';
@@ -92,18 +91,17 @@ function getDirectUrl(pageUrl) {
     });
 }
 
-// Pipe the CDN URL through ffmpeg → raw PCM → Discord
 function createAudioStream(directUrl) {
     const ffmpeg = spawn('ffmpeg', [
-        '-reconnect',            '1',
-        '-reconnect_streamed',   '1',
-        '-reconnect_delay_max',  '5',
-        '-i',                    directUrl,
+        '-reconnect',           '1',
+        '-reconnect_streamed',  '1',
+        '-reconnect_delay_max', '5',
+        '-i',                   directUrl,
         '-vn',
-        '-f',                    's16le',
-        '-ar',                   '48000',
-        '-ac',                   '2',
-        '-loglevel',             'error',
+        '-f',                   's16le',
+        '-ar',                  '48000',
+        '-ac',                  '2',
+        '-loglevel',            'error',
         'pipe:1'
     ], { stdio: ['ignore', 'pipe', 'pipe'] });
 
@@ -112,8 +110,6 @@ function createAudioStream(directUrl) {
 
     return ffmpeg.stdout;
 }
-
-// ─── Queue logic ──────────────────────────────────────────────────────────────
 
 async function playNext(guildId) {
     const entry = queues.get(guildId);
@@ -128,20 +124,17 @@ async function playNext(guildId) {
     try {
         const directUrl = await getDirectUrl(track.url);
         const stream    = createAudioStream(directUrl);
-
-        const resource = createAudioResource(stream, {
+        const resource  = createAudioResource(stream, {
             inputType:    StreamType.Raw,
             inlineVolume: true
         });
-
         resource.volume.setVolume(entry.volume);
         entry.currentResource = resource;
         entry.player.play(resource);
-
     } catch (e) {
         console.error('[playNext error]', e.message);
         entry.tracks.shift();
-        playNext(guildId);   // try the next song
+        playNext(guildId);
     }
 }
 
@@ -152,10 +145,10 @@ function getOrCreateEntry(guildId, voiceChannel, guild) {
     }
 
     const connection = joinVoiceChannel({
-        channelId:        voiceChannel.id,
+        channelId:      voiceChannel.id,
         guildId,
-        adapterCreator:   guild.voiceAdapterCreator,
-        selfDeaf:         true
+        adapterCreator: guild.voiceAdapterCreator,
+        selfDeaf:       true
     });
 
     const player = createAudioPlayer();
@@ -190,8 +183,6 @@ function getOrCreateEntry(guildId, voiceChannel, guild) {
     return entry;
 }
 
-// ─── Commands ─────────────────────────────────────────────────────────────────
-
 const commands = [
     {
         name: 'play',
@@ -204,8 +195,8 @@ const commands = [
     { name: 'stop',       description: 'Stop music and disconnect' },
     {
         name: 'volume',
-        description: 'Set the volume (1–100)',
-        options: [{ name: 'amount', type: 4, description: 'Volume level 1–100', required: true }]
+        description: 'Set the volume (1-100)',
+        options: [{ name: 'amount', type: 4, description: 'Volume level 1-100', required: true }]
     },
     { name: 'queue',      description: 'Show the current queue' },
     { name: 'nowplaying', description: 'Show the current song' }
@@ -217,8 +208,6 @@ client.once('ready', async () => {
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log('✅ Commands registered!');
 });
-
-// ─── Interactions ─────────────────────────────────────────────────────────────
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
@@ -233,7 +222,6 @@ client.on('interactionCreate', async interaction => {
     await interaction.deferReply();
 
     try {
-        // ── /play ──────────────────────────────────────────────────────────
         if (commandName === 'play') {
             const query = interaction.options.getString('query');
             await interaction.editReply('🔍 Searching...');
@@ -249,9 +237,9 @@ client.on('interactionCreate', async interaction => {
                 .setTitle(track.title)
                 .setURL(track.url)
                 .addFields(
-                    { name: 'Artist',   value: track.author,                                   inline: true },
-                    { name: 'Duration', value: track.duration,                                 inline: true },
-                    { name: 'Position', value: isFirst ? 'Now' : `#${entry.tracks.length}`,   inline: true }
+                    { name: 'Artist',   value: track.author,                                 inline: true },
+                    { name: 'Duration', value: track.duration,                               inline: true },
+                    { name: 'Position', value: isFirst ? 'Now' : `#${entry.tracks.length}`, inline: true }
                 );
 
             if (track.thumbnail) embed.setThumbnail(track.thumbnail);
@@ -262,28 +250,24 @@ client.on('interactionCreate', async interaction => {
 
         const entry = queues.get(guildId);
 
-        // ── /skip ──────────────────────────────────────────────────────────
         if (commandName === 'skip') {
             if (!entry?.playing) return interaction.editReply('❌ Nothing is playing!');
             entry.player.stop();
             return interaction.editReply('⏭️ Skipped!');
         }
 
-        // ── /pause ─────────────────────────────────────────────────────────
         if (commandName === 'pause') {
             if (!entry?.playing) return interaction.editReply('❌ Nothing is playing!');
             entry.player.pause();
             return interaction.editReply('⏸️ Paused!');
         }
 
-        // ── /resume ────────────────────────────────────────────────────────
         if (commandName === 'resume') {
             if (!entry) return interaction.editReply('❌ Nothing in queue!');
             entry.player.unpause();
             return interaction.editReply('▶️ Resumed!');
         }
 
-        // ── /stop ──────────────────────────────────────────────────────────
         if (commandName === 'stop') {
             if (!entry) return interaction.editReply('❌ Nothing is playing!');
             entry.tracks = [];
@@ -293,7 +277,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply('⏹️ Stopped and disconnected!');
         }
 
-        // ── /volume ────────────────────────────────────────────────────────
         if (commandName === 'volume') {
             if (!entry) return interaction.editReply('❌ Nothing is playing!');
             const vol = Math.max(1, Math.min(100, interaction.options.getInteger('amount')));
@@ -302,7 +285,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply(`🔊 Volume set to **${vol}%**`);
         }
 
-        // ── /queue ─────────────────────────────────────────────────────────
         if (commandName === 'queue') {
             if (!entry || entry.tracks.length === 0) return interaction.editReply('❌ The queue is empty!');
             const list = entry.tracks
@@ -316,7 +298,6 @@ client.on('interactionCreate', async interaction => {
             return interaction.editReply({ embeds: [embed] });
         }
 
-        // ── /nowplaying ────────────────────────────────────────────────────
         if (commandName === 'nowplaying') {
             if (!entry?.playing || !entry.tracks.length) return interaction.editReply('❌ Nothing is playing!');
             const track = entry.tracks[0];
