@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
 const { Player } = require('discord-player');
-const { DefaultExtractors } = require('@discord-player/extractor');
+const { YoutubeiExtractor } = require('discord-player-youtubei');
 
 const client = new Client({
     intents: [
@@ -12,12 +12,8 @@ const client = new Client({
     ]
 });
 
-// Modern V7 Player Initialization
 const player = new Player(client);
 
-// ==========================================
-// THE FIX: MANDATORY V7 EVENT LISTENERS
-// ==========================================
 player.events.on('error', (queue, error) => {
     console.log(`[Queue Error] ${error.message}`);
 });
@@ -25,7 +21,6 @@ player.events.on('error', (queue, error) => {
 player.events.on('playerError', (queue, error) => {
     console.log(`[Audio Stream Error] ${error.message}`);
 });
-// ==========================================
 
 const commands = [
     { name: 'play', description: 'Plays a track from a url or search term', options: [{ name: 'query', type: 3, description: 'Song to play', required: true }] },
@@ -38,10 +33,10 @@ const commands = [
 
 client.once('ready', async () => {
     console.log(`📡 SyncInk Radio is online and logged in as ${client.user.tag}`);
-    
-    // Load the official, E2EE-compatible extractors
-    await player.extractors.loadMulti(DefaultExtractors);
-    
+
+    await player.extractors.register(YoutubeiExtractor, {});
+    console.log('✅ YoutubeiExtractor loaded!');
+
     const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     await rest.put(Routes.applicationCommands(client.user.id), { body: commands });
     console.log('✅ Commands registered!');
@@ -49,7 +44,7 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    
+
     const channel = interaction.member.voice.channel;
     if (!channel) return interaction.reply({ content: '❌ Join a voice channel first!', ephemeral: true });
 
@@ -59,7 +54,7 @@ client.on('interactionCreate', async interaction => {
     try {
         if (interaction.commandName === 'play') {
             const query = interaction.options.getString('query');
-            
+
             const { track } = await player.play(channel, query, {
                 nodeOptions: {
                     metadata: interaction,
@@ -110,13 +105,17 @@ client.on('interactionCreate', async interaction => {
 
         if (interaction.commandName === 'queue') {
             if (!queue || queue.tracks.data.length === 0) return interaction.followUp('❌ Queue is empty.');
-            const tracks = queue.tracks.data.map((t, i) => `**${i+1}.** ${t.title}`);
-            const qEmbed = new EmbedBuilder().setColor('#9b59b6').setTitle('📜 Queue').setDescription(tracks.join('\n').substring(0, 2000));
+            const tracks = queue.tracks.data.map((t, i) => `**${i + 1}.** ${t.title}`);
+            const qEmbed = new EmbedBuilder()
+                .setColor('#9b59b6')
+                .setTitle('📜 Queue')
+                .setDescription(tracks.join('\n').substring(0, 2000));
             return interaction.followUp({ embeds: [qEmbed] });
         }
+
     } catch (e) {
-        console.log(`[Play Command Error]: ${e}`);
-        return interaction.followUp(`❌ An error occurred. Try a different track.`);
+        console.log(`[Command Error]: ${e}`);
+        return interaction.followUp('❌ An error occurred. Try a different track.');
     }
 });
 
