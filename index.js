@@ -1,6 +1,7 @@
 require('dotenv').config();
-const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
-const { Player } = require('discord-player');
+const { Client, GatewayIntentBits, REST, Routes } = require('discord.js');
+// 1. ADDED QueryType HERE
+const { Player, QueryType } = require('discord-player'); 
 
 const client = new Client({
     intents: [
@@ -11,7 +12,6 @@ const client = new Client({
     ]
 });
 
-// Force the player to use the specialized cloud audio engine
 const player = new Player(client, {
     ytdlOptions: {
         quality: 'highestaudio',
@@ -31,7 +31,6 @@ client.once('ready', async () => {
     console.log('✅ Commands registered!');
 });
 
-// Aggressive error logging
 player.events.on('error', (queue, error) => {
     console.log(`[Queue Error] ${error.message}`);
 });
@@ -50,7 +49,9 @@ client.on('interactionCreate', async interaction => {
         const query = interaction.options.getString('query');
         try {
             const { track } = await player.play(channel, query, {
-                nodeOptions: { metadata: interaction }
+                nodeOptions: { metadata: interaction },
+                // 2. FORCED YOUTUBE SEARCH HERE
+                searchEngine: QueryType.YOUTUBE_SEARCH 
             });
             return interaction.followUp(`🎶 Enqueued **${track.title}**!`);
         } catch (e) {
