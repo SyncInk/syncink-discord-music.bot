@@ -15,6 +15,18 @@ const client = new Client({
 // Modern V7 Player Initialization
 const player = new Player(client);
 
+// ==========================================
+// THE FIX: MANDATORY V7 EVENT LISTENERS
+// ==========================================
+player.events.on('error', (queue, error) => {
+    console.log(`[Queue Error] ${error.message}`);
+});
+
+player.events.on('playerError', (queue, error) => {
+    console.log(`[Audio Stream Error] ${error.message}`);
+});
+// ==========================================
+
 const commands = [
     { name: 'play', description: 'Plays a track from a url or search term', options: [{ name: 'query', type: 3, description: 'Song to play', required: true }] },
     { name: 'skip', description: 'Skip the current track' },
@@ -103,7 +115,7 @@ client.on('interactionCreate', async interaction => {
             return interaction.followUp({ embeds: [qEmbed] });
         }
     } catch (e) {
-        console.log(e);
+        console.log(`[Play Command Error]: ${e}`);
         return interaction.followUp(`❌ An error occurred. Try a different track.`);
     }
 });
