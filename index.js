@@ -6,6 +6,7 @@ const {
     createAudioResource,
     AudioPlayerStatus,
     VoiceConnectionStatus,
+    entersState,
     StreamType
 } = require('@discordjs/voice');
 const { spawn } = require('child_process');
@@ -30,7 +31,6 @@ function formatDuration(seconds) {
     return `${m}:${String(s).padStart(2,'0')}`;
 }
 
-// Search only — returns page URL and metadata, NOT stream URL
 function searchTrack(query) {
     return new Promise((resolve, reject) => {
         const isUrl = /^https?:\/\//.test(query);
@@ -68,7 +68,7 @@ function searchTrack(query) {
     });
 }
 
-// yt-dlp pipes audio DIRECTLY into ffmpeg — no intermediate URL needed
+// yt-dlp pipes directly into ffmpeg — outputs raw PCM for maximum compatibility
 function createAudioStream(pageUrl, volume = 0.8) {
     const ytdlp = spawn('yt-dlp', [
         '--no-playlist',
@@ -81,35 +81,32 @@ function createAudioStream(pageUrl, volume = 0.8) {
     ]);
 
     const ffmpeg = spawn('ffmpeg', [
-        '-i',       'pipe:0',
+        '-i',        'pipe:0',
         '-vn',
-        '-acodec',  'libopus',
-        '-f',       'ogg',
-        '-ar',      '48000',
-        '-ac',      '2',
-        '-b:a',     '128k',
-        '-filter:a', `volume=${volume}`,
+        '-f',        's16le',
+        '-ar',       '48000',
+        '-ac',       '2',
+        '-af',       `volume=${volume}`,
         '-loglevel', 'error',
         'pipe:1'
     ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-    // Pipe yt-dlp output straight into ffmpeg
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
     ytdlp.stderr.on('data', d => {
-        const msg = d.toString().trim();
-        if (msg) console.log('[yt-dlp]', msg);
+        const m = d.toString().trim();
+        if (m) console.log('[yt-dlp]', m);
     });
     ffmpeg.stderr.on('data', d => {
-        const msg = d.toString().trim();
-        if (msg) console.log('[ffmpeg]', msg);
+        const m = d.toString().trim();
+        if (m) console.log('[ffmpeg]', m);
     });
 
     ytdlp.on('error',  e => console.error('[yt-dlp error]',  e.message));
     ffmpeg.on('error', e => console.error('[ffmpeg error]',  e.message));
 
     ytdlp.on('close', code => {
-        if (code !== 0) console.log(`[yt-dlp] exited with code ${code}`);
+        if (code !== 0) console.log(`[yt-dlp] closed with code ${code}`);
         ffmpeg.stdin.end();
     });
 
@@ -124,13 +121,25 @@ async function playNext(guildId) {
     }
 
     entry.playing = true;
-    const track   = entry.tracks[0];
+    const track = entry.tracks[0];
 
     try {
+        console.log(`[play] Starting: ${track.title}`);
+
+        // Wait until voice connection is fully ready before sending audio
+        await entersState(entry.connection, VoiceConnectionStatus.Ready, 20_000);
+        console.log('[play] Voice connection is Ready');
+
         const stream   = createAudioStream(track.url, entry.volume);
-        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus });
+        const resource = createAudioResource(stream, {
+            inputType:    StreamType.Raw,
+            inlineVolume: false
+        });
+
         entry.currentResource = resource;
         entry.player.play(resource);
+        console.log('[play] player.play() called');
+
     } catch (e) {
         console.error('[playNext error]', e.message);
         entry.tracks.shift();
@@ -138,7 +147,7 @@ async function playNext(guildId) {
     }
 }
 
-function getOrCreateEntry(guildId, voiceChannel, guild) {
+async function getOrCreateEntry(guildId, voiceChannel, guild) {
     const existing = queues.get(guildId);
     if (existing && existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
         return existing;
@@ -153,7 +162,17 @@ function getOrCreateEntry(guildId, voiceChannel, guild) {
 
     const player = createAudioPlayer();
 
+    // Log every player state change — check Railway logs to debug
+    player.on('stateChange', (oldState, newState) => {
+        console.log(`[player] ${oldState.status} → ${newState.status}`);
+    });
+
+    player.on(AudioPlayerStatus.Playing, () => {
+        console.log('[player] ▶️ Audio is playing!');
+    });
+
     player.on(AudioPlayerStatus.Idle, () => {
+        console.log('[player] ⏸ Idle — moving to next track');
         const entry = queues.get(guildId);
         if (!entry) return;
         entry.tracks.shift();
@@ -166,6 +185,10 @@ function getOrCreateEntry(guildId, voiceChannel, guild) {
         if (!entry) return;
         entry.tracks.shift();
         entry.tracks.length > 0 ? playNext(guildId) : (entry.playing = false);
+    });
+
+    connection.on('stateChange', (oldState, newState) => {
+        console.log(`[connection] ${oldState.status} → ${newState.status}`);
     });
 
     connection.subscribe(player);
@@ -227,7 +250,7 @@ client.on('interactionCreate', async interaction => {
             await interaction.editReply('🔍 Searching...');
 
             const track = await searchTrack(query);
-            const entry = getOrCreateEntry(guildId, voiceChannel, guild);
+            const entry = await getOrCreateEntry(guildId, voiceChannel, guild);
             entry.tracks.push(track);
 
             const isFirst = entry.tracks.length === 1;
