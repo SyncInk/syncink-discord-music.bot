@@ -30,6 +30,7 @@ function formatDuration(seconds) {
     return `${m}:${String(s).padStart(2,'0')}`;
 }
 
+// Search only — returns page URL and metadata, NOT stream URL
 function searchTrack(query) {
     return new Promise((resolve, reject) => {
         const isUrl = /^https?:\/\//.test(query);
@@ -52,10 +53,10 @@ function searchTrack(query) {
             try {
                 const info = JSON.parse(out.trim().split('\n')[0]);
                 resolve({
-                    title:     info.title || 'Unknown Title',
+                    title:     info.title    || 'Unknown Title',
                     url:       info.webpage_url || info.original_url || info.url,
                     thumbnail: info.thumbnail || null,
-                    author:    info.uploader || info.channel || 'Unknown',
+                    author:    info.uploader  || info.channel || 'Unknown',
                     duration:  formatDuration(info.duration)
                 });
             } catch (e) {
@@ -67,51 +68,50 @@ function searchTrack(query) {
     });
 }
 
-function getDirectUrl(pageUrl) {
-    return new Promise((resolve, reject) => {
-        const proc = spawn('yt-dlp', [
-            '--no-playlist',
-            '-f', 'bestaudio/best',
-            '--get-url',
-            '--no-warnings',
-            '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
-            pageUrl
-        ]);
+// yt-dlp pipes audio DIRECTLY into ffmpeg — no intermediate URL needed
+function createAudioStream(pageUrl, volume = 0.8) {
+    const ytdlp = spawn('yt-dlp', [
+        '--no-playlist',
+        '-f', 'bestaudio/best',
+        '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
+        '-o', '-',
+        '--quiet',
+        '--no-warnings',
+        pageUrl
+    ]);
 
-        let out = '', err = '';
-        proc.stdout.on('data', d => out += d);
-        proc.stderr.on('data', d => err += d);
-
-        proc.on('close', code => {
-            if (code !== 0) return reject(new Error(`URL fetch failed: ${err.trim()}`));
-            const url = out.trim().split('\n')[0];
-            if (!url) return reject(new Error('yt-dlp returned an empty URL'));
-            resolve(url);
-        });
-
-        proc.on('error', e => reject(new Error(`yt-dlp spawn error: ${e.message}`)));
-    });
-}
-
-function createAudioStream(directUrl, volume = 0.8) {
     const ffmpeg = spawn('ffmpeg', [
-        '-reconnect',           '1',
-        '-reconnect_streamed',  '1',
-        '-reconnect_delay_max', '5',
-        '-i',                   directUrl,
+        '-i',       'pipe:0',
         '-vn',
-        '-acodec',              'libopus',
-        '-f',                   'ogg',
-        '-ar',                  '48000',
-        '-ac',                  '2',
-        '-b:a',                 '128k',
-        '-filter:a',            `volume=${volume}`,
-        '-loglevel',            'error',
+        '-acodec',  'libopus',
+        '-f',       'ogg',
+        '-ar',      '48000',
+        '-ac',      '2',
+        '-b:a',     '128k',
+        '-filter:a', `volume=${volume}`,
+        '-loglevel', 'error',
         'pipe:1'
-    ], { stdio: ['ignore', 'pipe', 'pipe'] });
+    ], { stdio: ['pipe', 'pipe', 'pipe'] });
 
-    ffmpeg.stderr.on('data', d => console.log('[ffmpeg]', d.toString().trim()));
-    ffmpeg.on('error', e => console.error('[ffmpeg error]', e.message));
+    // Pipe yt-dlp output straight into ffmpeg
+    ytdlp.stdout.pipe(ffmpeg.stdin);
+
+    ytdlp.stderr.on('data', d => {
+        const msg = d.toString().trim();
+        if (msg) console.log('[yt-dlp]', msg);
+    });
+    ffmpeg.stderr.on('data', d => {
+        const msg = d.toString().trim();
+        if (msg) console.log('[ffmpeg]', msg);
+    });
+
+    ytdlp.on('error',  e => console.error('[yt-dlp error]',  e.message));
+    ffmpeg.on('error', e => console.error('[ffmpeg error]',  e.message));
+
+    ytdlp.on('close', code => {
+        if (code !== 0) console.log(`[yt-dlp] exited with code ${code}`);
+        ffmpeg.stdin.end();
+    });
 
     return ffmpeg.stdout;
 }
@@ -124,14 +124,11 @@ async function playNext(guildId) {
     }
 
     entry.playing = true;
-    const track = entry.tracks[0];
+    const track   = entry.tracks[0];
 
     try {
-        const directUrl = await getDirectUrl(track.url);
-        const stream    = createAudioStream(directUrl, entry.volume);
-        const resource  = createAudioResource(stream, {
-            inputType: StreamType.OggOpus
-        });
+        const stream   = createAudioStream(track.url, entry.volume);
+        const resource = createAudioResource(stream, { inputType: StreamType.OggOpus });
         entry.currentResource = resource;
         entry.player.play(resource);
     } catch (e) {
