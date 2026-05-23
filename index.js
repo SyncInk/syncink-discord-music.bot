@@ -1,5 +1,4 @@
 require('dotenv').config();
-const fs = require('fs');
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
 const {
     joinVoiceChannel,
@@ -21,23 +20,6 @@ const client = new Client({
 });
 
 const queues = new Map();
-const COOKIES_PATH = '/tmp/yt-cookies.txt';
-
-// Write cookies from Railway env variable to a temp file
-if (process.env.YOUTUBE_COOKIES) {
-    try {
-        fs.writeFileSync(COOKIES_PATH, process.env.YOUTUBE_COOKIES);
-        console.log('✅ YouTube cookies loaded');
-    } catch (e) {
-        console.error('⚠️ Failed to write cookies:', e.message);
-    }
-} else {
-    console.warn('⚠️ No YOUTUBE_COOKIES env variable found!');
-}
-
-function cookieArgs() {
-    return fs.existsSync(COOKIES_PATH) ? ['--cookies', COOKIES_PATH] : [];
-}
 
 function formatDuration(seconds) {
     if (!seconds) return 'Live';
@@ -54,8 +36,10 @@ function searchTrack(query) {
         const target = isUrl ? query : `ytsearch1:${query}`;
 
         const proc = spawn('yt-dlp', [
-            '--no-playlist', '-j', '--no-warnings',
-            ...cookieArgs(),
+            '--no-playlist',
+            '-j',
+            '--no-warnings',
+            '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
             target
         ]);
 
@@ -86,9 +70,11 @@ function searchTrack(query) {
 function getDirectUrl(pageUrl) {
     return new Promise((resolve, reject) => {
         const proc = spawn('yt-dlp', [
-            '--no-playlist', '-f', 'bestaudio/best',
-            '--get-url', '--no-warnings',
-            ...cookieArgs(),
+            '--no-playlist',
+            '-f', 'bestaudio/best',
+            '--get-url',
+            '--no-warnings',
+            '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
             pageUrl
         ]);
 
@@ -143,7 +129,9 @@ async function playNext(guildId) {
     try {
         const directUrl = await getDirectUrl(track.url);
         const stream    = createAudioStream(directUrl, entry.volume);
-        const resource  = createAudioResource(stream, { inputType: StreamType.OggOpus });
+        const resource  = createAudioResource(stream, {
+            inputType: StreamType.OggOpus
+        });
         entry.currentResource = resource;
         entry.player.play(resource);
     } catch (e) {
