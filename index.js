@@ -28,7 +28,7 @@ if (process.env.YOUTUBE_COOKIES) {
     fs.writeFileSync(COOK_PATH, process.env.YOUTUBE_COOKIES);
     console.log('✅ YouTube cookies loaded from env');
 } else {
-    console.warn('⚠️  YOUTUBE_COOKIES env variable is NOT set — YouTube will block requests');
+    console.warn('⚠️  YOUTUBE_COOKIES env variable is NOT set');
 }
 
 function cookieArgs() {
@@ -46,11 +46,14 @@ function formatDuration(seconds) {
 
 function searchTrack(query) {
     return new Promise((resolve, reject) => {
-        const isUrl   = /^https?:\/\//.test(query);
-        const target  = isUrl ? query : `ytsearch1:${query}`;
+        const isUrl  = /^https?:\/\//.test(query);
+        const target = isUrl ? query : `ytsearch1:${query}`;
 
         const proc = spawn('yt-dlp', [
-            '--no-playlist', '-j', '--no-warnings',
+            '--no-playlist',
+            '-j',
+            '--no-warnings',
+            '--no-check-formats',
             ...cookieArgs(),
             target
         ]);
@@ -80,10 +83,12 @@ function searchTrack(query) {
 function createAudioStream(pageUrl, volume = 0.8) {
     const ytdlp = spawn('yt-dlp', [
         '--no-playlist',
-        '-f', 'bestaudio/best',
+        '-f', 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+        '--no-check-formats',
         ...cookieArgs(),
         '-o', '-',
-        '--quiet', '--no-warnings',
+        '--quiet',
+        '--no-warnings',
         pageUrl
     ]);
 
@@ -113,13 +118,13 @@ async function playNext(guildId) {
     const entry = queues.get(guildId);
     if (!entry || entry.tracks.length === 0) { if (entry) entry.playing = false; return; }
 
-    entry.playing  = true;
-    const track    = entry.tracks[0];
+    entry.playing = true;
+    const track   = entry.tracks[0];
 
     try {
         console.log(`[play] ${track.title}`);
         await entersState(entry.connection, VoiceConnectionStatus.Ready, 20_000);
-        console.log('[play] Voice connection ready');
+        console.log('[play] Voice connection ready ✅');
 
         const stream   = createAudioStream(track.url, entry.volume);
         const resource = createAudioResource(stream, { inputType: StreamType.Raw });
@@ -259,7 +264,8 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'nowplaying') {
             if (!entry?.playing || !entry.tracks.length) return interaction.editReply('❌ Nothing is playing!');
             const track = entry.tracks[0];
-            const embed = new EmbedBuilder().setColor('#9b59b6').setAuthor({ name: '▶️ Now Playing' }).setTitle(track.title).setURL(track.url)
+            const embed = new EmbedBuilder().setColor('#9b59b6').setAuthor({ name: '▶️ Now Playing' })
+                .setTitle(track.title).setURL(track.url)
                 .addFields({ name: 'Artist', value: track.author, inline: true }, { name: 'Duration', value: track.duration, inline: true });
             if (track.thumbnail) embed.setThumbnail(track.thumbnail);
             return interaction.editReply({ embeds: [embed] });
