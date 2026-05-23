@@ -1,4 +1,5 @@
 require('dotenv').config();
+const fs = require('fs');
 const { Client, GatewayIntentBits, REST, Routes, EmbedBuilder } = require('discord.js');
 const {
     joinVoiceChannel,
@@ -20,7 +21,19 @@ const client = new Client({
     ]
 });
 
-const queues = new Map();
+const queues    = new Map();
+const COOK_PATH = '/tmp/yt-cookies.txt';
+
+if (process.env.YOUTUBE_COOKIES) {
+    fs.writeFileSync(COOK_PATH, process.env.YOUTUBE_COOKIES);
+    console.log('✅ YouTube cookies loaded from env');
+} else {
+    console.warn('⚠️  YOUTUBE_COOKIES env variable is NOT set — YouTube will block requests');
+}
+
+function cookieArgs() {
+    return fs.existsSync(COOK_PATH) ? ['--cookies', COOK_PATH] : [];
+}
 
 function formatDuration(seconds) {
     if (!seconds) return 'Live';
@@ -33,14 +46,12 @@ function formatDuration(seconds) {
 
 function searchTrack(query) {
     return new Promise((resolve, reject) => {
-        const isUrl = /^https?:\/\//.test(query);
-        const target = isUrl ? query : `ytsearch1:${query}`;
+        const isUrl   = /^https?:\/\//.test(query);
+        const target  = isUrl ? query : `ytsearch1:${query}`;
 
         const proc = spawn('yt-dlp', [
-            '--no-playlist',
-            '-j',
-            '--no-warnings',
-            '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
+            '--no-playlist', '-j', '--no-warnings',
+            ...cookieArgs(),
             target
         ]);
 
@@ -59,24 +70,20 @@ function searchTrack(query) {
                     author:    info.uploader  || info.channel || 'Unknown',
                     duration:  formatDuration(info.duration)
                 });
-            } catch (e) {
-                reject(new Error('Could not parse track info'));
-            }
+            } catch (e) { reject(new Error('Could not parse track info')); }
         });
 
         proc.on('error', e => reject(new Error(`yt-dlp not found: ${e.message}`)));
     });
 }
 
-// yt-dlp pipes directly into ffmpeg — outputs raw PCM for maximum compatibility
 function createAudioStream(pageUrl, volume = 0.8) {
     const ytdlp = spawn('yt-dlp', [
         '--no-playlist',
         '-f', 'bestaudio/best',
-        '--extractor-args', 'youtube:player_client=tv_embedded,mweb,android',
+        ...cookieArgs(),
         '-o', '-',
-        '--quiet',
-        '--no-warnings',
+        '--quiet', '--no-warnings',
         pageUrl
     ]);
 
@@ -93,52 +100,32 @@ function createAudioStream(pageUrl, volume = 0.8) {
 
     ytdlp.stdout.pipe(ffmpeg.stdin);
 
-    ytdlp.stderr.on('data', d => {
-        const m = d.toString().trim();
-        if (m) console.log('[yt-dlp]', m);
-    });
-    ffmpeg.stderr.on('data', d => {
-        const m = d.toString().trim();
-        if (m) console.log('[ffmpeg]', m);
-    });
-
+    ytdlp.stderr.on('data',  d => { const m = d.toString().trim(); if (m) console.log('[yt-dlp]', m); });
+    ffmpeg.stderr.on('data', d => { const m = d.toString().trim(); if (m) console.log('[ffmpeg]', m); });
     ytdlp.on('error',  e => console.error('[yt-dlp error]',  e.message));
     ffmpeg.on('error', e => console.error('[ffmpeg error]',  e.message));
-
-    ytdlp.on('close', code => {
-        if (code !== 0) console.log(`[yt-dlp] closed with code ${code}`);
-        ffmpeg.stdin.end();
-    });
+    ytdlp.on('close',  code => { if (code !== 0) console.log(`[yt-dlp] exit ${code}`); ffmpeg.stdin.end(); });
 
     return ffmpeg.stdout;
 }
 
 async function playNext(guildId) {
     const entry = queues.get(guildId);
-    if (!entry || entry.tracks.length === 0) {
-        if (entry) entry.playing = false;
-        return;
-    }
+    if (!entry || entry.tracks.length === 0) { if (entry) entry.playing = false; return; }
 
-    entry.playing = true;
-    const track = entry.tracks[0];
+    entry.playing  = true;
+    const track    = entry.tracks[0];
 
     try {
-        console.log(`[play] Starting: ${track.title}`);
-
-        // Wait until voice connection is fully ready before sending audio
+        console.log(`[play] ${track.title}`);
         await entersState(entry.connection, VoiceConnectionStatus.Ready, 20_000);
-        console.log('[play] Voice connection is Ready');
+        console.log('[play] Voice connection ready');
 
         const stream   = createAudioStream(track.url, entry.volume);
-        const resource = createAudioResource(stream, {
-            inputType:    StreamType.Raw,
-            inlineVolume: false
-        });
-
+        const resource = createAudioResource(stream, { inputType: StreamType.Raw });
         entry.currentResource = resource;
         entry.player.play(resource);
-        console.log('[play] player.play() called');
+        console.log('[play] player.play() called ✅');
 
     } catch (e) {
         console.error('[playNext error]', e.message);
@@ -149,9 +136,7 @@ async function playNext(guildId) {
 
 async function getOrCreateEntry(guildId, voiceChannel, guild) {
     const existing = queues.get(guildId);
-    if (existing && existing.connection.state.status !== VoiceConnectionStatus.Destroyed) {
-        return existing;
-    }
+    if (existing && existing.connection.state.status !== VoiceConnectionStatus.Destroyed) return existing;
 
     const connection = joinVoiceChannel({
         channelId:      voiceChannel.id,
@@ -162,17 +147,9 @@ async function getOrCreateEntry(guildId, voiceChannel, guild) {
 
     const player = createAudioPlayer();
 
-    // Log every player state change — check Railway logs to debug
-    player.on('stateChange', (oldState, newState) => {
-        console.log(`[player] ${oldState.status} → ${newState.status}`);
-    });
-
-    player.on(AudioPlayerStatus.Playing, () => {
-        console.log('[player] ▶️ Audio is playing!');
-    });
+    player.on('stateChange', (o, n) => console.log(`[player] ${o.status} → ${n.status}`));
 
     player.on(AudioPlayerStatus.Idle, () => {
-        console.log('[player] ⏸ Idle — moving to next track');
         const entry = queues.get(guildId);
         if (!entry) return;
         entry.tracks.shift();
@@ -187,42 +164,23 @@ async function getOrCreateEntry(guildId, voiceChannel, guild) {
         entry.tracks.length > 0 ? playNext(guildId) : (entry.playing = false);
     });
 
-    connection.on('stateChange', (oldState, newState) => {
-        console.log(`[connection] ${oldState.status} → ${newState.status}`);
-    });
-
+    connection.on('stateChange', (o, n) => console.log(`[connection] ${o.status} → ${n.status}`));
     connection.subscribe(player);
 
-    const entry = {
-        connection,
-        player,
-        tracks:          [],
-        volume:          0.8,
-        playing:         false,
-        currentResource: null
-    };
-
+    const entry = { connection, player, tracks: [], volume: 0.8, playing: false, currentResource: null };
     queues.set(guildId, entry);
     return entry;
 }
 
 const commands = [
-    {
-        name: 'play',
-        description: 'Play a song by name or URL',
-        options: [{ name: 'query', type: 3, description: 'Song name or YouTube URL', required: true }]
-    },
-    { name: 'skip',       description: 'Skip the current song' },
+    { name: 'play', description: 'Play a song', options: [{ name: 'query', type: 3, description: 'Song name or URL', required: true }] },
+    { name: 'skip',       description: 'Skip current song' },
     { name: 'pause',      description: 'Pause playback' },
     { name: 'resume',     description: 'Resume playback' },
-    { name: 'stop',       description: 'Stop music and disconnect' },
-    {
-        name: 'volume',
-        description: 'Set the volume (1-100)',
-        options: [{ name: 'amount', type: 4, description: 'Volume level 1-100', required: true }]
-    },
-    { name: 'queue',      description: 'Show the current queue' },
-    { name: 'nowplaying', description: 'Show the current song' }
+    { name: 'stop',       description: 'Stop and disconnect' },
+    { name: 'volume',     description: 'Set volume 1-100', options: [{ name: 'amount', type: 4, description: 'Volume 1-100', required: true }] },
+    { name: 'queue',      description: 'Show queue' },
+    { name: 'nowplaying', description: 'Show current song' }
 ];
 
 client.once('ready', async () => {
@@ -234,13 +192,11 @@ client.once('ready', async () => {
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-
     const { commandName, guildId, member, guild } = interaction;
     const voiceChannel = member?.voice?.channel;
 
-    if (commandName === 'play' && !voiceChannel) {
+    if (commandName === 'play' && !voiceChannel)
         return interaction.reply({ content: '❌ Join a voice channel first!', ephemeral: true });
-    }
 
     await interaction.deferReply();
 
@@ -248,26 +204,21 @@ client.on('interactionCreate', async interaction => {
         if (commandName === 'play') {
             const query = interaction.options.getString('query');
             await interaction.editReply('🔍 Searching...');
-
             const track = await searchTrack(query);
             const entry = await getOrCreateEntry(guildId, voiceChannel, guild);
             entry.tracks.push(track);
-
             const isFirst = entry.tracks.length === 1;
             const embed   = new EmbedBuilder()
                 .setColor('#9b59b6')
                 .setAuthor({ name: isFirst ? '▶️ Now Playing' : '📋 Added to Queue' })
-                .setTitle(track.title)
-                .setURL(track.url)
+                .setTitle(track.title).setURL(track.url)
                 .addFields(
                     { name: 'Artist',   value: track.author,                                 inline: true },
                     { name: 'Duration', value: track.duration,                               inline: true },
                     { name: 'Position', value: isFirst ? 'Now' : `#${entry.tracks.length}`, inline: true }
                 );
-
             if (track.thumbnail) embed.setThumbnail(track.thumbnail);
             if (!entry.playing)  playNext(guildId);
-
             return interaction.editReply({ content: '', embeds: [embed] });
         }
 
@@ -278,60 +229,38 @@ client.on('interactionCreate', async interaction => {
             entry.player.stop();
             return interaction.editReply('⏭️ Skipped!');
         }
-
         if (commandName === 'pause') {
             if (!entry?.playing) return interaction.editReply('❌ Nothing is playing!');
             entry.player.pause();
             return interaction.editReply('⏸️ Paused!');
         }
-
         if (commandName === 'resume') {
             if (!entry) return interaction.editReply('❌ Nothing in queue!');
             entry.player.unpause();
             return interaction.editReply('▶️ Resumed!');
         }
-
         if (commandName === 'stop') {
             if (!entry) return interaction.editReply('❌ Nothing is playing!');
-            entry.tracks = [];
-            entry.player.stop();
-            entry.connection.destroy();
-            queues.delete(guildId);
-            return interaction.editReply('⏹️ Stopped and disconnected!');
+            entry.tracks = []; entry.player.stop(); entry.connection.destroy(); queues.delete(guildId);
+            return interaction.editReply('⏹️ Stopped!');
         }
-
         if (commandName === 'volume') {
             if (!entry) return interaction.editReply('❌ Nothing is playing!');
             const vol = Math.max(1, Math.min(100, interaction.options.getInteger('amount')));
             entry.volume = vol / 100;
-            return interaction.editReply(`🔊 Volume set to **${vol}%** (applies to next song)`);
+            return interaction.editReply(`🔊 Volume set to **${vol}%** (next song)`);
         }
-
         if (commandName === 'queue') {
-            if (!entry || entry.tracks.length === 0) return interaction.editReply('❌ The queue is empty!');
-            const list = entry.tracks
-                .map((t, i) => `${i === 0 ? '▶️' : `**${i}.**`} ${t.title} — \`${t.duration}\``)
-                .join('\n');
-            const embed = new EmbedBuilder()
-                .setColor('#9b59b6')
-                .setTitle('📜 Queue')
-                .setDescription(list.substring(0, 2000))
-                .setFooter({ text: `${entry.tracks.length} song(s) in queue` });
+            if (!entry || !entry.tracks.length) return interaction.editReply('❌ Queue is empty!');
+            const list  = entry.tracks.map((t, i) => `${i === 0 ? '▶️' : `**${i}.**`} ${t.title} — \`${t.duration}\``).join('\n');
+            const embed = new EmbedBuilder().setColor('#9b59b6').setTitle('📜 Queue').setDescription(list.substring(0, 2000)).setFooter({ text: `${entry.tracks.length} song(s)` });
             return interaction.editReply({ embeds: [embed] });
         }
-
         if (commandName === 'nowplaying') {
             if (!entry?.playing || !entry.tracks.length) return interaction.editReply('❌ Nothing is playing!');
             const track = entry.tracks[0];
-            const embed = new EmbedBuilder()
-                .setColor('#9b59b6')
-                .setAuthor({ name: '▶️ Now Playing' })
-                .setTitle(track.title)
-                .setURL(track.url)
-                .addFields(
-                    { name: 'Artist',   value: track.author,   inline: true },
-                    { name: 'Duration', value: track.duration, inline: true }
-                );
+            const embed = new EmbedBuilder().setColor('#9b59b6').setAuthor({ name: '▶️ Now Playing' }).setTitle(track.title).setURL(track.url)
+                .addFields({ name: 'Artist', value: track.author, inline: true }, { name: 'Duration', value: track.duration, inline: true });
             if (track.thumbnail) embed.setThumbnail(track.thumbnail);
             return interaction.editReply({ embeds: [embed] });
         }
