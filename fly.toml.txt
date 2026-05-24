@@ -1,0 +1,10 @@
+app = "syncinkradio"
+primary_region = "sin"
+
+[build]
+
+[env]
+
+[[services]]
+  internal_port = 3000
+  protocol = "tcp"
