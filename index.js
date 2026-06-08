@@ -624,7 +624,7 @@ function resolveSearchOptions(query, platform) {
     rawQuery: normalized.rawQuery,
     searchEngines,
     primarySearchEngine: searchEngines[0] || QueryType.AUTO_SEARCH,
-    fallbackSearchEngine: isYoutubeiReady ? YOUTUBEI_SEARCH_ENGINE : QueryType.YOUTUBE_SEARCH,
+    fallbackSearchEngine: QueryType.SOUNDCLOUD_SEARCH,
     label: config.label,
     looksLikeUrl: normalized.looksLikeUrl,
     detectedPlatform: normalized.detectedPlatform,
@@ -1212,7 +1212,7 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
     const result = await player.play(voiceChannel, searchResult, {
       ...baseOptions,
       searchEngine: usedEngine,
-      fallbackSearchEngine: isYoutubeiReady ? YOUTUBEI_SEARCH_ENGINE : QueryType.YOUTUBE_SEARCH,
+      fallbackSearchEngine: QueryType.SOUNDCLOUD_SEARCH,
     });
 
     if (DEFAULT_AUTOPLAY && result.queue.repeatMode === QueueRepeatMode.OFF) {
@@ -1237,7 +1237,7 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
         const bridgedResult = await player.play(voiceChannel, bridged.result, {
           ...baseOptions,
           searchEngine: bridged.usedEngine,
-          fallbackSearchEngine: isYoutubeiReady ? YOUTUBEI_SEARCH_ENGINE : QueryType.YOUTUBE_SEARCH,
+          fallbackSearchEngine: QueryType.SOUNDCLOUD_SEARCH,
         });
 
         if (DEFAULT_AUTOPLAY && bridgedResult.queue.repeatMode === QueueRepeatMode.OFF) {
@@ -2240,9 +2240,10 @@ player.events.on('playerResume', async (queue) => {
   await refreshNowPlayingMessage(queue);
 });
 
-player.events.on('playerSkip', async (queue, track, reason) => {
+player.events.on('playerSkip', async (queue, track, reason, description) => {
   const reasonStr = String(reason || '').toLowerCase();
-  if (reasonStr.includes('stream') || reasonStr.includes('extract') || reasonStr.includes('error')) {
+  console.log(`[Player Skip] Track: ${track?.title}, Reason: ${reason}, Desc: ${description}`);
+  if (reasonStr !== 'manual' && reasonStr !== 'user') {
     const recovered = await recoverTrackFromStreamFailure(queue, track).catch(() => false);
     if (recovered) {
       const channel = queue?.metadata?.textChannel;
