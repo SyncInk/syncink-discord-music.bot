@@ -536,64 +536,62 @@ function uniqueQueryTypes(queryTypes) {
 }
 
 function buildSearchEngineCandidates(platform, resolvedType, looksLikeUrl, detectedPlatform) {
-  const youtubePriorityEngine = QueryType.YOUTUBE_SEARCH;
+  const primaryEngine = QueryType.SOUNDCLOUD_SEARCH; // Completely bypass YouTube for searches
+
+  const urlSpecific = [
+    QueryType.YOUTUBE_VIDEO,
+    QueryType.YOUTUBE_PLAYLIST,
+    QueryType.SOUNDCLOUD_TRACK,
+    QueryType.SOUNDCLOUD_PLAYLIST,
+    QueryType.SPOTIFY_SONG,
+    QueryType.SPOTIFY_ALBUM,
+    QueryType.SPOTIFY_PLAYLIST,
+    QueryType.APPLE_MUSIC_SONG,
+    QueryType.APPLE_MUSIC_ALBUM,
+    QueryType.APPLE_MUSIC_PLAYLIST,
+  ];
 
   if (looksLikeUrl) {
-    const urlSpecific = [
-      QueryType.YOUTUBE_VIDEO,
-      QueryType.YOUTUBE_PLAYLIST,
-      QueryType.YOUTUBE,
-      QueryType.SOUNDCLOUD_TRACK,
-      QueryType.SOUNDCLOUD_PLAYLIST,
-      QueryType.SOUNDCLOUD,
-      QueryType.SPOTIFY_SONG,
-      QueryType.SPOTIFY_ALBUM,
-      QueryType.SPOTIFY_PLAYLIST,
-      QueryType.APPLE_MUSIC_SONG,
-      QueryType.APPLE_MUSIC_ALBUM,
-      QueryType.APPLE_MUSIC_PLAYLIST,
-    ];
-
     if (detectedPlatform === 'youtube') {
-      return uniqueQueryTypes([youtubePriorityEngine, resolvedType, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
+      return uniqueQueryTypes([resolvedType, primaryEngine, QueryType.AUTO_SEARCH]);
     }
 
     if (urlSpecific.includes(resolvedType)) {
-      return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
+      return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, primaryEngine]);
     }
 
-    return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
+    return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, primaryEngine]);
   }
 
   if (platform === 'youtube') {
-    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
+    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'youtubemusic') {
-    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'soundcloud') {
-    return uniqueQueryTypes([QueryType.SOUNDCLOUD_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.SOUNDCLOUD_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'spotify') {
-    return uniqueQueryTypes([QueryType.SPOTIFY_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.SPOTIFY_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'applemusic') {
-    return uniqueQueryTypes([QueryType.APPLE_MUSIC_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.APPLE_MUSIC_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'deezer' || platform === 'tidal') {
-    return uniqueQueryTypes([QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
+    return uniqueQueryTypes([QueryType.AUTO_SEARCH, primaryEngine]);
   }
 
   if (platform === 'auto') {
-    return uniqueQueryTypes([youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
   }
 
-  return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
+  return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
 }
 
 function resolveSearchOptions(query, platform) {
