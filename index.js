@@ -356,11 +356,11 @@ function parseTimeToMs(input) {
   return null;
 }
 
-function renderProgressBar(progress, size = 16) {
+function renderProgressBar(progress, size = 15) {
   const safeProgress = Number.isFinite(progress) ? Math.max(0, Math.min(100, progress)) : 0;
   const filled = Math.round((safeProgress / 100) * size);
   const empty = size - filled;
-  return `[${'='.repeat(filled)}${'-'.repeat(empty)}] ${Math.round(safeProgress)}%`;
+  return `${'━'.repeat(filled)}🔘${'━'.repeat(empty)}`;
 }
 
 function getPlatformConfig(platform) {
@@ -827,11 +827,11 @@ function hasActiveTrack(queue) {
 
 function buildControlsRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Primary).setLabel('Pause/Resume'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Secondary).setLabel('Skip'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Danger).setLabel('Stop'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.LIKE).setStyle(ButtonStyle.Success).setLabel('Like'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.PLAYLIST).setStyle(ButtonStyle.Secondary).setLabel('Playlist'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Secondary).setEmoji('⏯️'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Secondary).setEmoji('⏭️'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.LIKE).setStyle(ButtonStyle.Secondary).setEmoji('❤️'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PLAYLIST).setStyle(ButtonStyle.Secondary).setEmoji('🎵'),
   );
 }
 
@@ -841,41 +841,25 @@ function buildNowPlayingEmbed(queue, track) {
   if (!current) {
     return new EmbedBuilder()
       .setColor(BRAND_COLOR)
-      .setTitle(`${BRAND_NAME} - Now Playing`)
+      .setAuthor({ name: `${BRAND_NAME} Now Playing` })
       .setDescription('Nothing is currently playing.');
   }
 
   const timestamp = queue?.node?.getTimestamp?.();
   const progressLine = timestamp
-    ? `${renderProgressBar(timestamp.progress)}\n${timestamp.current.label}/${timestamp.total.label}`
-    : 'Progress unavailable';
+    ? `${timestamp.current.label} ${renderProgressBar(timestamp.progress)} ${timestamp.total.label}`
+    : '0:00 ━━━━━━━━🔘━━━━━━━━ 0:00';
 
-  const queueSize = queue?.size ?? 0;
   const requestedBy = current.requestedBy ? `<@${current.requestedBy.id}>` : 'Unknown';
-  const source = getSourceLabel(current);
-  const duration = current.live ? 'LIVE' : current.duration || formatDurationMs(current.durationMS);
-  const volume = queue?.node?.volume ?? 80;
-  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 180);
-  const linkedTitle = current.url ? `[${title}](${current.url})` : `**${title}**`;
+  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 100);
+  const linkedTitle = current.url ? `**[${title}](${current.url})**` : `**${title}**`;
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
-    .setTitle(`${BRAND_NAME} - Now Playing`)
-    .setDescription(`${linkedTitle}\n\nReadable, interactive, and clean controls for every listener.`)
-    .addFields(
-      { name: 'Progress', value: progressLine, inline: false },
-      { name: 'Duration', value: `\`${duration}\``, inline: true },
-      { name: 'Source', value: `\`${source}\``, inline: true },
-      { name: 'Volume', value: `\`${volume}%\``, inline: true },
-      { name: 'Requested By', value: requestedBy, inline: true },
-      { name: 'Queue Length', value: `\`${queueSize} track(s)\``, inline: true },
-      {
-        name: 'Controls',
-        value: 'Use buttons below for track changes, likes, and playlist shortcuts.',
-        inline: false,
-      },
-    )
-    .setFooter({ text: BRAND_NAME })
+    .setAuthor({ name: `${BRAND_NAME} Now Playing` })
+    .setDescription(`${linkedTitle}\n\n` +
+      `${progressLine}\n\n` +
+      `Requested by ${requestedBy}`)
     .setTimestamp();
 
   if (current.thumbnail) {
