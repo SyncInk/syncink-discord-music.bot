@@ -1127,7 +1127,11 @@ async function recoverTrackFromStreamFailure(queue, track) {
   if (sameUrl) return false;
 
   queue.insertTrack(recoveredTrack, 0);
-  queue.node.skip();
+  if (!queue.isPlaying()) {
+    queue.node.play();
+  } else {
+    queue.node.skip();
+  }
   return true;
 }
 
@@ -2252,6 +2256,19 @@ player.events.on('playerSkip', async (queue, track, reason, description) => {
     }
   }
   await refreshNowPlayingMessage(queue);
+});
+
+player.events.on('playerFinish', async (queue, track) => {
+  const playtime = queue.node.playbackTime || 0;
+  if (playtime < 2000 && track.durationMS > 5000) {
+    console.log(`[Stream Failure] Track finished prematurely at ${playtime}ms (expected ${track.durationMS}ms)`);
+    const recovered = await recoverTrackFromStreamFailure(queue, track).catch(() => false);
+    if (recovered) {
+      const channel = queue?.metadata?.textChannel;
+      if (channel) channel.send('Primary stream closed prematurely. Resuming from alternate platform...').catch(() => null);
+      return;
+    }
+  }
 });
 
 player.events.on('emptyQueue', (queue) => {
