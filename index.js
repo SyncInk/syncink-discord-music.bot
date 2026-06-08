@@ -1088,7 +1088,14 @@ function isStreamErrorRecoverable(error) {
     'status code: 403',
     'unable to play this track',
     'failed to load stream',
-  ].some((pattern) => message.includes(pattern));
+    'private video',
+    'video unavailable',
+    'premature close',
+    'aborted',
+    'rate limit',
+    'bot',
+    'ip blocked',
+  ].some((pattern) => message.includes(pattern)) || message.includes('stream') || message.includes('extract');
 }
 
 function shouldAttemptStreamRecovery(queue, track) {
@@ -2233,7 +2240,16 @@ player.events.on('playerResume', async (queue) => {
   await refreshNowPlayingMessage(queue);
 });
 
-player.events.on('playerSkip', async (queue) => {
+player.events.on('playerSkip', async (queue, track, reason) => {
+  const reasonStr = String(reason || '').toLowerCase();
+  if (reasonStr.includes('stream') || reasonStr.includes('extract') || reasonStr.includes('error')) {
+    const recovered = await recoverTrackFromStreamFailure(queue, track).catch(() => false);
+    if (recovered) {
+      const channel = queue?.metadata?.textChannel;
+      if (channel) channel.send('Stream extraction failed, seamlessly switched to an alternate platform.').catch(() => null);
+      return;
+    }
+  }
   await refreshNowPlayingMessage(queue);
 });
 
@@ -2376,7 +2392,6 @@ async function bootstrap() {
   if (YoutubeiExtractor) {
     try {
       await player.extractors.register(YoutubeiExtractor, {
-        disablePlayer: true,
         ignoreSignInErrors: true,
         useYoutubeDL: true,
         streamOptions: {
