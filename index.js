@@ -259,29 +259,28 @@ const lastTrackStartTimes = new Map();
 const strictModeByGuild = new Map();
 const streamRecoveryCooldowns = new Map();
 
-onBeforeCreateStream(async (track) => {
-  if (!ENABLE_DIRECT_YTDL_STREAM) return null;
-  if (!isValidYouTubeStreamUrl(track?.url)) return null;
+const yt = require('youtube-dl-exec');
 
-  try {
-    console.log(`[Stream] Using direct YouTube stream for: ${track.cleanTitle || track.title || track.url}`);
-    const stream = ytdl(track.url, {
-      filter: (format) => format.hasAudio && !format.hasVideo,
-      quality: 'highestaudio',
-      highWaterMark: 1 << 25,
-      dlChunkSize: 0,
-      requestOptions: {
-        headers: YTDL_REQUEST_HEADERS,
-      },
-    });
-    stream.on('error', (error) => {
-      console.error('[Stream] Direct YouTube stream error:', error?.message || error);
-    });
-    return stream;
-  } catch (error) {
-    console.error('[Stream] Direct YouTube stream failed:', error?.message || error);
-    return null;
+onBeforeCreateStream(async (track) => {
+  if (track?.source === 'youtube' || isValidYouTubeStreamUrl(track?.url)) {
+    try {
+      console.log(`[Stream] Using native yt-dlp stream for: ${track.cleanTitle || track.title || track.url}`);
+      const cp = yt.exec(track.url, {
+        output: '-',
+        format: 'bestaudio/best',
+      }, { stdio: ['ignore', 'pipe', 'ignore'] });
+      
+      cp.stdout.on('end', () => cp.kill());
+      cp.stdout.on('close', () => cp.kill());
+      cp.stdout.on('error', () => cp.kill());
+      
+      return cp.stdout;
+    } catch (error) {
+      console.error('[Stream] yt-dlp stream failed:', error?.message || error);
+      return null;
+    }
   }
+  return null;
 });
 
 function canSendGuildMessage(guildId, messageKey, cooldownMs) {
@@ -536,62 +535,62 @@ function uniqueQueryTypes(queryTypes) {
 }
 
 function buildSearchEngineCandidates(platform, resolvedType, looksLikeUrl, detectedPlatform) {
-  const primaryEngine = QueryType.SOUNDCLOUD_SEARCH; // Completely bypass YouTube for searches
-
-  const urlSpecific = [
-    QueryType.YOUTUBE_VIDEO,
-    QueryType.YOUTUBE_PLAYLIST,
-    QueryType.SOUNDCLOUD_TRACK,
-    QueryType.SOUNDCLOUD_PLAYLIST,
-    QueryType.SPOTIFY_SONG,
-    QueryType.SPOTIFY_ALBUM,
-    QueryType.SPOTIFY_PLAYLIST,
-    QueryType.APPLE_MUSIC_SONG,
-    QueryType.APPLE_MUSIC_ALBUM,
-    QueryType.APPLE_MUSIC_PLAYLIST,
-  ];
+  const youtubePriorityEngine = isYoutubeiReady ? YOUTUBEI_SEARCH_ENGINE : QueryType.YOUTUBE_SEARCH;
 
   if (looksLikeUrl) {
+    const urlSpecific = [
+      QueryType.YOUTUBE_VIDEO,
+      QueryType.YOUTUBE_PLAYLIST,
+      QueryType.SOUNDCLOUD_TRACK,
+      QueryType.SOUNDCLOUD_PLAYLIST,
+      QueryType.SPOTIFY_SONG,
+      QueryType.SPOTIFY_ALBUM,
+      QueryType.SPOTIFY_PLAYLIST,
+      QueryType.APPLE_MUSIC_SONG,
+      QueryType.APPLE_MUSIC_ALBUM,
+      QueryType.APPLE_MUSIC_PLAYLIST,
+    ];
+
     if (detectedPlatform === 'youtube') {
-      return uniqueQueryTypes([resolvedType, primaryEngine, QueryType.AUTO_SEARCH]);
+      return uniqueQueryTypes([youtubePriorityEngine, resolvedType, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
     }
 
     if (urlSpecific.includes(resolvedType)) {
-      return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, primaryEngine]);
+      return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
     }
 
-    return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, primaryEngine]);
+    return uniqueQueryTypes([resolvedType, QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
   }
 
   if (platform === 'youtube') {
-    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
   }
 
   if (platform === 'youtubemusic') {
-    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'soundcloud') {
-    return uniqueQueryTypes([QueryType.SOUNDCLOUD_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.SOUNDCLOUD_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'spotify') {
-    return uniqueQueryTypes([QueryType.SPOTIFY_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.SPOTIFY_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'applemusic') {
-    return uniqueQueryTypes([QueryType.APPLE_MUSIC_SEARCH, primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([QueryType.APPLE_MUSIC_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
   }
 
   if (platform === 'deezer' || platform === 'tidal') {
-    return uniqueQueryTypes([QueryType.AUTO_SEARCH, primaryEngine]);
+    return uniqueQueryTypes([QueryType.AUTO_SEARCH, youtubePriorityEngine, QueryType.SOUNDCLOUD_SEARCH]);
   }
 
   if (platform === 'auto') {
-    return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
+    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
   }
 
-  return uniqueQueryTypes([primaryEngine, QueryType.AUTO_SEARCH]);
+  return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
 }
 
 function resolveSearchOptions(query, platform) {
@@ -2256,18 +2255,7 @@ player.events.on('playerSkip', async (queue, track, reason, description) => {
   await refreshNowPlayingMessage(queue);
 });
 
-player.events.on('playerFinish', async (queue, track) => {
-  const playtime = queue.node.playbackTime || 0;
-  if (playtime < 2000 && track.durationMS > 5000) {
-    console.log(`[Stream Failure] Track finished prematurely at ${playtime}ms (expected ${track.durationMS}ms)`);
-    const recovered = await recoverTrackFromStreamFailure(queue, track).catch(() => false);
-    if (recovered) {
-      const channel = queue?.metadata?.textChannel;
-      if (channel) channel.send('Primary stream closed prematurely. Resuming from alternate platform...').catch(() => null);
-      return;
-    }
-  }
-});
+
 
 player.events.on('emptyQueue', (queue) => {
   const channel = queue.metadata?.textChannel;
@@ -2411,7 +2399,7 @@ async function bootstrap() {
         ignoreSignInErrors: true,
         useYoutubeDL: true,
         streamOptions: {
-          useClient: 'ANDROID',
+          useClient: 'IOS',
         },
       });
 
