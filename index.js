@@ -259,28 +259,8 @@ const lastTrackStartTimes = new Map();
 const strictModeByGuild = new Map();
 const streamRecoveryCooldowns = new Map();
 
-const yt = require('youtube-dl-exec');
-
 onBeforeCreateStream(async (track) => {
-  if (track?.source === 'youtube' || isValidYouTubeStreamUrl(track?.url)) {
-    try {
-      console.log(`[Stream] Using native yt-dlp stream for: ${track.cleanTitle || track.title || track.url}`);
-      const cp = yt.exec(track.url, {
-        output: '-',
-        format: 'bestaudio/best',
-      }, { stdio: ['ignore', 'pipe', 'ignore'] });
-      
-      cp.stdout.on('end', () => cp.kill());
-      cp.stdout.on('close', () => cp.kill());
-      cp.stdout.on('error', () => cp.kill());
-      
-      return cp.stdout;
-    } catch (error) {
-      console.error('[Stream] yt-dlp stream failed:', error?.message || error);
-      return null;
-    }
-  }
-  return null;
+  return null; // Let the registered extractors (YoutubeiExtractor) handle it natively
 });
 
 function canSendGuildMessage(guildId, messageKey, cooldownMs) {
@@ -2245,14 +2225,19 @@ player.events.on('playerSkip', async (queue, track, reason, description) => {
   const reasonStr = String(reason || '').toLowerCase();
   console.log(`[Player Skip] Track: ${track?.title}, Reason: ${reason}, Desc: ${description}`);
   if (reasonStr !== 'manual' && reasonStr !== 'user') {
-    const recovered = await recoverTrackFromStreamFailure(queue, track).catch(() => false);
-    if (recovered) {
-      const channel = queue?.metadata?.textChannel;
-      if (channel) channel.send('Stream extraction failed, seamlessly switched to an alternate platform.').catch(() => null);
-      return;
-    }
+    const channel = queue?.metadata?.textChannel;
+    if (channel) channel.send('❌ YouTube is blocking audio playback for this song due to IP ratelimits. Please try another track!').catch(() => null);
   }
   await refreshNowPlayingMessage(queue);
+});
+
+player.events.on('playerFinish', async (queue, track) => {
+  const playtime = queue.node.playbackTime || 0;
+  if (playtime < 2000 && track.durationMS > 5000) {
+    console.log(`[Stream Failure] Track finished prematurely at ${playtime}ms (expected ${track.durationMS}ms)`);
+    const channel = queue?.metadata?.textChannel;
+    if (channel) channel.send('❌ YouTube is blocking audio playback for this song due to IP ratelimits. Please try another track!').catch(() => null);
+  }
 });
 
 
