@@ -263,33 +263,33 @@ const emptyVcTimers = new Map();
 
 const RADIO_STATIONS = {
   lofi: {
-    name: 'Lofi Girl - Beats to Relax/Study to',
-    genre: 'Lofi Hip Hop',
-    query: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    fallbackQuery: 'Lofi Girl beats to relax study to live',
+    name: 'Lofi Girl - Pure Study & Relax Beats (No Vocals)',
+    genre: 'Instrumental Lofi Hip Hop',
+    query: 'lofi hip hop radio beats to study to pure instrumental',
+    fallbackQuery: 'lofi hip hop radio beats to relax study to',
   },
   synthwave: {
-    name: 'Synthwave / Chillwave Radio',
-    genre: 'Synthwave / Retro',
-    query: 'synthwave radio chill beats live',
+    name: 'Synthwave & Retro Chill Radio',
+    genre: 'Synthwave / Chillwave',
+    query: 'synthwave radio chill beats live instrumental',
     fallbackQuery: 'synthwave chill radio live',
   },
   coffee: {
-    name: 'Coffee Shop & Jazz Vibes',
-    genre: 'Jazz & Ambient',
-    query: 'coffee shop jazz relax piano music',
-    fallbackQuery: 'coffee shop jazz radio',
+    name: 'Coffee Shop Acoustic & Smooth Jazz',
+    genre: 'Jazz & Acoustic Lounge',
+    query: 'coffee shop jazz relax instrumental piano',
+    fallbackQuery: 'coffee shop jazz radio relax',
   },
   sleep: {
-    name: 'Deep Sleep & Ambient Waves',
-    genre: 'Ambient / Sleep',
-    query: 'deep sleep calming ambient music 24/7',
+    name: 'Deep Sleep Ambient & Calming Rain',
+    genre: 'Ambient / Sleep Waves',
+    query: 'deep sleep calming ambient meditation music 24/7',
     fallbackQuery: 'calm ambient meditation music',
   },
   gaming: {
-    name: 'NCS Gaming & EDM Radio',
-    genre: 'EDM / NCS',
-    query: 'ncs 24/7 edm live radio gaming',
+    name: 'NCS Gaming & EDM Beats',
+    genre: 'Electronic & Gaming EDM',
+    query: 'ncs 24/7 edm live radio gaming instrumental',
     fallbackQuery: 'ncs 24/7 edm radio',
   },
 };
@@ -1017,6 +1017,22 @@ async function safeReply(interaction, payload) {
   return interaction.reply(payload);
 }
 
+function createNotificationEmbed(title, description, color = BRAND_COLOR) {
+  return new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(description)
+    .setFooter({ text: BRAND_NAME })
+    .setTimestamp();
+}
+
+async function safeReplyEmbed(interaction, title, description, color = BRAND_COLOR, ephemeral = false) {
+  const embed = createNotificationEmbed(title, description, color);
+  const payload = { embeds: [embed] };
+  if (ephemeral) payload.flags = MessageFlags.Ephemeral;
+  return safeReply(interaction, payload);
+}
+
 async function getInteractionVoiceChannel(interaction) {
   const member = await interaction.guild.members.fetch(interaction.user.id);
   return member.voice.channel || null;
@@ -1389,11 +1405,24 @@ async function handlePlay(interaction) {
 
   try {
     const { track } = await queueAndPlay(voiceCheck.channel, query, interaction.channel, interaction.user, platform, { strictMode });
-    const strictSuffix = strictMode ? ' (strict mode)' : '';
-    await interaction.editReply(`Queued **${track.cleanTitle || track.title}**${strictSuffix}.`);
+    const strictSuffix = strictMode ? ' *(strict mode enabled)*' : '';
+    const embed = new EmbedBuilder()
+      .setColor(SUCCESS_COLOR)
+      .setTitle('🎶 Track Added to Queue')
+      .setDescription(`**[${track.cleanTitle || track.title}](${track.url || 'https://discord.com'})**${strictSuffix}\n\n⏱️ Duration: \`${track.duration || 'Live'}\` • 👤 Added By: <@${interaction.user.id}>`)
+      .setThumbnail(track.thumbnail || null)
+      .setFooter({ text: BRAND_NAME })
+      .setTimestamp();
+    await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('[Play Error]', error);
-    await interaction.editReply(`I could not play that track: ${error.message || error}`);
+    const errEmbed = new EmbedBuilder()
+      .setColor(ERROR_COLOR)
+      .setTitle('❌ Could Not Play Track')
+      .setDescription(`${error.message || error}`)
+      .setFooter({ text: BRAND_NAME })
+      .setTimestamp();
+    await interaction.editReply({ embeds: [errEmbed] });
   }
 }
 
@@ -1412,7 +1441,7 @@ async function handleSearch(interaction) {
     });
   } catch (error) {
     console.error('[Search Error]', error);
-    await interaction.editReply({ content: `Search failed: ${error.message || error}` });
+    await safeReplyEmbed(interaction, '❌ Search Failed', `${error.message || error}`, ERROR_COLOR, true);
   }
 }
 
@@ -1421,10 +1450,13 @@ async function handleStrictMode(interaction) {
   const enabled = mode === 'on';
   setGuildStrictMode(interaction.guildId, enabled);
 
-  await safeReply(interaction, {
-    content: `Strict song mode is now **${enabled ? 'ON' : 'OFF'}** for this server.`,
-    flags: MessageFlags.Ephemeral,
-  });
+  await safeReplyEmbed(
+    interaction,
+    `🎯 Strict Mode: ${enabled ? 'ENABLED' : 'DISABLED'}`,
+    `Strict song matching is now **${enabled ? 'ON' : 'OFF'}** for this server.`,
+    enabled ? SUCCESS_COLOR : BRAND_COLOR,
+    true,
+  );
 }
 
 async function handlePlaylist(interaction) {
@@ -1564,15 +1596,15 @@ async function handleLofi(interaction) {
 
     const embed = new EmbedBuilder()
       .setColor(0x9b59b6)
-      .setTitle('☕ Lofi Beats 24/7 Mode')
-      .setDescription('Tuned into **Lofi Girl - Beats to Relax/Study to** 🎧\n\n*Streaming live lofi chill beats continuously. The bot will automatically leave if the voice channel becomes empty.*')
-      .setFooter({ text: `${BRAND_NAME} • Lofi Chill Room` })
+      .setTitle('☕ 24/7 Lofi Stream Online')
+      .setDescription('🎧 Now streaming **Pure Instrumental Lofi Beats (No Vocals)** on loop!\n\n✨ Perfect for studying, relaxing, and chill vibes.\n👥 *Will automatically disconnect if the voice channel becomes empty.*')
+      .setFooter({ text: `${BRAND_NAME} • Lofi Chill Radio` })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('[Lofi Play Error]', error);
-    await interaction.editReply(`Could not start Lofi stream: ${error.message || error}`);
+    await safeReplyEmbed(interaction, '❌ Could Not Start Lofi Stream', `${error.message || error}`, ERROR_COLOR);
   }
 }
 
@@ -1582,21 +1614,34 @@ async function handle247(interaction, queue) {
 
   if (mode === 'on') {
     twentyFourSevenGuilds.add(guildId);
-    // cancel any pending disconnect timer
     if (emptyVcTimers.has(guildId)) {
       clearTimeout(emptyVcTimers.get(guildId));
       emptyVcTimers.delete(guildId);
     }
-    await safeReply(interaction, {
-      content: '🔒 **24/7 Mode is now ON.** The bot will stay connected to voice and will not leave when the queue is finished (it will only disconnect if everyone leaves the voice channel).',
-    });
+
+    // If there is an active queue, ensure repeat/autoplay is kept alive
+    if (queue) {
+      if (queue.repeatMode === QueueRepeatMode.OFF) {
+        queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
+      }
+    }
+
+    await safeReplyEmbed(
+      interaction,
+      '📻 24/7 Non-Stop Music: ACTIVATED',
+      '✨ The bot will now keep playing 24/7 continuously without stopping!\n\n🔄 **Continuous Playback:** Autoplay is kept active so the music never ends.\n👥 **Smart Voice Guard:** If everyone leaves the voice channel, the bot will leave to save your Termux battery.',
+      SUCCESS_COLOR,
+    );
     return;
   }
 
   twentyFourSevenGuilds.delete(guildId);
-  await safeReply(interaction, {
-    content: '🔓 **24/7 Mode is now OFF.** The bot will leave the channel when playback stops.',
-  });
+  await safeReplyEmbed(
+    interaction,
+    '⏸️ 24/7 Mode: DEACTIVATED',
+    'The bot will now follow normal behavior and stop when your current queue finishes.',
+    BRAND_COLOR,
+  );
 }
 
 async function handleFilterCommand(interaction, queue) {
@@ -1615,7 +1660,7 @@ async function handleFilterCommand(interaction, queue) {
 
   if (filterChoice === 'off') {
     await queue.filters.ffmpeg.setFilters(filtersToApply);
-    await safeReply(interaction, { content: '✨ Cleared all audio filters.' });
+    await safeReplyEmbed(interaction, '✨ Filters Cleared', 'All audio effects and filters have been reset to normal.', BRAND_COLOR);
     return;
   }
 
@@ -1632,9 +1677,12 @@ async function handleFilterCommand(interaction, queue) {
     normalizer: 'Dynamic Normalizer',
   };
 
-  await safeReply(interaction, {
-    content: `🎛️ Audio filter set to **${names[filterChoice] || filterChoice}**!`,
-  });
+  await safeReplyEmbed(
+    interaction,
+    '🎛️ Audio Effect Applied',
+    `Applied **${names[filterChoice] || filterChoice}** successfully!`,
+    BRAND_COLOR,
+  );
 }
 
 async function handleLyrics(interaction, queue) {
@@ -1642,10 +1690,7 @@ async function handleLyrics(interaction, queue) {
   const query = customQuery || (queue?.currentTrack ? `${queue.currentTrack.title} ${queue.currentTrack.author || ''}`.trim() : null);
 
   if (!query) {
-    await safeReply(interaction, {
-      content: 'Provide a song name or play a track first.',
-      flags: MessageFlags.Ephemeral,
-    });
+    await safeReplyEmbed(interaction, '❓ Missing Song Name', 'Provide a song name or play a track first to search lyrics.', WARNING_COLOR, true);
     return;
   }
 
@@ -1656,7 +1701,7 @@ async function handleLyrics(interaction, queue) {
     const first = results?.[0];
 
     if (!first || !first.plainLyrics) {
-      await interaction.editReply({ content: 'No lyrics found for that query.' });
+      await interaction.editReply({ embeds: [createNotificationEmbed('📜 No Lyrics Found', `Could not find lyrics for **${truncate(query, 80)}**.`, WARNING_COLOR)] });
       return;
     }
 
@@ -1665,7 +1710,7 @@ async function handleLyrics(interaction, queue) {
     });
   } catch (error) {
     console.error('[Lyrics Error]', error);
-    await interaction.editReply({ content: `Lyrics lookup failed: ${error.message || error}` });
+    await interaction.editReply({ embeds: [createNotificationEmbed('❌ Lyrics Error', `${error.message || error}`, ERROR_COLOR)] });
   }
 }
 
@@ -1674,18 +1719,18 @@ async function handleLoop(interaction, queue) {
 
   if (mode === 'all') {
     queue.setRepeatMode(QueueRepeatMode.QUEUE);
-    await safeReply(interaction, { content: 'Loop mode set to **all**.' });
+    await safeReplyEmbed(interaction, '🔁 Loop Mode: ALL', 'Now looping the entire queue continuously.', SUCCESS_COLOR);
     return;
   }
 
   if (mode === 'current') {
     queue.setRepeatMode(QueueRepeatMode.TRACK);
-    await safeReply(interaction, { content: 'Loop mode set to **current track**.' });
+    await safeReplyEmbed(interaction, '🔂 Loop Mode: CURRENT TRACK', 'Now repeating the current song continuously.', SUCCESS_COLOR);
     return;
   }
 
   queue.setRepeatMode(QueueRepeatMode.OFF);
-  await safeReply(interaction, { content: 'Loop mode disabled.' });
+  await safeReplyEmbed(interaction, '➡️ Loop Mode: DISABLED', 'Looping turned off. Playback will advance normally.', BRAND_COLOR);
 }
 
 async function handleAutoplay(interaction, queue) {
@@ -1693,12 +1738,12 @@ async function handleAutoplay(interaction, queue) {
 
   if (mode === 'on') {
     queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
-    await safeReply(interaction, { content: 'Autoplay enabled.' });
+    await safeReplyEmbed(interaction, '📻 Autoplay: ENABLED', 'Autoplay is now on. Recommended related tracks will play automatically when queue ends.', SUCCESS_COLOR);
     return;
   }
 
   queue.setRepeatMode(QueueRepeatMode.OFF);
-  await safeReply(interaction, { content: 'Autoplay disabled.' });
+  await safeReplyEmbed(interaction, '⏹️ Autoplay: DISABLED', 'Autoplay turned off.', BRAND_COLOR);
 }
 
 async function handleBassBoost(interaction, queue) {
@@ -1715,8 +1760,8 @@ async function handleBassBoost(interaction, queue) {
   if (mode === 'high') filterState.bassboost_high = true;
 
   await queue.filters.ffmpeg.setFilters(filterState);
-  const label = mode === 'off' ? 'disabled' : `set to ${mode}`;
-  await safeReply(interaction, { content: `Bassboost ${label}.` });
+  const label = mode === 'off' ? 'Disabled' : `Set to ${mode.toUpperCase()}`;
+  await safeReplyEmbed(interaction, `🔊 Bassboost: ${label}`, `Bassboost profile has been updated to **${mode}**.`, BRAND_COLOR);
 }
 
 async function handle8D(interaction, queue) {
@@ -1724,12 +1769,12 @@ async function handle8D(interaction, queue) {
 
   if (mode === 'on') {
     await queue.filters.ffmpeg.setFilters({ '8D': true });
-    await safeReply(interaction, { content: '8D filter enabled.' });
+    await safeReplyEmbed(interaction, '🌀 8D Surround Audio: ON', '8D spatial audio rotation effect has been enabled.', SUCCESS_COLOR);
     return;
   }
 
   await queue.filters.ffmpeg.setFilters({ '8D': false });
-  await safeReply(interaction, { content: '8D filter disabled.' });
+  await safeReplyEmbed(interaction, '🌀 8D Surround Audio: OFF', '8D spatial audio effect disabled.', BRAND_COLOR);
 }
 
 async function handleQueueSubcommands(interaction, queue) {
@@ -1737,7 +1782,7 @@ async function handleQueueSubcommands(interaction, queue) {
 
   if (subcommand === 'list') {
     if (!hasActiveTrack(queue)) {
-      await safeReply(interaction, { content: 'Queue is currently empty.', flags: MessageFlags.Ephemeral });
+      await safeReplyEmbed(interaction, '📜 Queue is Empty', 'No tracks are currently queued. Add tracks with `/play` or tune into `/radio`.', BRAND_COLOR, true);
       return;
     }
 
@@ -1747,12 +1792,12 @@ async function handleQueueSubcommands(interaction, queue) {
 
   if (subcommand === 'clear') {
     if (!queue || queue.size === 0) {
-      await safeReply(interaction, { content: 'Queue is already empty.', flags: MessageFlags.Ephemeral });
+      await safeReplyEmbed(interaction, '📜 Queue is Already Empty', 'There are no upcoming tracks to clear.', BRAND_COLOR, true);
       return;
     }
 
     queue.clear();
-    await safeReply(interaction, { content: 'Queue cleared.' });
+    await safeReplyEmbed(interaction, '🗑️ Queue Cleared', 'All upcoming tracks have been removed from the queue.', SUCCESS_COLOR);
   }
 }
 
@@ -1827,30 +1872,30 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === 'leave') {
       if (!queue) {
-        await safeReply(interaction, { content: 'I am not connected to a voice channel.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '❌ Not Connected', 'I am not currently connected to any voice channel.', ERROR_COLOR, true);
         return;
       }
 
       queue.delete();
       nowPlayingRegistry.delete(interaction.guildId);
-      await safeReply(interaction, { content: 'Disconnected from voice channel.' });
+      await safeReplyEmbed(interaction, '👋 Disconnected', 'Left the voice channel and cleared the session.', BRAND_COLOR);
       return;
     }
 
     if (interaction.commandName === 'stop') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '⏹️ Nothing Playing', 'No track is currently playing.', BRAND_COLOR, true);
         return;
       }
 
       if (!(await ensureSameVoiceChannel(interaction, queue))) return;
       queue.node.stop();
-      await safeReply(interaction, { content: 'Playback stopped.' });
+      await safeReplyEmbed(interaction, '⏹️ Playback Stopped', 'Stopped music playback and cleared active audio.', BRAND_COLOR);
       return;
     }
 
     if (!queue) {
-      await safeReply(interaction, { content: 'No active queue. Start with `/play` first.', flags: MessageFlags.Ephemeral });
+      await safeReplyEmbed(interaction, 'ℹ️ No Active Queue', 'There is no music queue active. Start by using `/play` or `/radio`.', BRAND_COLOR, true);
       return;
     }
 
@@ -1858,41 +1903,41 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === 'pause') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '⏸️ Nothing Playing', 'Nothing is currently playing.', BRAND_COLOR, true);
         return;
       }
 
       if (queue.node.isPaused()) {
-        await safeReply(interaction, { content: 'Playback is already paused.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '⏸️ Already Paused', 'Playback is already paused.', WARNING_COLOR, true);
         return;
       }
 
       queue.node.pause();
-      await safeReply(interaction, { content: 'Playback paused.' });
+      await safeReplyEmbed(interaction, '⏸️ Playback Paused', 'Music paused. Resume anytime with `/resume`.', BRAND_COLOR);
       await refreshNowPlayingMessage(queue);
       return;
     }
 
     if (interaction.commandName === 'resume') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '▶️ Nothing Playing', 'Nothing is currently playing.', BRAND_COLOR, true);
         return;
       }
 
       if (!queue.node.isPaused()) {
-        await safeReply(interaction, { content: 'Playback is already running.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '▶️ Already Playing', 'Music playback is already running.', WARNING_COLOR, true);
         return;
       }
 
       queue.node.resume();
-      await safeReply(interaction, { content: 'Playback resumed.' });
+      await safeReplyEmbed(interaction, '▶️ Playback Resumed', 'Resumed playing track.', SUCCESS_COLOR);
       await refreshNowPlayingMessage(queue);
       return;
     }
 
     if (interaction.commandName === 'skip') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '⏭️ Nothing Playing', 'Nothing is currently playing to skip.', BRAND_COLOR, true);
         return;
       }
 
@@ -1904,20 +1949,22 @@ async function handleCommandInteraction(interaction) {
         else break;
       }
 
-      await safeReply(interaction, {
-        content: skipped > 0 ? `Skipped ${skipped} track(s).` : 'I could not skip track(s).',
-      });
+      if (skipped > 0) {
+        await safeReplyEmbed(interaction, '⏭️ Track Skipped', `Skipped **${skipped}** track(s) forward.`, SUCCESS_COLOR);
+      } else {
+        await safeReplyEmbed(interaction, '❌ Could Not Skip', 'Unable to skip the current track.', ERROR_COLOR);
+      }
       return;
     }
 
     if (interaction.commandName === 'shuffle') {
       if (queue.size < 2) {
-        await safeReply(interaction, { content: 'Need at least 2 tracks in queue to shuffle.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '🔀 Queue Too Short', 'You need at least 2 tracks in the queue to shuffle.', WARNING_COLOR, true);
         return;
       }
 
       queue.tracks.shuffle();
-      await safeReply(interaction, { content: 'Queue shuffled.' });
+      await safeReplyEmbed(interaction, '🔀 Queue Shuffled', `Randomized the order of **${queue.size}** upcoming tracks.`, SUCCESS_COLOR);
       return;
     }
 
@@ -1934,9 +1981,11 @@ async function handleCommandInteraction(interaction) {
     if (interaction.commandName === 'volume') {
       const value = interaction.options.getInteger('percent', true);
       const changed = queue.node.setVolume(value);
-      await safeReply(interaction, {
-        content: changed ? `Volume set to ${value}%.` : 'Could not change volume.',
-      });
+      if (changed) {
+        await safeReplyEmbed(interaction, '🔊 Volume Adjusted', `Volume set to **${value}%**.`, BRAND_COLOR);
+      } else {
+        await safeReplyEmbed(interaction, '❌ Volume Error', 'Could not change volume.', ERROR_COLOR);
+      }
       return;
     }
 
@@ -1945,34 +1994,29 @@ async function handleCommandInteraction(interaction) {
       const track = queue.tracks.at(position - 1);
 
       if (!track) {
-        await safeReply(interaction, {
-          content: 'That queue position does not exist.',
-          flags: MessageFlags.Ephemeral,
-        });
+        await safeReplyEmbed(interaction, '❌ Invalid Position', 'That position does not exist in the queue.', WARNING_COLOR, true);
         return;
       }
 
       queue.node.remove(track);
-      await safeReply(interaction, {
-        content: `Removed **${track.cleanTitle || track.title}** from queue.`,
-      });
+      await safeReplyEmbed(interaction, '🗑️ Track Removed', `Removed **${track.cleanTitle || track.title}** from the queue.`, BRAND_COLOR);
       return;
     }
 
     if (interaction.commandName === 'replay') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '🔄 Nothing Playing', 'Nothing is currently playing.', BRAND_COLOR, true);
         return;
       }
 
       await queue.node.seek(0);
-      await safeReply(interaction, { content: 'Replaying current track from the start.' });
+      await safeReplyEmbed(interaction, '🔄 Replaying Track', `Replaying **${queue.currentTrack?.title}** from the start.`, BRAND_COLOR);
       return;
     }
 
     if (interaction.commandName === 'seek') {
       if (!hasActiveTrack(queue)) {
-        await safeReply(interaction, { content: 'Nothing is currently playing.', flags: MessageFlags.Ephemeral });
+        await safeReplyEmbed(interaction, '⏩ Nothing Playing', 'Nothing is currently playing to seek in.', BRAND_COLOR, true);
         return;
       }
 
@@ -1980,10 +2024,7 @@ async function handleCommandInteraction(interaction) {
       const targetMs = parseTimeToMs(input);
 
       if (targetMs == null) {
-        await safeReply(interaction, {
-          content: 'Invalid seek time. Use `90`, `1:30`, or `00:01:30`.',
-          flags: MessageFlags.Ephemeral,
-        });
+        await safeReplyEmbed(interaction, '❌ Invalid Timestamp', 'Invalid seek format. Use `90`, `1:30`, or `00:01:30`.', WARNING_COLOR, true);
         return;
       }
 
@@ -1991,31 +2032,27 @@ async function handleCommandInteraction(interaction) {
       const durationMs = current?.durationMS || 0;
 
       if (!current?.live && durationMs > 0 && targetMs > durationMs) {
-        await safeReply(interaction, {
-          content: `Seek time is beyond track length (${formatDurationMs(durationMs)}).`,
-          flags: MessageFlags.Ephemeral,
-        });
+        await safeReplyEmbed(interaction, '❌ Beyond Track Length', `Seek time is beyond track duration (${formatDurationMs(durationMs)}).`, WARNING_COLOR, true);
         return;
       }
 
       const ok = await queue.node.seek(targetMs);
-      await safeReply(interaction, {
-        content: ok ? `Seeked to ${formatDurationMs(targetMs)}.` : 'Could not seek this track.',
-      });
+      if (ok) {
+        await safeReplyEmbed(interaction, '⏩ Seek Position', `Seeked playback to **${formatDurationMs(targetMs)}**.`, SUCCESS_COLOR);
+      } else {
+        await safeReplyEmbed(interaction, '❌ Seek Failed', 'Could not seek this track.', ERROR_COLOR);
+      }
       return;
     }
 
     if (interaction.commandName === 'previous') {
       if (!queue.history.previousTrack) {
-        await safeReply(interaction, {
-          content: 'No previous track in listening history.',
-          flags: MessageFlags.Ephemeral,
-        });
+        await safeReplyEmbed(interaction, '⏮️ No History', 'There is no previous track in listening history.', BRAND_COLOR, true);
         return;
       }
 
       await queue.history.previous();
-      await safeReply(interaction, { content: 'Went back to previous track.' });
+      await safeReplyEmbed(interaction, '⏮️ Previous Track', 'Jumped back to the previous track in history.', SUCCESS_COLOR);
       return;
     }
 
@@ -2481,18 +2518,38 @@ player.events.on('playerFinish', async (queue, track) => {
 
 
 
-player.events.on('emptyQueue', (queue) => {
+player.events.on('emptyQueue', async (queue) => {
   const channel = queue.metadata?.textChannel;
+  const guildId = queue.guild.id;
+
+  // If 24/7 Mode is active in this guild, automatically keep streaming music!
+  if (twentyFourSevenGuilds.has(guildId)) {
+    try {
+      console.log(`[24/7 Mode] Queue ended in guild ${guildId}. Auto-queuing continuous radio beats...`);
+      const lofiStation = RADIO_STATIONS.lofi;
+      const res = await runSearch(lofiStation.query, 'auto', client.user);
+      if (res && res.hasTracks()) {
+        queue.addTrack(res.tracks[0]);
+        if (!queue.isPlaying()) {
+          queue.node.play();
+        }
+        return;
+      }
+    } catch (err) {
+      console.error('[24/7 Auto-play Error]', err);
+    }
+  }
+
   if (!channel || typeof channel.send !== 'function') return;
 
-  const startedAt = lastTrackStartTimes.get(queue.guild.id) || 0;
+  const startedAt = lastTrackStartTimes.get(guildId) || 0;
   if (startedAt > 0 && Date.now() - startedAt < 4_000) {
-    // Avoid noisy "queue ended" spam for instant stream failures.
     return;
   }
 
-  if (!canSendGuildMessage(queue.guild.id, 'emptyQueue', 120_000)) return;
-  channel.send('Queue ended. Add another song when you are ready.').catch(() => null);
+  if (!canSendGuildMessage(guildId, 'emptyQueue', 120_000)) return;
+  const embed = createNotificationEmbed('🏁 Queue Finished', 'All songs have finished playing. Use `/play` or `/lofi` to start another session!', BRAND_COLOR);
+  channel.send({ embeds: [embed] }).catch(() => null);
 });
 
 player.events.on('error', (queue, error) => {
