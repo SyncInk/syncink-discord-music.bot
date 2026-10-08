@@ -2,3 +2,5 @@ node_modules/
 .env
 .DS_Store
 data/favorites.json
+data/taste-profiles.json
+data/taste-profiles.json.tmp

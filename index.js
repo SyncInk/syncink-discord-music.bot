@@ -49,6 +49,7 @@ const {
 } = require('discord.js');
 const { Player, QueueRepeatMode, QueryType, QueryResolver, onBeforeCreateStream } = require('discord-player');
 const { DefaultExtractors } = require('@discord-player/extractor');
+const { MusicTaste } = require('./taste');
 
 // Configure audio encoder priority for mobile ARM / Termux performance
 try {
@@ -178,7 +179,15 @@ const GUILD_ID = normalizeSnowflake(process.env.DISCORD_GUILD_ID) || normalizeSn
 const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const FAVORITES_PATH = path.join(DATA_DIR, 'favorites.json');
+const TASTE_PROFILES_PATH = path.join(DATA_DIR, 'taste-profiles.json');
 const DEFAULT_AUTOPLAY = toBoolean(process.env.DEFAULT_AUTOPLAY, false);
+const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-6-astra';
+const musicTaste = new MusicTaste({
+  filePath: TASTE_PROFILES_PATH,
+  apiKey: OPENAI_API_KEY,
+  model: OPENAI_MODEL,
+});
 
 if (!TOKEN) {
   throw new Error('Missing DISCORD_TOKEN in .env');
@@ -247,11 +256,11 @@ const PLATFORM_CONFIG = {
 };
 
 const SOURCE_LABELS = {
-  youtube: 'YouTube',
-  soundcloud: 'SoundCloud',
-  spotify: 'Spotify',
-  apple_music: 'Apple Music',
-  arbitrary: 'Direct',
+  youtube: '▶ YouTube',
+  soundcloud: '☁ SoundCloud',
+  spotify: '● Spotify',
+  apple_music: '♫ Apple Music',
+  arbitrary: '↗ Direct audio',
 };
 
 const client = new Client({
@@ -278,37 +287,35 @@ const strictModeByGuild = new Map();
 const streamRecoveryCooldowns = new Map();
 const twentyFourSevenGuilds = new Set();
 const emptyVcTimers = new Map();
+const radioStationsByGuild = new Map();
+const radioRecentTrackUrls = new Map();
+const radioFillLocks = new Map();
 
 const RADIO_STATIONS = {
   lofi: {
-    name: '☕ Lofi Girl - Beats to Relax/Study to',
+    name: '☕ Lofi & Chill Beats',
     genre: 'Lofi Chill / Instrumental',
-    query: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    fallbackQuery: 'lofi hip hop radio beats to relax study to',
+    queries: ['lofi instrumental song', 'chillhop instrumental track', 'jazzy lofi beat song', 'relaxing lofi song no vocals'],
   },
   synthwave: {
     name: '🌆 Synthwave / Retro Chill Radio',
     genre: 'Synthwave / Retro 80s',
-    query: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-    fallbackQuery: 'synthwave chill radio live',
+    queries: ['synthwave instrumental song', 'retrowave outrun track', 'chill synthwave song', '80s retro electronic track'],
   },
   coffee: {
     name: '🎷 Smooth Coffee Shop Jazz',
     genre: 'Jazz & Acoustic Lounge',
-    query: 'https://www.youtube.com/watch?v=DXUAyRRkI6k',
-    fallbackQuery: 'coffee shop jazz radio relax',
+    queries: ['coffee shop jazz song instrumental', 'smooth jazz track', 'acoustic cafe instrumental song', 'relaxing jazz piano track'],
   },
   sleep: {
     name: '🌙 Deep Sleep Ambient Music',
     genre: 'Ambient / Sleep Waves',
-    query: 'https://www.youtube.com/watch?v=1ZYbU888PYI',
-    fallbackQuery: 'calm ambient sleep music 24/7',
+    queries: ['deep sleep ambient song', 'calm ambient track no vocals', 'soft piano sleep track', 'peaceful soundscape instrumental song'],
   },
   gaming: {
     name: '⚡ NCS EDM Gaming Radio',
     genre: 'Electronic & Gaming EDM',
-    query: 'https://www.youtube.com/watch?v=7tNut2gR_sQ',
-    fallbackQuery: 'ncs 24/7 edm live radio gaming',
+    queries: ['gaming edm track', 'melodic electronic gaming song', 'drum and bass gaming track', 'copyright free edm song'],
   },
 };
 
@@ -774,6 +781,7 @@ function getUserFavorites(userId) {
 function normalizeFavoriteTrack(track) {
   return {
     title: truncate(track.cleanTitle || track.title || 'Unknown Track', 120),
+    author: truncate(track.author || '', 100),
     url: track.url || '',
     duration: track.duration || formatDurationMs(track.durationMS),
     source: String(track.source || 'arbitrary'),
@@ -851,6 +859,15 @@ function getQueue(guildId) {
   return player.nodes.get(guildId);
 }
 
+function disableContinuousPlayback(guildId, queue) {
+  twentyFourSevenGuilds.delete(guildId);
+  radioStationsByGuild.delete(guildId);
+  if (queue?.metadata) delete queue.metadata.radioStationId;
+  if (queue?.repeatMode !== undefined && queue.repeatMode !== QueueRepeatMode.OFF) {
+    queue.setRepeatMode(QueueRepeatMode.OFF);
+  }
+}
+
 function hasActiveTrack(queue) {
   return Boolean(queue && queue.currentTrack);
 }
@@ -878,7 +895,7 @@ function buildNowPlayingEmbed(queue, track) {
   const timestamp = queue?.node?.getTimestamp?.();
   const progressLine = timestamp
     ? `${timestamp.current.label} ${renderProgressBar(timestamp.progress)} ${timestamp.total.label}`
-    : '0:00 ━━━━━━━━🔘━━━━━━━━ 0:00';
+    : `${formatDurationMs(queue?.node?.playbackTime || 0)} ━━━━━━━━🔘━━━━━━━━ ${current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS))}`;
 
   const requestedBy = current.requestedBy ? `<@${current.requestedBy.id}>` : 'Unknown';
   const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 100);
@@ -886,10 +903,11 @@ function buildNowPlayingEmbed(queue, track) {
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
-    .setAuthor({ name: `${BRAND_NAME} Now Playing` })
-    .setDescription(`${linkedTitle}\n\n` +
-      `${progressLine}\n\n` +
-      `Requested by ${requestedBy}`)
+    .setAuthor({ name: '♫  SYNCINK RADIO  •  NOW PLAYING' })
+    .setDescription(`${linkedTitle}\n${truncate(current.author || 'Unknown artist', 100)}\n\n` +
+      `\`${progressLine}\`\n\n` +
+      `**Source**  ${getSourceLabel(current)}\n**Requested by**  ${requestedBy}`)
+    .setFooter({ text: queue?.metadata?.radioStationId ? `${BRAND_NAME}  •  ${RADIO_STATIONS[queue.metadata.radioStationId]?.genre || 'Radio'}` : `${BRAND_NAME}  •  Music playback` })
     .setTimestamp();
 
   if (current.thumbnail) {
@@ -1000,7 +1018,7 @@ function buildHelpEmbed() {
       },
       {
         name: '✨ Enhancements & Audio',
-        value: '`/lyrics`, `/bassboost`, `/8d`, `/strict`, `/leave`',
+        value: '`/lyrics`, `/taste`, `/bassboost`, `/8d`, `/strict`, `/leave`',
       },
       {
         name: '🌐 Supported Platforms',
@@ -1322,6 +1340,107 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
   }
 }
 
+function rememberRadioTrack(guildId, track) {
+  if (!guildId || !track?.url) return;
+  const recent = radioRecentTrackUrls.get(guildId) || [];
+  radioRecentTrackUrls.set(guildId, [...recent.filter((url) => url !== track.url), track.url].slice(-30));
+}
+
+function getRecentRadioUrls(queue, guildId) {
+  const history = queue?.history?.tracks?.map((track) => track?.url).filter(Boolean).slice(-20) || [];
+  const recent = radioRecentTrackUrls.get(guildId) || [];
+  const queued = queue?.tracks?.toArray?.().map((track) => track?.url).filter(Boolean) || [];
+  return new Set([...history, ...recent, ...queued]);
+}
+
+async function findRadioBatch(station, queue, guildId) {
+  const queries = [...station.queries].sort(() => Math.random() - 0.5);
+  const seen = getRecentRadioUrls(queue, guildId);
+  const collected = [];
+  const batchSeen = new Set();
+
+  for (const query of queries.slice(0, 3)) {
+    try {
+      const result = await runSearch(query, 'auto', client.user);
+      for (const track of result.tracks) {
+        const durationMs = Number(track?.durationMS || 0);
+        if (!track?.url || track.live || durationMs > 15 * 60 * 1000 || seen.has(track.url) || batchSeen.has(track.url)) continue;
+        batchSeen.add(track.url);
+        collected.push(track);
+      }
+      if (collected.length >= 8) break;
+    } catch (error) {
+      if (process.env.PLAYER_DEBUG === 'true') console.warn(`[Radio Search] ${query}: ${error?.message || error}`);
+    }
+  }
+
+  return collected.sort(() => Math.random() - 0.5).slice(0, 12);
+}
+
+async function refillRadioQueue(queue, stationId) {
+  const guildId = queue?.guild?.id;
+  const station = RADIO_STATIONS[stationId];
+  if (!guildId || !station || radioFillLocks.has(guildId)) return false;
+
+  const fillPromise = (async () => {
+    const tracks = await findRadioBatch(station, queue, guildId);
+    if (!tracks.length || getQueue(guildId) !== queue || radioStationsByGuild.get(guildId) !== stationId) return false;
+    for (const track of tracks) {
+      queue.addTrack(track);
+      rememberRadioTrack(guildId, track);
+    }
+    if (!queue.isPlaying()) queue.node.play();
+    console.log(`[Radio] Added ${tracks.length} fresh ${station.genre} tracks in guild ${guildId}.`);
+    return true;
+  })();
+  radioFillLocks.set(guildId, fillPromise);
+  try {
+    return await fillPromise;
+  } finally {
+    radioFillLocks.delete(guildId);
+  }
+}
+
+async function startRadioStation(voiceChannel, textChannel, requestedBy, stationId) {
+  const station = RADIO_STATIONS[stationId];
+  const guildId = voiceChannel.guild.id;
+  const queue = getQueue(guildId);
+  const tracks = await findRadioBatch(station, queue, guildId);
+  if (!tracks.length) throw new Error(`No playable tracks were found for ${station.genre}. Please try again in a moment.`);
+
+  const [firstTrack, ...upcoming] = tracks;
+  radioStationsByGuild.set(guildId, stationId);
+  for (const track of tracks) rememberRadioTrack(guildId, track);
+  let result;
+  try {
+    result = await player.play(voiceChannel, firstTrack, {
+      requestedBy,
+      nodeOptions: {
+        metadata: { textChannel, radioStationId: stationId },
+        leaveOnEmpty: true,
+        leaveOnEmptyCooldown: 60_000,
+        leaveOnEnd: false,
+        leaveOnStop: true,
+        leaveOnStopCooldown: 10_000,
+        skipOnNoStream: true,
+        bufferingTimeout: 2_000,
+        verifyFallbackStream: true,
+        preferBridgedMetadata: true,
+        volume: 100,
+        connectionTimeout: 45_000,
+      },
+    });
+  } catch (error) {
+    radioStationsByGuild.delete(guildId);
+    throw error;
+  }
+
+  result.queue.metadata.radioStationId = stationId;
+  result.queue.setRepeatMode(QueueRepeatMode.OFF);
+  for (const track of upcoming) result.queue.addTrack(track);
+  return result;
+}
+
 async function refreshNowPlayingMessage(queue) {
   try {
     const entry = nowPlayingRegistry.get(queue.guild.id);
@@ -1347,6 +1466,18 @@ async function refreshNowPlayingMessage(queue) {
     // no-op
   }
 }
+
+const nowPlayingRefreshTimer = setInterval(() => {
+  for (const guildId of nowPlayingRegistry.keys()) {
+    const queue = getQueue(guildId);
+    if (!queue || !queue.currentTrack) {
+      nowPlayingRegistry.delete(guildId);
+      continue;
+    }
+    void refreshNowPlayingMessage(queue);
+  }
+}, 15_000);
+nowPlayingRefreshTimer.unref?.();
 
 function setNowPlayingRegistry(queue, message) {
   nowPlayingRegistry.set(queue.guild.id, {
@@ -1565,24 +1696,15 @@ async function handleRadio(interaction) {
   await interaction.deferReply();
 
   try {
-    const { track, queue } = await queueAndPlay(
-      voiceCheck.channel,
-      station.query,
-      interaction.channel,
-      interaction.user,
-      'auto',
+    const { track, queue } = await startRadioStation(
+      voiceCheck.channel, interaction.channel, interaction.user, stationKey,
     );
-
-    // Auto-enable loop mode for radio streaming
-    if (queue) {
-      queue.setRepeatMode(QueueRepeatMode.TRACK);
-    }
 
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
-      .setTitle(`📻 ${BRAND_NAME} - Live Radio`)
-      .setDescription(`Now tuned into **${station.name}**\nGenre: \`${station.genre}\`\n\n*Playing live stream on repeat. Use \`/leave\` or \`/stop\` to end.*`)
-      .setFooter({ text: `${BRAND_NAME} • Live Radio Engine` })
+      .setTitle(`📻 ${BRAND_NAME} - Genre Radio`)
+      .setDescription(`Now tuned into **${station.name}**\n**Style**  \`${station.genre}\`\n**Rotation**  Fresh tracks with recent-play protection\n\n*The station keeps discovering new tracks while people are listening.*`)
+      .setFooter({ text: `${BRAND_NAME} • Station Discovery` })
       .setTimestamp();
 
     await interaction.editReply({ embeds: [embed] });
@@ -1600,22 +1722,14 @@ async function handleLofi(interaction) {
 
   const lofiStation = RADIO_STATIONS.lofi;
   try {
-    const { track, queue } = await queueAndPlay(
-      voiceCheck.channel,
-      lofiStation.query,
-      interaction.channel,
-      interaction.user,
-      'auto',
+    const { track, queue } = await startRadioStation(
+      voiceCheck.channel, interaction.channel, interaction.user, 'lofi',
     );
-
-    if (queue) {
-      queue.setRepeatMode(QueueRepeatMode.TRACK);
-    }
 
     const embed = new EmbedBuilder()
       .setColor(0x9b59b6)
       .setTitle('☕ 24/7 Lofi Stream Online')
-      .setDescription('🎧 Now streaming **Pure Instrumental Lofi Beats (No Vocals)** on loop!\n\n✨ Perfect for studying, relaxing, and chill vibes.\n👥 *Will automatically disconnect if the voice channel becomes empty.*')
+      .setDescription(`🎧 Now streaming **${lofiStation.name}**\n\n✨ Fresh instrumental and chill tracks rotate automatically, with recently played songs filtered out.\n👥 *The stream stays connected while the voice channel is empty; use /stop or /leave to end it.*`)
       .setFooter({ text: `${BRAND_NAME} • Lofi Chill Radio` })
       .setTimestamp();
 
@@ -1639,7 +1753,7 @@ async function handle247(interaction, queue) {
 
     // If there is an active queue, ensure repeat/autoplay is kept alive
     if (queue) {
-      if (queue.repeatMode === QueueRepeatMode.OFF) {
+      if (!radioStationsByGuild.has(guildId) && queue.repeatMode === QueueRepeatMode.OFF) {
         queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
       }
     }
@@ -1647,18 +1761,80 @@ async function handle247(interaction, queue) {
     await safeReplyEmbed(
       interaction,
       '📻 24/7 Non-Stop Music: ACTIVATED',
-      '✨ The bot will now keep playing 24/7 continuously without stopping!\n\n🔄 **Continuous Playback:** Autoplay is kept active so the music never ends.\n👥 **Smart Voice Guard:** If everyone leaves the voice channel, the bot will leave to save your Termux battery.',
+      '✨ The bot will refill an active music session automatically when its queue runs low. Radio sessions keep their selected genre and rotate through fresh tracks.\n\n🔄 **Queue recovery:** Related autoplay is enabled for regular queues.\n👥 **Always-on mode:** Playback stays connected while the voice channel is empty; use `/247 mode:off` or `/leave` to stop it.',
       SUCCESS_COLOR,
     );
     return;
   }
 
-  twentyFourSevenGuilds.delete(guildId);
+  disableContinuousPlayback(guildId, queue);
+  if (queue?.channel && queue.channel.members.filter((member) => !member.user.bot).size === 0) {
+    queue.delete();
+    nowPlayingRegistry.delete(guildId);
+  }
   await safeReplyEmbed(
     interaction,
     '⏸️ 24/7 Mode: DEACTIVATED',
     'The bot will now follow normal behavior and stop when your current queue finishes.',
     BRAND_COLOR,
+  );
+}
+
+async function handleTaste(interaction) {
+  if (!interaction.inGuild()) {
+    await safeReply(interaction, { content: 'Music taste profiles are managed per server.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const mode = interaction.options.getString('mode', true);
+  const guildId = interaction.guildId;
+  const userId = interaction.user.id;
+
+  if (mode === 'on') {
+    const priorProfile = musicTaste.getProfile(guildId, userId);
+    musicTaste.setEnabled(guildId, userId, true);
+    if (!priorProfile?.favoritesImported) {
+      for (const favorite of getUserFavorites(userId)) {
+        musicTaste.recordTrack(guildId, userId, { title: favorite.title, author: favorite.author }, 3, 'like');
+      }
+      musicTaste.markFavoritesImported(guildId, userId);
+    }
+    const aiMessage = OPENAI_API_KEY
+      ? 'With AI enabled, a taste summary and candidate song titles/artists are sent to OpenAI to rank recommendations. Discord IDs and usernames are not sent.'
+      : 'AI ranking is currently off because OPENAI_API_KEY is not configured; local taste ranking still works.';
+    await safeReplyEmbed(
+      interaction,
+      '🎧 Music Taste: Enabled',
+      `This server will learn from tracks you finish and songs you explicitly like. Your profile is stored locally for this server. ${aiMessage}\n\nUse /taste mode:off to pause learning, or /taste mode:forget to erase your profile.`,
+      SUCCESS_COLOR,
+      true,
+    );
+    return;
+  }
+
+  if (mode === 'off') {
+    musicTaste.setEnabled(guildId, userId, false);
+    await safeReplyEmbed(interaction, '🎧 Music Taste: Paused', 'Taste learning and personalized AI recommendations are paused. Your saved profile remains until you use `/taste mode:forget`.', BRAND_COLOR, true);
+    return;
+  }
+
+  if (mode === 'forget') {
+    const existed = musicTaste.forget(guildId, userId);
+    await safeReplyEmbed(interaction, '🧹 Music Taste: Erased', existed ? 'Your per-server taste profile has been deleted.' : 'There was no saved taste profile for this server.', BRAND_COLOR, true);
+    return;
+  }
+
+  const profile = musicTaste.getProfile(guildId, userId);
+  const enabled = profile?.enabled === true;
+  const artists = Object.keys(profile?.artists || {}).length;
+  const interests = Object.keys(profile?.terms || {}).length;
+  const status = enabled ? 'Enabled' : profile ? 'Paused' : 'Not set up';
+  await safeReplyEmbed(
+    interaction,
+    '🎧 Your Music Taste Profile',
+    `**Status:** ${status}\n**Artists learned:** ${artists}\n**Music interests:** ${interests}\n**AI ranking:** ${enabled && OPENAI_API_KEY ? `Ready (${OPENAI_MODEL})` : 'Local ranking only'}\n\nUse /taste mode:on, off, status, or forget.`,
+    BRAND_COLOR,
+    true,
   );
 }
 
@@ -1927,6 +2103,11 @@ async function handleCommandInteraction(interaction) {
       return;
     }
 
+    if (interaction.commandName === 'taste') {
+      await handleTaste(interaction);
+      return;
+    }
+
     if (!interaction.inGuild()) {
       await safeReply(interaction, { content: 'This command can only be used in a server.', flags: MessageFlags.Ephemeral });
       return;
@@ -1973,7 +2154,9 @@ async function handleCommandInteraction(interaction) {
         return;
       }
 
+      disableContinuousPlayback(interaction.guildId, queue);
       queue.delete();
+      radioRecentTrackUrls.delete(interaction.guildId);
       nowPlayingRegistry.delete(interaction.guildId);
       await safeReplyEmbed(interaction, '👋 Disconnected', 'Left the voice channel and cleared the session.', BRAND_COLOR);
       return;
@@ -1986,6 +2169,7 @@ async function handleCommandInteraction(interaction) {
       }
 
       if (!(await ensureSameVoiceChannel(interaction, queue))) return;
+      disableContinuousPlayback(interaction.guildId, queue);
       queue.node.stop();
       await safeReplyEmbed(interaction, '⏹️ Playback Stopped', 'Stopped music playback and cleared active audio.', BRAND_COLOR);
       return;
@@ -2229,6 +2413,7 @@ async function handleButtonInteraction(interaction) {
     }
 
     if (interaction.customId === BUTTON_IDS.STOP) {
+      disableContinuousPlayback(interaction.guildId, queue);
       queue.node.stop();
       await interaction.reply({ content: 'Playback stopped.', flags: MessageFlags.Ephemeral });
       return;
@@ -2243,6 +2428,7 @@ async function handleButtonInteraction(interaction) {
 
       const result = saveTrackToFavorites(interaction.user.id, currentTrack);
       if (result.added) {
+        musicTaste.recordTrack(interaction.guildId, interaction.user.id, currentTrack, 3, 'like');
         await interaction.reply({
           content: `Saved **${result.track.title}** to your playlist. Total: ${result.total}.`,
           flags: MessageFlags.Ephemeral,
@@ -2409,6 +2595,22 @@ async function registerSlashCommands() {
     new SlashCommandBuilder().setName('help').setDescription('Lists all commands'),
 
     new SlashCommandBuilder()
+      .setName('taste')
+      .setDescription('Manage your private music taste profile and personalized autoplay')
+      .addStringOption((option) =>
+        option
+          .setName('mode')
+          .setDescription('Enable, pause, inspect, or erase your music taste profile')
+          .setRequired(true)
+          .addChoices(
+            { name: 'Enable learning', value: 'on' },
+            { name: 'Pause learning', value: 'off' },
+            { name: 'Show status', value: 'status' },
+            { name: 'Erase profile', value: 'forget' },
+          ),
+      ),
+
+    new SlashCommandBuilder()
       .setName('lyrics')
       .setDescription('Searches a track lyrics')
       .addStringOption((option) =>
@@ -2499,11 +2701,11 @@ async function registerSlashCommands() {
 
     new SlashCommandBuilder()
       .setName('radio')
-      .setDescription('Play a 24/7 live themed radio stream')
+      .setDescription('Start a continuously rotating themed music station')
       .addStringOption((option) =>
         option
           .setName('station')
-          .setDescription('Choose a live radio station')
+          .setDescription('Choose a music style for fresh track rotation')
           .setRequired(true)
           .addChoices(
             { name: '☕ Lofi Girl (Relax/Study Beats)', value: 'lofi' },
@@ -2571,6 +2773,27 @@ player.events.on('playerStart', async (queue, track) => {
   if (!channel || typeof channel.send !== 'function') return;
   lastTrackStartTimes.set(queue.guild.id, Date.now());
 
+  const stationId = radioStationsByGuild.get(queue.guild.id) || queue.metadata?.radioStationId;
+  if (stationId && queue.tracks.toArray().length <= 3) {
+    void refillRadioQueue(queue, stationId).catch((error) => {
+      console.error('[Radio Prefetch Error]', error);
+    });
+  }
+
+  const requesterId = track?.requestedBy?.id;
+  if (requesterId && queue.repeatMode === QueueRepeatMode.AUTOPLAY && musicTaste.getProfile(queue.guild.id, requesterId)?.enabled) {
+    const historyUrls = queue.history.tracks.map((item) => item.url).filter(Boolean);
+    void musicTaste.prefetchAutoplay({
+      guildId: queue.guild.id,
+      userId: requesterId,
+      currentTrack: track,
+      history: queue.history,
+      historyUrls,
+    }).catch((error) => {
+      console.error('[Taste Prefetch Error]', error);
+    });
+  }
+
   try {
     const existing = nowPlayingRegistry.get(queue.guild.id);
     if (existing) {
@@ -2610,10 +2833,50 @@ player.events.on('playerSkip', async (queue, track, reason, description) => {
   await refreshNowPlayingMessage(queue);
 });
 
+player.events.on('willAutoPlay', async (queue, tracks, done) => {
+  let completed = false;
+  const finish = (track) => {
+    if (completed) return;
+    completed = true;
+    done(track || null);
+  };
+
+  try {
+    const anchor = queue.history.tracks.at(-1) || queue.currentTrack;
+    const historyUrls = queue.history.tracks.map((track) => track.url).filter(Boolean);
+    const userId = anchor?.requestedBy?.id;
+    const cachedTrack = musicTaste.takePrefetched({
+      guildId: queue.guild.id,
+      userId,
+      currentTrack: anchor,
+      historyUrls,
+    });
+    const nextTrack = cachedTrack || await musicTaste.chooseAutoplay({
+      guildId: queue.guild.id,
+      userId,
+      currentTrack: anchor,
+      candidates: tracks,
+      historyUrls,
+      allowAI: false,
+    });
+    finish(nextTrack);
+  } catch (error) {
+    console.error('[Taste Autoplay Error]', error);
+    finish(tracks.find((track) => track?.url && !queue.history.tracks.find((played) => played.url === track.url)));
+  }
+});
+
 player.events.on('playerFinish', async (queue, track) => {
-  const playtime = queue.node.playbackTime || 0;
-  if (playtime < 1500 && track.durationMS > 5000) {
-    console.log(`[Stream Warning] Track ended unusually early at ${playtime}ms (expected ${track.durationMS}ms)`);
+  const expectedMs = Number(track?.durationMS || 0);
+  const startTime = lastTrackStartTimes.get(queue.guild.id) || 0;
+  const playtime = Number(queue.node.streamTime || (startTime ? Date.now() - startTime : 0));
+  if (playtime < 1500 && expectedMs > 5000) {
+    console.log(`[Stream Warning] Track ended unusually early at ${playtime}ms (expected ${expectedMs}ms)`);
+  }
+  const requestedBy = track?.requestedBy?.id;
+  const listenedEnough = expectedMs > 0 && playtime >= expectedMs * 0.6;
+  if (listenedEnough && requestedBy && !queue.metadata?.radioStationId) {
+    musicTaste.recordTrack(queue.guild.id, requestedBy, track, 0.5, 'play');
   }
 });
 
@@ -2623,22 +2886,19 @@ player.events.on('emptyQueue', async (queue) => {
   const channel = queue.metadata?.textChannel;
   const guildId = queue.guild.id;
 
-  // 1. If 24/7 Mode is active in this guild, automatically keep streaming music!
-  if (twentyFourSevenGuilds.has(guildId)) {
+  // Radio sessions refill with fresh tracks from their selected genre rather than looping one stream.
+  const radioStationId = radioStationsByGuild.get(guildId) || queue.metadata?.radioStationId;
+  if (radioStationId) {
     try {
-      console.log(`[24/7 Mode] Queue ended in guild ${guildId}. Auto-queuing continuous radio beats...`);
-      const lofiStation = RADIO_STATIONS.lofi;
-      const res = await runSearch(lofiStation.query, 'auto', client.user);
-      if (res && res.hasTracks()) {
-        queue.addTrack(res.tracks[0]);
-        if (!queue.isPlaying()) {
-          queue.node.play();
-        }
-        return;
-      }
+      if (await refillRadioQueue(queue, radioStationId)) return;
     } catch (err) {
-      console.error('[24/7 Auto-play Error]', err);
+      console.error('[Radio Refill Error]', err);
     }
+  }
+
+  // 24/7 keeps regular queues alive through related-track discovery. Radio queues use their genre station above.
+  if (twentyFourSevenGuilds.has(guildId) && queue.repeatMode === QueueRepeatMode.OFF) {
+    queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
   }
 
   // 2. Custom Autoplay: If autoplay mode is enabled or last track had history, find next related song
@@ -2647,27 +2907,28 @@ player.events.on('emptyQueue', async (queue) => {
       const lastTrack = queue.history.tracks.at(-1) || queue.currentTrack;
       if (lastTrack) {
         console.log(`[Autoplay] Looking for related recommendations for "${lastTrack.title}"...`);
-        const query = `${lastTrack.author || ''} ${lastTrack.title || ''} official audio`;
-        const res = await runSearch(query, 'auto', client.user);
-        if (res && res.hasTracks()) {
-          // pick a fresh track that wasn't just played
-          const playedUrls = new Set(queue.history.tracks.map((t) => t.url));
-          const nextTrack = res.tracks.find((t) => !playedUrls.has(t.url)) || res.tracks[0];
-          if (nextTrack) {
-            queue.addTrack(nextTrack);
-            if (!queue.isPlaying()) {
-              queue.node.play();
-            }
-            if (channel && typeof channel.send === 'function') {
-              const autoEmbed = createNotificationEmbed(
-                '📻 Autoplay: Next Up',
-                `Auto-selected **[${nextTrack.title}](${nextTrack.url})** based on your listening history.`,
-                SUCCESS_COLOR,
-              );
-              channel.send({ embeds: [autoEmbed] }).catch(() => null);
-            }
-            return;
+        const artist = String(lastTrack.author || '').trim();
+        const title = String(lastTrack.cleanTitle || lastTrack.title || '').trim();
+        const queries = [`${artist} songs similar to ${title}`, `${artist} official audio`, `${title} similar songs`].filter(Boolean);
+        const playedUrls = new Set(queue.history.tracks.map((item) => item.url).filter(Boolean));
+        let nextTrack = null;
+        for (const query of queries) {
+          const res = await runSearch(query, 'auto', client.user);
+          nextTrack = res.tracks.find((item) => item?.url && !playedUrls.has(item.url));
+          if (nextTrack) break;
+        }
+        if (nextTrack) {
+          queue.addTrack(nextTrack);
+          if (!queue.isPlaying()) queue.node.play();
+          if (channel && typeof channel.send === 'function') {
+            const autoEmbed = createNotificationEmbed(
+              '📻 Autoplay: Next Up',
+              `Picked **[${nextTrack.title}](${nextTrack.url})** from a fresh recommendation.`,
+              SUCCESS_COLOR,
+            );
+            channel.send({ embeds: [autoEmbed] }).catch(() => null);
           }
+          return;
         }
       }
     } catch (autoErr) {
@@ -2728,6 +2989,14 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
   const humanMembers = botVoiceChannel.members.filter((m) => !m.user.bot);
 
   if (humanMembers.size === 0) {
+    if (twentyFourSevenGuilds.has(guild.id) || radioStationsByGuild.has(guild.id)) {
+      if (emptyVcTimers.has(guild.id)) {
+        clearTimeout(emptyVcTimers.get(guild.id));
+        emptyVcTimers.delete(guild.id);
+      }
+      return;
+    }
+
     // Only bot(s) left in the voice channel
     if (!emptyVcTimers.has(guild.id)) {
       console.log(`[Auto-Leave] Voice channel empty in guild ${guild.id}. Disconnecting in 30 seconds...`);
@@ -2742,8 +3011,8 @@ client.on(Events.VoiceStateUpdate, (oldState, newState) => {
             if (textChannel && typeof textChannel.send === 'function') {
               textChannel.send('👋 Disconnected from voice channel because everyone left.').catch(() => null);
             }
+            disableContinuousPlayback(guild.id, currentQueue);
             currentQueue.delete();
-            twentyFourSevenGuilds.delete(guild.id);
             nowPlayingRegistry.delete(guild.id);
           }
         }
