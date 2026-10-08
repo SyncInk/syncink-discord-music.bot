@@ -175,20 +175,23 @@ const PLATFORM_CONFIG = {
     label: 'Auto',
     searchEngine: QueryType.AUTO_SEARCH,
     decorateQuery(query) {
-      return query;
+      if (isLikelyUrl(query)) return query;
+      return `${query} official audio`;
     },
   },
   youtube: {
     label: 'YouTube',
     searchEngine: QueryType.YOUTUBE_SEARCH,
     decorateQuery(query) {
-      return query;
+      if (isLikelyUrl(query)) return query;
+      return `${query} official audio`;
     },
   },
   youtubemusic: {
     label: 'YouTube Music',
     searchEngine: QueryType.YOUTUBE_SEARCH,
     decorateQuery(query) {
+      if (isLikelyUrl(query)) return query;
       return `${query} official audio`;
     },
   },
@@ -264,34 +267,34 @@ const emptyVcTimers = new Map();
 
 const RADIO_STATIONS = {
   lofi: {
-    name: 'Lofi Girl - Pure Study & Relax Beats (No Vocals)',
-    genre: 'Instrumental Lofi Hip Hop',
-    query: 'lofi hip hop radio beats to study to pure instrumental',
-    fallbackQuery: 'lofi hip hop radio beats to relax study to',
+    name: '☕ Lofi Girl - Pure Instrumental Study & Relax Beats',
+    genre: 'Lofi Chill / Instrumental',
+    query: 'https://play.streamafrica.net/lofiradio',
+    fallbackQuery: 'lofi hip hop radio beats to relax study to instrumental',
   },
   synthwave: {
-    name: 'Synthwave & Retro Chill Radio',
-    genre: 'Synthwave / Chillwave',
-    query: 'synthwave radio chill beats live instrumental',
+    name: '🌆 Synthwave / Retro Electro Chill Radio',
+    genre: 'Synthwave / Retro 80s',
+    query: 'https://ice1.somafm.com/synthwave-128-mp3',
     fallbackQuery: 'synthwave chill radio live',
   },
   coffee: {
-    name: 'Coffee Shop Acoustic & Smooth Jazz',
+    name: '🎷 Smooth Jazz & Coffee House Lounge',
     genre: 'Jazz & Acoustic Lounge',
-    query: 'coffee shop jazz relax instrumental piano',
+    query: 'https://ice2.somafm.com/groovesalad-128-mp3',
     fallbackQuery: 'coffee shop jazz radio relax',
   },
   sleep: {
-    name: 'Deep Sleep Ambient & Calming Rain',
+    name: '🌙 Deep Sleep Ambient & Rain Waves',
     genre: 'Ambient / Sleep Waves',
-    query: 'deep sleep calming ambient meditation music 24/7',
-    fallbackQuery: 'calm ambient meditation music',
+    query: 'https://ice2.somafm.com/dronezone-128-mp3',
+    fallbackQuery: 'calm ambient meditation music 24/7',
   },
   gaming: {
-    name: 'NCS Gaming & EDM Beats',
+    name: '⚡ Beat Blender & High Energy EDM',
     genre: 'Electronic & Gaming EDM',
-    query: 'ncs 24/7 edm live radio gaming instrumental',
-    fallbackQuery: 'ncs 24/7 edm radio',
+    query: 'https://ice4.somafm.com/beatblender-128-mp3',
+    fallbackQuery: 'ncs 24/7 edm live radio gaming',
   },
 };
 
@@ -1223,11 +1226,11 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
       leaveOnStop: true,
       leaveOnStopCooldown: 10_000,
       skipOnNoStream: true,
-      bufferingTimeout: 45_000,
+      bufferingTimeout: 60_000,
       verifyFallbackStream: true,
       preferBridgedMetadata: true,
       volume: 80,
-      connectionTimeout: 30_000,
+      connectionTimeout: 45_000,
     },
   };
 
