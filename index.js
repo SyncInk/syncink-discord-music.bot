@@ -267,33 +267,33 @@ const emptyVcTimers = new Map();
 
 const RADIO_STATIONS = {
   lofi: {
-    name: '☕ Lofi Girl - Pure Instrumental Study & Relax Beats',
+    name: '☕ Lofi Girl - Beats to Relax/Study to',
     genre: 'Lofi Chill / Instrumental',
-    query: 'https://play.streamafrica.net/lofiradio',
-    fallbackQuery: 'lofi hip hop radio beats to relax study to instrumental',
+    query: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    fallbackQuery: 'lofi hip hop radio beats to relax study to',
   },
   synthwave: {
-    name: '🌆 Synthwave / Retro Electro Chill Radio',
+    name: '🌆 Synthwave / Retro Chill Radio',
     genre: 'Synthwave / Retro 80s',
-    query: 'https://ice1.somafm.com/synthwave-128-mp3',
+    query: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
     fallbackQuery: 'synthwave chill radio live',
   },
   coffee: {
-    name: '🎷 Smooth Jazz & Coffee House Lounge',
+    name: '🎷 Smooth Coffee Shop Jazz',
     genre: 'Jazz & Acoustic Lounge',
-    query: 'https://ice2.somafm.com/groovesalad-128-mp3',
+    query: 'https://www.youtube.com/watch?v=DXUAyRRkI6k',
     fallbackQuery: 'coffee shop jazz radio relax',
   },
   sleep: {
-    name: '🌙 Deep Sleep Ambient & Rain Waves',
+    name: '🌙 Deep Sleep Ambient Music',
     genre: 'Ambient / Sleep Waves',
-    query: 'https://ice2.somafm.com/dronezone-128-mp3',
-    fallbackQuery: 'calm ambient meditation music 24/7',
+    query: 'https://www.youtube.com/watch?v=1ZYbU888PYI',
+    fallbackQuery: 'calm ambient sleep music 24/7',
   },
   gaming: {
-    name: '⚡ Beat Blender & High Energy EDM',
+    name: '⚡ NCS EDM Gaming Radio',
     genre: 'Electronic & Gaming EDM',
-    query: 'https://ice4.somafm.com/beatblender-128-mp3',
+    query: 'https://www.youtube.com/watch?v=7tNut2gR_sQ',
     fallbackQuery: 'ncs 24/7 edm live radio gaming',
   },
 };
@@ -1608,7 +1608,7 @@ async function handleLofi(interaction) {
     await interaction.editReply({ embeds: [embed] });
   } catch (error) {
     console.error('[Lofi Play Error]', error);
-    await safeReplyEmbed(interaction, '❌ Could Not Start Lofi Stream', `${error.message || error}`, ERROR_COLOR);
+    await safeReplyEmbed(interaction, '❌ Could Not Start Lofi Stream', `${error.message || error}`, ERROR_COLOR, true);
   }
 }
 
@@ -2590,12 +2590,7 @@ player.events.on('playerResume', async (queue) => {
 });
 
 player.events.on('playerSkip', async (queue, track, reason, description) => {
-  const reasonStr = String(reason || '').toLowerCase();
   console.log(`[Player Skip] Track: ${track?.title}, Reason: ${reason}, Desc: ${description}`);
-  if (reasonStr.includes('blocked') || reasonStr.includes('403') || reasonStr.includes('sign in')) {
-    const channel = queue?.metadata?.textChannel;
-    if (channel) channel.send('❌ YouTube blocked this specific stream. Try another track or platform!').catch(() => null);
-  }
   await refreshNowPlayingMessage(queue);
 });
 
@@ -2644,34 +2639,18 @@ player.events.on('emptyQueue', async (queue) => {
 
 player.events.on('error', (queue, error) => {
   console.error('[Queue Error]', error);
-
-  const channel = queue?.metadata?.textChannel;
-  if (!channel || typeof channel.send !== 'function') return;
-
-  if (!canSendGuildMessage(queue.guild.id, 'queueError', 60_000)) return;
-  channel.send('Playback error occurred. Please try `/play` again.').catch(() => null);
 });
 
 player.events.on('playerError', async (queue, error, track) => {
   console.error('[Player Error]', error, track?.title || track?.cleanTitle || 'unknown track');
 
-  const channel = queue?.metadata?.textChannel;
-  if (!channel || typeof channel.send !== 'function') return;
-
   try {
     if (isStreamErrorRecoverable(error)) {
-      const recovered = await recoverTrackFromStreamFailure(queue, track);
-      if (recovered) {
-        channel.send('Source stream failed, switched to an alternate source automatically.').catch(() => null);
-        return;
-      }
+      await recoverTrackFromStreamFailure(queue, track);
     }
   } catch (recoveryError) {
     console.error('[Recovery Error]', recoveryError);
   }
-
-  if (!canSendGuildMessage(queue.guild.id, 'playerError', 60_000)) return;
-  channel.send('I joined the channel but could not stream this track. Try another query or source.').catch(() => null);
 });
 
 client.on(Events.InteractionCreate, async (interaction) => {
