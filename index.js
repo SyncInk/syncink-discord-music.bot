@@ -1206,10 +1206,11 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
       leaveOnStop: true,
       leaveOnStopCooldown: 10_000,
       skipOnNoStream: true,
-      bufferingTimeout: 25_000,
+      bufferingTimeout: 45_000,
       verifyFallbackStream: true,
       preferBridgedMetadata: true,
       volume: 80,
+      connectionTimeout: 30_000,
     },
   };
 
@@ -2672,6 +2673,7 @@ async function bootstrap() {
         useYoutubeDL: true,
         streamOptions: {
           useClient: 'IOS',
+          highWaterMark: 1024 * 1024 * 32, // 32MB prefetch buffer
         },
       });
 
