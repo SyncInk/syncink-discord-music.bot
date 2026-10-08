@@ -258,6 +258,41 @@ const playCommandCooldowns = new Map();
 const lastTrackStartTimes = new Map();
 const strictModeByGuild = new Map();
 const streamRecoveryCooldowns = new Map();
+const twentyFourSevenGuilds = new Set();
+const emptyVcTimers = new Map();
+
+const RADIO_STATIONS = {
+  lofi: {
+    name: 'Lofi Girl - Beats to Relax/Study to',
+    genre: 'Lofi Hip Hop',
+    query: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    fallbackQuery: 'Lofi Girl beats to relax study to live',
+  },
+  synthwave: {
+    name: 'Synthwave / Chillwave Radio',
+    genre: 'Synthwave / Retro',
+    query: 'synthwave radio chill beats live',
+    fallbackQuery: 'synthwave chill radio live',
+  },
+  coffee: {
+    name: 'Coffee Shop & Jazz Vibes',
+    genre: 'Jazz & Ambient',
+    query: 'coffee shop jazz relax piano music',
+    fallbackQuery: 'coffee shop jazz radio',
+  },
+  sleep: {
+    name: 'Deep Sleep & Ambient Waves',
+    genre: 'Ambient / Sleep',
+    query: 'deep sleep calming ambient music 24/7',
+    fallbackQuery: 'calm ambient meditation music',
+  },
+  gaming: {
+    name: 'NCS Gaming & EDM Radio',
+    genre: 'EDM / NCS',
+    query: 'ncs 24/7 edm live radio gaming',
+    fallbackQuery: 'ncs 24/7 edm radio',
+  },
+};
 
 onBeforeCreateStream(async (track) => {
   return null; // Let the registered extractors (YoutubeiExtractor) handle it natively
@@ -933,29 +968,25 @@ function buildHelpEmbed() {
     .setDescription('Slash commands optimized for music playback and easy control.')
     .addFields(
       {
-        name: 'Playback',
+        name: '📻 Radio & 24/7 Live',
+        value: '`/radio station:<choice>`, `/lofi`, `/247 mode:<on/off>`',
+      },
+      {
+        name: '🎵 Playback & Filters',
         value:
-          '`/play`, `/search`, `/pause`, `/resume`, `/skip`, `/stop`, `/previous`, `/replay`, `/seek`, `/np`',
+          '`/play`, `/search`, `/pause`, `/resume`, `/skip`, `/stop`, `/previous`, `/replay`, `/seek`, `/np`, `/filter`',
       },
       {
-        name: 'Queue',
-        value: '`/queue list`, `/shuffle`, `/remove`, `/loop`, `/volume`, `/autoplay`',
+        name: '📋 Queue & Playlist',
+        value: '`/queue list|clear`, `/shuffle`, `/remove`, `/loop`, `/volume`, `/autoplay`, `/playlist`',
       },
       {
-        name: 'Enhancements',
-        value: '`/strict`, `/lyrics`, `/bassboost`, `/8d`, `/playlist show|play|remove|clear`, `/leave`',
+        name: '✨ Enhancements & Audio',
+        value: '`/lyrics`, `/bassboost`, `/8d`, `/strict`, `/leave`',
       },
       {
-        name: 'Platforms',
-        value: 'Auto, YouTube, YouTube Music, Spotify, Apple Music, SoundCloud, Deezer, TIDAL',
-      },
-      {
-        name: 'Autocomplete',
-        value: 'Start typing in `/play query` or `/search query` to get song suggestions before submit.',
-      },
-      {
-        name: 'Exact Matches',
-        value: 'Use `/strict on` for this server, or `/play strict:true` for one request.',
+        name: '🌐 Supported Platforms',
+        value: 'YouTube, YouTube Music, Spotify, Apple Music, SoundCloud, Deezer, TIDAL',
       },
     )
     .setFooter({ text: BRAND_NAME })
@@ -1469,6 +1500,142 @@ async function handlePlaylist(interaction) {
   }
 }
 
+async function handleRadio(interaction) {
+  const stationKey = interaction.options.getString('station', true);
+  const station = RADIO_STATIONS[stationKey];
+  if (!station) {
+    await safeReply(interaction, { content: 'Unknown radio station.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const voiceCheck = await ensureVoiceAndPermissions(interaction);
+  if (!voiceCheck.ok) return;
+
+  await interaction.deferReply();
+
+  try {
+    const { track, queue } = await queueAndPlay(
+      voiceCheck.channel,
+      station.query,
+      interaction.channel,
+      interaction.user,
+      'auto',
+    );
+
+    // Auto-enable loop mode for radio streaming
+    if (queue) {
+      queue.setRepeatMode(QueueRepeatMode.TRACK);
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(BRAND_COLOR)
+      .setTitle(`📻 ${BRAND_NAME} - Live Radio`)
+      .setDescription(`Now tuned into **${station.name}**\nGenre: \`${station.genre}\`\n\n*Playing live stream on repeat. Use \`/leave\` or \`/stop\` to end.*`)
+      .setFooter({ text: `${BRAND_NAME} • Live Radio Engine` })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('[Radio Play Error]', error);
+    await interaction.editReply(`Failed to start radio stream: ${error.message || error}`);
+  }
+}
+
+async function handleLofi(interaction) {
+  const voiceCheck = await ensureVoiceAndPermissions(interaction);
+  if (!voiceCheck.ok) return;
+
+  await interaction.deferReply();
+
+  const lofiStation = RADIO_STATIONS.lofi;
+  try {
+    const { track, queue } = await queueAndPlay(
+      voiceCheck.channel,
+      lofiStation.query,
+      interaction.channel,
+      interaction.user,
+      'auto',
+    );
+
+    if (queue) {
+      queue.setRepeatMode(QueueRepeatMode.TRACK);
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0x9b59b6)
+      .setTitle('☕ Lofi Beats 24/7 Mode')
+      .setDescription('Tuned into **Lofi Girl - Beats to Relax/Study to** 🎧\n\n*Streaming live lofi chill beats continuously. The bot will automatically leave if the voice channel becomes empty.*')
+      .setFooter({ text: `${BRAND_NAME} • Lofi Chill Room` })
+      .setTimestamp();
+
+    await interaction.editReply({ embeds: [embed] });
+  } catch (error) {
+    console.error('[Lofi Play Error]', error);
+    await interaction.editReply(`Could not start Lofi stream: ${error.message || error}`);
+  }
+}
+
+async function handle247(interaction, queue) {
+  const mode = interaction.options.getString('mode', true);
+  const guildId = interaction.guildId;
+
+  if (mode === 'on') {
+    twentyFourSevenGuilds.add(guildId);
+    // cancel any pending disconnect timer
+    if (emptyVcTimers.has(guildId)) {
+      clearTimeout(emptyVcTimers.get(guildId));
+      emptyVcTimers.delete(guildId);
+    }
+    await safeReply(interaction, {
+      content: '🔒 **24/7 Mode is now ON.** The bot will stay connected to voice and will not leave when the queue is finished (it will only disconnect if everyone leaves the voice channel).',
+    });
+    return;
+  }
+
+  twentyFourSevenGuilds.delete(guildId);
+  await safeReply(interaction, {
+    content: '🔓 **24/7 Mode is now OFF.** The bot will leave the channel when playback stops.',
+  });
+}
+
+async function handleFilterCommand(interaction, queue) {
+  const filterChoice = interaction.options.getString('type', true);
+
+  const filtersToApply = {
+    bassboost_low: false,
+    bassboost: false,
+    bassboost_high: false,
+    '8D': false,
+    nightcore: false,
+    vaporwave: false,
+    karaoke: false,
+    normalizer: false,
+  };
+
+  if (filterChoice === 'off') {
+    await queue.filters.ffmpeg.setFilters(filtersToApply);
+    await safeReply(interaction, { content: '✨ Cleared all audio filters.' });
+    return;
+  }
+
+  filtersToApply[filterChoice] = true;
+  await queue.filters.ffmpeg.setFilters(filtersToApply);
+
+  const names = {
+    bassboost: 'Bassboost (Normal)',
+    bassboost_high: 'Bassboost (Ear-shaking High)',
+    '8D': '8D Surround Audio',
+    nightcore: 'Nightcore (Speed & Pitch Boost)',
+    vaporwave: 'Vaporwave (Slowed & Reverb)',
+    karaoke: 'Karaoke (Vocal Suppression)',
+    normalizer: 'Dynamic Normalizer',
+  };
+
+  await safeReply(interaction, {
+    content: `🎛️ Audio filter set to **${names[filterChoice] || filterChoice}**!`,
+  });
+}
+
 async function handleLyrics(interaction, queue) {
   const customQuery = interaction.options.getString('query');
   const query = customQuery || (queue?.currentTrack ? `${queue.currentTrack.title} ${queue.currentTrack.author || ''}`.trim() : null);
@@ -1599,6 +1766,16 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === 'search') {
       await handleSearch(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'radio') {
+      await handleRadio(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'lofi') {
+      await handleLofi(interaction);
       return;
     }
 
@@ -1848,6 +2025,17 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === '8d') {
       await handle8D(interaction, queue);
+      return;
+    }
+
+    if (interaction.commandName === '247') {
+      await handle247(interaction, queue);
+      return;
+    }
+
+    if (interaction.commandName === 'filter') {
+      await handleFilterCommand(interaction, queue);
+      return;
     }
   } catch (error) {
     console.error('[Interaction Error]', error);
@@ -2168,6 +2356,58 @@ async function registerSlashCommands() {
           ),
       )
       .addSubcommand((subcommand) => subcommand.setName('clear').setDescription('Clear your liked playlist')),
+
+    new SlashCommandBuilder()
+      .setName('radio')
+      .setDescription('Play a 24/7 live themed radio stream')
+      .addStringOption((option) =>
+        option
+          .setName('station')
+          .setDescription('Choose a live radio station')
+          .setRequired(true)
+          .addChoices(
+            { name: '☕ Lofi Girl (Relax/Study Beats)', value: 'lofi' },
+            { name: '🌆 Synthwave / Retro Chill', value: 'synthwave' },
+            { name: '🎷 Coffee Shop Jazz & Piano', value: 'coffee' },
+            { name: '🌙 Deep Sleep & Ambient Calm', value: 'sleep' },
+            { name: '⚡ NCS Gaming & EDM Beats', value: 'gaming' },
+          ),
+      ),
+
+    new SlashCommandBuilder()
+      .setName('lofi')
+      .setDescription('Start continuous 24/7 Lofi beats stream instantly'),
+
+    new SlashCommandBuilder()
+      .setName('247')
+      .setDescription('Toggle 24/7 mode (stays in voice channel until everyone leaves)')
+      .addStringOption((option) =>
+        option
+          .setName('mode')
+          .setDescription('Enable or disable 24/7 mode')
+          .setRequired(true)
+          .addChoices({ name: 'on', value: 'on' }, { name: 'off', value: 'off' }),
+      ),
+
+    new SlashCommandBuilder()
+      .setName('filter')
+      .setDescription('Apply audio sound filter effects')
+      .addStringOption((option) =>
+        option
+          .setName('type')
+          .setDescription('Filter effect type')
+          .setRequired(true)
+          .addChoices(
+            { name: '✨ Reset / Turn Off', value: 'off' },
+            { name: '🎧 Nightcore (Speed + Pitch)', value: 'nightcore' },
+            { name: '🌊 Vaporwave (Slowed + Reverb)', value: 'vaporwave' },
+            { name: '🔊 Bassboost (Normal)', value: 'bassboost' },
+            { name: '💥 Bassboost (High)', value: 'bassboost_high' },
+            { name: '🌀 8D Audio Surround', value: '8D' },
+            { name: '🎤 Karaoke (Vocal Suppression)', value: 'karaoke' },
+            { name: '🎚️ Dynamic Normalizer', value: 'normalizer' },
+          ),
+      ),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(TOKEN);
@@ -2224,19 +2464,17 @@ player.events.on('playerResume', async (queue) => {
 player.events.on('playerSkip', async (queue, track, reason, description) => {
   const reasonStr = String(reason || '').toLowerCase();
   console.log(`[Player Skip] Track: ${track?.title}, Reason: ${reason}, Desc: ${description}`);
-  if (reasonStr !== 'manual' && reasonStr !== 'user') {
+  if (reasonStr.includes('blocked') || reasonStr.includes('403') || reasonStr.includes('sign in')) {
     const channel = queue?.metadata?.textChannel;
-    if (channel) channel.send('❌ YouTube is blocking audio playback for this song due to IP ratelimits. Please try another track!').catch(() => null);
+    if (channel) channel.send('❌ YouTube blocked this specific stream. Try another track or platform!').catch(() => null);
   }
   await refreshNowPlayingMessage(queue);
 });
 
 player.events.on('playerFinish', async (queue, track) => {
   const playtime = queue.node.playbackTime || 0;
-  if (playtime < 2000 && track.durationMS > 5000) {
-    console.log(`[Stream Failure] Track finished prematurely at ${playtime}ms (expected ${track.durationMS}ms)`);
-    const channel = queue?.metadata?.textChannel;
-    if (channel) channel.send('❌ YouTube is blocking audio playback for this song due to IP ratelimits. Please try another track!').catch(() => null);
+  if (playtime < 1500 && track.durationMS > 5000) {
+    console.log(`[Stream Warning] Track ended unusually early at ${playtime}ms (expected ${track.durationMS}ms)`);
   }
 });
 
@@ -2294,6 +2532,55 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
   await handleCommandInteraction(interaction);
   await handleButtonInteraction(interaction);
+});
+
+client.on(Events.VoiceStateUpdate, (oldState, newState) => {
+  const guild = oldState.guild || newState.guild;
+  if (!guild) return;
+
+  const queue = getQueue(guild.id);
+  if (!queue || !queue.channel) return;
+
+  const botVoiceChannel = queue.channel;
+
+  // Check if this update relates to the bot's channel
+  const inBotChannel = oldState.channelId === botVoiceChannel.id || newState.channelId === botVoiceChannel.id;
+  if (!inBotChannel) return;
+
+  // Calculate non-bot human members in the voice channel
+  const humanMembers = botVoiceChannel.members.filter((m) => !m.user.bot);
+
+  if (humanMembers.size === 0) {
+    // Only bot(s) left in the voice channel
+    if (!emptyVcTimers.has(guild.id)) {
+      console.log(`[Auto-Leave] Voice channel empty in guild ${guild.id}. Disconnecting in 30 seconds...`);
+      const timer = setTimeout(() => {
+        emptyVcTimers.delete(guild.id);
+        const currentQueue = getQueue(guild.id);
+        if (currentQueue && currentQueue.channel) {
+          const currentHumans = currentQueue.channel.members.filter((m) => !m.user.bot);
+          if (currentHumans.size === 0) {
+            console.log(`[Auto-Leave] Left voice channel in guild ${guild.id} because it remained empty.`);
+            const textChannel = currentQueue.metadata?.textChannel;
+            if (textChannel && typeof textChannel.send === 'function') {
+              textChannel.send('👋 Disconnected from voice channel because everyone left.').catch(() => null);
+            }
+            currentQueue.delete();
+            twentyFourSevenGuilds.delete(guild.id);
+            nowPlayingRegistry.delete(guild.id);
+          }
+        }
+      }, 30_000);
+      emptyVcTimers.set(guild.id, timer);
+    }
+  } else {
+    // Someone is in the channel, cancel any pending leave timer
+    if (emptyVcTimers.has(guild.id)) {
+      console.log(`[Auto-Leave] User joined voice channel in guild ${guild.id}. Cancelled auto-disconnect timer.`);
+      clearTimeout(emptyVcTimers.get(guild.id));
+      emptyVcTimers.delete(guild.id);
+    }
+  }
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
