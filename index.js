@@ -49,6 +49,20 @@ const {
 } = require('discord.js');
 const { Player, QueueRepeatMode, QueryType, QueryResolver, onBeforeCreateStream } = require('discord-player');
 const { DefaultExtractors } = require('@discord-player/extractor');
+
+// Configure audio encoder priority for mobile ARM / Termux performance
+try {
+  const dpOpus = require('@discord-player/opus');
+  if (typeof dpOpus.removeLibopusProvider === 'function') {
+    // Deprioritize pure-JS opusscript so mediaplex (Rust native) and @evan/opus (WASM SIMD) are preferred
+    dpOpus.removeLibopusProvider('opusscript');
+    dpOpus.addLibopusProvider(['opusscript', (mod) => ({ Encoder: mod })]);
+    console.log('[Audio Engine] Configured Opus provider hierarchy: mediaplex -> @evan/opus -> opusscript');
+  }
+} catch (opusErr) {
+  console.warn('[Audio Engine] Could not customize Opus provider order:', opusErr.message || opusErr);
+}
+
 let bundledFfmpegPath = null;
 try {
   bundledFfmpegPath = require('ffmpeg-static');
@@ -251,9 +265,9 @@ if (resolvedFFmpegPath) {
 
 const player = new Player(client, {
   ffmpegPath: resolvedFFmpegPath,
-  connectionTimeout: 15_000,
+  connectionTimeout: 30_000,
   lagMonitor: 60_000,
-  skipFFmpeg: false,
+  skipFFmpeg: true,
 });
 
 const nowPlayingRegistry = new Map();
@@ -1226,7 +1240,7 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
       leaveOnStop: true,
       leaveOnStopCooldown: 10_000,
       skipOnNoStream: true,
-      bufferingTimeout: 60_000,
+      bufferingTimeout: 1_000,
       verifyFallbackStream: true,
       preferBridgedMetadata: true,
       volume: 80,
@@ -1711,17 +1725,19 @@ async function handleUpdate(interaction) {
       embeds: [
         createNotificationEmbed(
           '🚀 Update Downloaded Successfully',
-          `Pulled latest updates from GitHub!\n\`\`\`\n${truncate(output, 500)}\n\`\`\`\n*Rebooting bot in 3 seconds to apply changes...*`,
+          `Pulled latest updates from GitHub!\n\`\`\`\n${truncate(output, 500)}\n\`\`\`\n*Installing updated packages (mediaplex & @evan/opus) & restarting...*`,
           SUCCESS_COLOR,
         ),
       ],
     });
 
-    // Gracefully restart process after 3 seconds
-    setTimeout(() => {
-      console.log('[Auto-Update] Restarting process to load fresh code...');
-      process.exit(0);
-    }, 3000);
+    exec('npm install --omit=dev', { cwd: __dirname }, (npmErr) => {
+      if (npmErr) console.warn('[Auto-Update npm install]', npmErr.message);
+      setTimeout(() => {
+        console.log('[Auto-Update] Restarting process to load fresh code...');
+        process.exit(0);
+      }, 2000);
+    });
   });
 }
 
