@@ -2607,7 +2607,7 @@ player.events.on('emptyQueue', async (queue) => {
   const channel = queue.metadata?.textChannel;
   const guildId = queue.guild.id;
 
-  // If 24/7 Mode is active in this guild, automatically keep streaming music!
+  // 1. If 24/7 Mode is active in this guild, automatically keep streaming music!
   if (twentyFourSevenGuilds.has(guildId)) {
     try {
       console.log(`[24/7 Mode] Queue ended in guild ${guildId}. Auto-queuing continuous radio beats...`);
@@ -2622,6 +2622,40 @@ player.events.on('emptyQueue', async (queue) => {
       }
     } catch (err) {
       console.error('[24/7 Auto-play Error]', err);
+    }
+  }
+
+  // 2. Custom Autoplay: If autoplay mode is enabled or last track had history, find next related song
+  if (queue.repeatMode === QueueRepeatMode.AUTOPLAY) {
+    try {
+      const lastTrack = queue.history.tracks.at(-1) || queue.currentTrack;
+      if (lastTrack) {
+        console.log(`[Autoplay] Looking for related recommendations for "${lastTrack.title}"...`);
+        const query = `${lastTrack.author || ''} ${lastTrack.title || ''} official audio`;
+        const res = await runSearch(query, 'auto', client.user);
+        if (res && res.hasTracks()) {
+          // pick a fresh track that wasn't just played
+          const playedUrls = new Set(queue.history.tracks.map((t) => t.url));
+          const nextTrack = res.tracks.find((t) => !playedUrls.has(t.url)) || res.tracks[0];
+          if (nextTrack) {
+            queue.addTrack(nextTrack);
+            if (!queue.isPlaying()) {
+              queue.node.play();
+            }
+            if (channel && typeof channel.send === 'function') {
+              const autoEmbed = createNotificationEmbed(
+                '📻 Autoplay: Next Up',
+                `Auto-selected **[${nextTrack.title}](${nextTrack.url})** based on your listening history.`,
+                SUCCESS_COLOR,
+              );
+              channel.send({ embeds: [autoEmbed] }).catch(() => null);
+            }
+            return;
+          }
+        }
+      }
+    } catch (autoErr) {
+      console.error('[Autoplay Error]', autoErr);
     }
   }
 
