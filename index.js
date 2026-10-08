@@ -32,6 +32,7 @@ console.error = (...args) => {
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const { monitorEventLoopDelay } = require('node:perf_hooks');
 const { exec } = require('node:child_process');
 const {
   Client,
@@ -52,13 +53,14 @@ const { DefaultExtractors } = require('@discord-player/extractor');
 const { MusicTaste } = require('./taste');
 
 // Configure audio encoder priority for mobile ARM / Termux performance
+let opusRuntime = null;
 try {
-  const dpOpus = require('@discord-player/opus');
+  const dpOpus = (opusRuntime = require('@discord-player/opus'));
   if (typeof dpOpus.removeLibopusProvider === 'function') {
     // Deprioritize pure-JS opusscript so mediaplex (Rust native) and @evan/opus (WASM SIMD) are preferred
     dpOpus.removeLibopusProvider('opusscript');
     dpOpus.addLibopusProvider(['opusscript', (mod) => ({ Encoder: mod })]);
-    console.log('[Audio Engine] Configured Opus provider hierarchy: mediaplex -> @evan/opus -> opusscript');
+    console.log('[Audio Engine] Native/WASM Opus providers are preferred; pure-JS Opus is last-resort only.');
   }
 } catch (opusErr) {
   console.warn('[Audio Engine] Could not customize Opus provider order:', opusErr.message || opusErr);
@@ -180,7 +182,7 @@ const PORT = Number(process.env.PORT || 3000);
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 const FAVORITES_PATH = path.join(DATA_DIR, 'favorites.json');
 const TASTE_PROFILES_PATH = path.join(DATA_DIR, 'taste-profiles.json');
-const DEFAULT_AUTOPLAY = toBoolean(process.env.DEFAULT_AUTOPLAY, false);
+const DEFAULT_AUTOPLAY = toBoolean(process.env.DEFAULT_AUTOPLAY, true);
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-6-astra';
 const musicTaste = new MusicTaste({
@@ -256,11 +258,40 @@ const PLATFORM_CONFIG = {
 };
 
 const SOURCE_LABELS = {
-  youtube: '▶ YouTube',
-  soundcloud: '☁ SoundCloud',
-  spotify: '● Spotify',
-  apple_music: '♫ Apple Music',
-  arbitrary: '↗ Direct audio',
+  youtube: 'YouTube',
+  youtubemusic: 'YouTube Music',
+  soundcloud: 'SoundCloud',
+  spotify: 'Spotify',
+  apple_music: 'Apple Music',
+  applemusic: 'Apple Music',
+  deezer: 'Deezer',
+  tidal: 'TIDAL',
+  arbitrary: 'Direct audio',
+};
+
+const PLATFORM_EMOJIS = {
+  youtube: process.env.EMOJI_YOUTUBE,
+  youtubemusic: process.env.EMOJI_YOUTUBE_MUSIC,
+  soundcloud: process.env.EMOJI_SOUNDCLOUD,
+  spotify: process.env.EMOJI_SPOTIFY,
+  apple_music: process.env.EMOJI_APPLE_MUSIC,
+  applemusic: process.env.EMOJI_APPLE_MUSIC,
+  deezer: process.env.EMOJI_DEEZER,
+  tidal: process.env.EMOJI_TIDAL,
+  arbitrary: process.env.EMOJI_DIRECT_AUDIO,
+};
+
+const CONTROL_EMOJIS = {
+  pauseResume: process.env.EMOJI_PAUSE_RESUME,
+  skip: process.env.EMOJI_SKIP,
+  stop: process.env.EMOJI_STOP,
+  like: process.env.EMOJI_LIKE,
+  playlist: process.env.EMOJI_PLAYLIST,
+};
+
+const FALLBACK_PLATFORM_EMOJIS = {
+  youtube: '▶️', youtubemusic: '▶️', soundcloud: '☁️', spotify: '🎧', apple_music: '♫', applemusic: '♫',
+  deezer: '🎵', tidal: '🌊', arbitrary: '🔗',
 };
 
 const client = new Client({
@@ -278,6 +309,50 @@ const player = new Player(client, {
   lagMonitor: 60_000,
   skipFFmpeg: true,
 });
+const eventLoopDelay = monitorEventLoopDelay({ resolution: 20 });
+eventLoopDelay.enable();
+
+function probeOpusEngine() {
+  if (!opusRuntime?.OpusEncoder) return 'unavailable';
+  let encoder;
+  try {
+    encoder = new opusRuntime.OpusEncoder({ frameSize: 960, channels: 2, rate: 48_000 });
+    return opusRuntime.OpusEncoder.type || 'unresolved';
+  } catch (error) {
+    return `unavailable (${error.message || error})`;
+  } finally {
+    if (typeof encoder?.destroy === 'function') encoder.destroy();
+    else encoder?.delete?.();
+  }
+}
+
+// Keep the ordinary path as source Opus passthrough: decoding, changing the
+// volume, and encoding again costs CPU on small Termux devices and can lower
+// fidelity. A queue opts into DSP/FFmpeg only when a user enables a feature.
+function createPlaybackNodeOptions(metadata) {
+  return {
+    metadata,
+    leaveOnEmpty: true,
+    leaveOnEmptyCooldown: 60_000,
+    leaveOnEnd: false,
+    leaveOnStop: true,
+    leaveOnStopCooldown: 10_000,
+    skipOnNoStream: true,
+    bufferingTimeout: 15_000,
+    verifyFallbackStream: true,
+    preferBridgedMetadata: true,
+    volume: 100,
+    connectionTimeout: 45_000,
+    disableVolume: true,
+    disableEqualizer: true,
+    disableFilterer: true,
+    disableBiquad: true,
+    disableResampler: true,
+    disableCompressor: true,
+    disableSeeker: true,
+    disableReverb: true,
+  };
+}
 
 const nowPlayingRegistry = new Map();
 const guildMessageCooldowns = new Map();
@@ -671,7 +746,23 @@ function resolveSearchOptions(query, platform) {
 }
 
 function getSourceLabel(track) {
-  return SOURCE_LABELS[track?.source] || String(track?.source || 'Unknown');
+  const source = String(track?.source || 'arbitrary').toLowerCase();
+  const label = SOURCE_LABELS[source] || String(track?.source || 'Unknown');
+  const emoji = getEmojiToken(PLATFORM_EMOJIS[source], FALLBACK_PLATFORM_EMOJIS[source] || '🎶');
+  return `${emoji} ${label}`;
+}
+
+function getEmojiToken(configuredEmoji, fallback) {
+  const value = String(configuredEmoji || '').trim();
+  return /^<a?:[A-Za-z0-9_]{2,32}:\d{17,20}>$/.test(value) ? value : fallback;
+}
+
+function getButtonEmoji(configuredEmoji, fallback) {
+  const token = getEmojiToken(configuredEmoji, fallback);
+  const match = token.match(/^<(a?):([A-Za-z0-9_]{2,32}):(\d{17,20})>$/);
+  return match
+    ? { name: match[2], id: match[3], animated: match[1] === 'a' }
+    : token;
 }
 
 function shouldThrottlePlayCommand(guildId, userId, cooldownMs = 2_000) {
@@ -874,11 +965,11 @@ function hasActiveTrack(queue) {
 
 function buildControlsRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Secondary).setEmoji('⏯️'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Secondary).setEmoji('⏭️'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Secondary).setEmoji('⏹️'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.LIKE).setStyle(ButtonStyle.Secondary).setEmoji('❤️'),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.PLAYLIST).setStyle(ButtonStyle.Secondary).setEmoji('🎵'),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.pauseResume, '⏯️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.skip, '⏭️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.stop, '⏹️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.LIKE).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.like, '❤️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PLAYLIST).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.playlist, '🎵')),
   );
 }
 
@@ -1187,9 +1278,16 @@ async function recoverTrackFromStreamFailure(queue, track) {
   if (sameUrl) return false;
 
   queue.insertTrack(recoveredTrack, 0);
+  // `skipOnNoStream` can advance while this async search is running. Only skip
+  // if the failed track is still current; otherwise leave the replacement at
+  // the head of the queue instead of skipping a healthy next track.
+  const failedTrackIsCurrent = queue.currentTrack && (
+    (track.url && queue.currentTrack.url === track.url) ||
+    (track.id && queue.currentTrack.id === track.id)
+  );
   if (!queue.isPlaying()) {
     queue.node.play();
-  } else {
+  } else if (failedTrackIsCurrent) {
     queue.node.skip();
   }
   return true;
@@ -1248,22 +1346,7 @@ async function queueAndPlay(voiceChannel, query, textChannel, requestedBy, platf
 
   const baseOptions = {
     requestedBy,
-    nodeOptions: {
-      metadata: {
-        textChannel,
-      },
-      leaveOnEmpty: true,
-      leaveOnEmptyCooldown: 60_000,
-      leaveOnEnd: false,
-      leaveOnStop: true,
-      leaveOnStopCooldown: 10_000,
-      skipOnNoStream: true,
-      bufferingTimeout: 1_000,
-      verifyFallbackStream: true,
-      preferBridgedMetadata: true,
-      volume: 80,
-      connectionTimeout: 45_000,
-    },
+    nodeOptions: createPlaybackNodeOptions({ textChannel }),
   };
 
   try {
@@ -1415,20 +1498,7 @@ async function startRadioStation(voiceChannel, textChannel, requestedBy, station
   try {
     result = await player.play(voiceChannel, firstTrack, {
       requestedBy,
-      nodeOptions: {
-        metadata: { textChannel, radioStationId: stationId },
-        leaveOnEmpty: true,
-        leaveOnEmptyCooldown: 60_000,
-        leaveOnEnd: false,
-        leaveOnStop: true,
-        leaveOnStopCooldown: 10_000,
-        skipOnNoStream: true,
-        bufferingTimeout: 2_000,
-        verifyFallbackStream: true,
-        preferBridgedMetadata: true,
-        volume: 100,
-        connectionTimeout: 45_000,
-      },
+      nodeOptions: createPlaybackNodeOptions({ textChannel, radioStationId: stationId }),
     });
   } catch (error) {
     radioStationsByGuild.delete(guildId);
@@ -1442,17 +1512,19 @@ async function startRadioStation(voiceChannel, textChannel, requestedBy, station
 }
 
 async function refreshNowPlayingMessage(queue) {
+  const entry = nowPlayingRegistry.get(queue.guild.id);
+  if (!entry || entry.refreshing) return;
+  entry.refreshing = true;
   try {
-    const entry = nowPlayingRegistry.get(queue.guild.id);
-    if (!entry) return;
-
-    const channel = await client.channels.fetch(entry.channelId).catch(() => null);
-    if (!channel || !channel.isTextBased()) {
-      nowPlayingRegistry.delete(queue.guild.id);
-      return;
+    let message = entry.message;
+    if (!message) {
+      const channel = await client.channels.fetch(entry.channelId).catch(() => null);
+      if (!channel || !channel.isTextBased()) {
+        nowPlayingRegistry.delete(queue.guild.id);
+        return;
+      }
+      message = await channel.messages.fetch(entry.messageId).catch(() => null);
     }
-
-    const message = await channel.messages.fetch(entry.messageId).catch(() => null);
     if (!message) {
       nowPlayingRegistry.delete(queue.guild.id);
       return;
@@ -1463,7 +1535,10 @@ async function refreshNowPlayingMessage(queue) {
       components: [buildControlsRow()],
     });
   } catch {
-    // no-op
+    // A deleted or inaccessible message should not leave a permanent refresh loop.
+    nowPlayingRegistry.delete(queue.guild.id);
+  } finally {
+    entry.refreshing = false;
   }
 }
 
@@ -1476,13 +1551,15 @@ const nowPlayingRefreshTimer = setInterval(() => {
     }
     void refreshNowPlayingMessage(queue);
   }
-}, 15_000);
+}, 5_000);
 nowPlayingRefreshTimer.unref?.();
 
 function setNowPlayingRegistry(queue, message) {
   nowPlayingRegistry.set(queue.guild.id, {
     channelId: message.channel.id,
     messageId: message.id,
+    message,
+    refreshing: false,
   });
 }
 
@@ -2261,7 +2338,16 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === 'volume') {
       const value = interaction.options.getInteger('percent', true);
-      const changed = queue.node.setVolume(value);
+      let changed = queue.node.setVolume(value);
+      if (!changed && queue.currentTrack) {
+        // Direct Opus passthrough deliberately has no gain stage. Turn it on
+        // only when volume is explicitly requested, then resume at live time.
+        const position = queue.node.getTimestamp()?.current.value || 1;
+        queue.options.disableVolume = false;
+        queue.options.volume = value;
+        const restarted = await queue.node.seek(Math.max(1, position));
+        changed = restarted && queue.node.setVolume(value);
+      }
       if (changed) {
         await safeReplyEmbed(interaction, '🔊 Volume Adjusted', `Volume set to **${value}%**.`, BRAND_COLOR);
       } else {
@@ -3033,6 +3119,7 @@ client.once(Events.ClientReady, async (readyClient) => {
   console.log(`Logged in as ${readyClient.user.tag}`);
   console.log(`[Startup] FFmpeg path: ${resolvedFFmpegPath || 'auto-detect'}`);
   console.log(`[Startup] Direct YTDL stream fallback: ${ENABLE_DIRECT_YTDL_STREAM ? 'enabled' : 'disabled'}`);
+  console.log(`[Audio Engine] Available Opus encoder: ${probeOpusEngine()}`);
   try {
     const extractorIds = Array.from(player.extractors.store.keys?.() || []);
     console.log(`[Startup] Extractors loaded: ${extractorIds.join(', ') || 'none'}`);
@@ -3073,8 +3160,14 @@ function startHealthServer() {
       JSON.stringify({
         ok: true,
         service: 'syncink-radio',
+        audio: {
+          opusEncoder: opusRuntime?.OpusEncoder?.type || 'not initialized',
+          eventLoopDelayP95Ms: Number((eventLoopDelay.percentile(95) / 1e6).toFixed(1)),
+          activeQueues: player.nodes.cache.size,
+        },
       }),
     );
+    eventLoopDelay.reset();
   });
 
   server.listen(PORT, () => {
@@ -3118,7 +3211,7 @@ async function bootstrap() {
         useYoutubeDL: true,
         streamOptions: {
           useClient: 'IOS',
-          highWaterMark: 1024 * 1024 * 32, // 32MB prefetch buffer
+          highWaterMark: 1024 * 1024 * 16, // 16MB cap keeps buffering useful without wasting phone RAM
         },
       });
 
