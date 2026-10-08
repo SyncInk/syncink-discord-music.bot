@@ -32,6 +32,7 @@ console.error = (...args) => {
 const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
+const { exec } = require('node:child_process');
 const {
   Client,
   GatewayIntentBits,
@@ -1644,6 +1645,83 @@ async function handle247(interaction, queue) {
   );
 }
 
+async function handleUpdate(interaction) {
+  // Check permission: Administrator or Guild Owner
+  const isOwner = interaction.guild && interaction.guild.ownerId === interaction.user.id;
+  const isAdmin = interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator);
+
+  if (!isOwner && !isAdmin) {
+    await safeReplyEmbed(
+      interaction,
+      '⛔ Permission Denied',
+      'Only the server administrator or server owner can run `/update`.',
+      ERROR_COLOR,
+      true,
+    );
+    return;
+  }
+
+  await interaction.deferReply();
+
+  await interaction.editReply({
+    embeds: [
+      createNotificationEmbed(
+        '🔄 Checking for Updates...',
+        'Connecting to GitHub and pulling the latest changes to your Termux phone...',
+        BRAND_COLOR,
+      ),
+    ],
+  });
+
+  exec('git pull', { cwd: __dirname }, async (error, stdout, stderr) => {
+    if (error) {
+      console.error('[Update Error]', error, stderr);
+      await interaction.editReply({
+        embeds: [
+          createNotificationEmbed(
+            '❌ Update Failed',
+            `Failed to pull updates from GitHub:\n\`\`\`\n${truncate(error.message || stderr || 'Unknown git error', 1000)}\n\`\`\``,
+            ERROR_COLOR,
+          ),
+        ],
+      });
+      return;
+    }
+
+    const output = String(stdout || '').trim();
+    const isAlreadyUpToDate = output.includes('Already up to date');
+
+    if (isAlreadyUpToDate) {
+      await interaction.editReply({
+        embeds: [
+          createNotificationEmbed(
+            '✅ Already Up to Date',
+            'Your bot is already running the latest commit from GitHub!\n\nNo restart required.',
+            SUCCESS_COLOR,
+          ),
+        ],
+      });
+      return;
+    }
+
+    await interaction.editReply({
+      embeds: [
+        createNotificationEmbed(
+          '🚀 Update Downloaded Successfully',
+          `Pulled latest updates from GitHub!\n\`\`\`\n${truncate(output, 500)}\n\`\`\`\n*Rebooting bot in 3 seconds to apply changes...*`,
+          SUCCESS_COLOR,
+        ),
+      ],
+    });
+
+    // Gracefully restart process after 3 seconds
+    setTimeout(() => {
+      console.log('[Auto-Update] Restarting process to load fresh code...');
+      process.exit(0);
+    }, 3000);
+  });
+}
+
 async function handleFilterCommand(interaction, queue) {
   const filterChoice = interaction.options.getString('type', true);
 
@@ -2075,6 +2153,11 @@ async function handleCommandInteraction(interaction) {
       await handleFilterCommand(interaction, queue);
       return;
     }
+
+    if (interaction.commandName === 'update') {
+      await handleUpdate(interaction);
+      return;
+    }
   } catch (error) {
     console.error('[Interaction Error]', error);
     if (interaction.deferred || interaction.replied) {
@@ -2446,6 +2529,10 @@ async function registerSlashCommands() {
             { name: '🎚️ Dynamic Normalizer', value: 'normalizer' },
           ),
       ),
+    new SlashCommandBuilder()
+      .setName('update')
+      .setDescription('Pull latest updates directly from GitHub and restart the bot')
+      .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
   ].map((command) => command.toJSON());
 
   const rest = new REST({ version: '10' }).setToken(TOKEN);
