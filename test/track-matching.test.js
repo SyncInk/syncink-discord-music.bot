@@ -28,6 +28,14 @@ test('filters obvious variants unless the user requested that variant', () => {
   assert.equal(isUnrequestedVariant(short, 'Night Drive'), true);
 });
 
+test('search mode keeps selectable variants and weak matches instead of returning no results', () => {
+  const tracks = [
+    { title: 'Golden Brown - Slowed Best Part', author: 'Elliot Sutton', url: 'https://example.com/short', durationMS: 39_000 },
+  ];
+  assert.equal(prioritizeTracksForPlayback(tracks, 'Golden Brown').length, 0);
+  assert.equal(prioritizeTracksForPlayback(tracks, 'Golden Brown', false, { includeVariants: true }).length, 1);
+});
+
 test('exact provider URLs preserve requested playback even for short variants', () => {
   const track = { title: 'Night Drive Shorts Edit', url: 'https://youtube.com/watch?v=abc', durationMS: 30_000 };
   assert.equal(isUnrequestedVariant(track, track.url), false);

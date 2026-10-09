@@ -57,7 +57,7 @@ const {
 const { Player, QueueRepeatMode, QueryType, QueryResolver, onBeforeCreateStream } = require('discord-player');
 const { DefaultExtractors } = require('@discord-player/extractor');
 const { MusicTaste } = require('./taste');
-const { canonicalSongKey, canonicalResultKey, cleanTrackTitle, cleanTrackArtist, isUnrequestedVariant, prioritizeTracksForPlayback } = require('./track-matching');
+const { canonicalSongKey, cleanTrackTitle, cleanTrackArtist, isUnrequestedVariant, prioritizeTracksForPlayback } = require('./track-matching');
 
 // Configure audio encoder priority for mobile ARM / Termux performance
 let opusRuntime = null;
@@ -379,9 +379,9 @@ const CUSTOM_EMOJI_TO_UNICODE = {
 
 function sanitizeEmbedTitle(rawTitle) {
   if (!rawTitle || typeof rawTitle !== 'string') return '';
-  return rawTitle.replace(/<a?:([a-zA-Z0-9_]+):\d+>/g, (_, name) => {
-    return CUSTOM_EMOJI_TO_UNICODE[name] || '';
-  }).replace(/\s+/g, ' ').trim();
+  // Keep Discord custom-emoji markup intact. Converting it here made every
+  // embed show a Unicode substitute even when the bot can use the emoji.
+  return rawTitle.replace(/\s+/g, ' ').trim();
 }
 
 const client = new Client({
@@ -534,7 +534,6 @@ function truncate(text, maxLength) {
 }
 
 function userFacingPlaybackError(error, context = 'playback') {
-  if (error?.code === 'AMBIGUOUS_TRACK') return 'I found several close matches. Use `/search` and choose the recording you want.';
   const message = String(error?.message || error || '').toLowerCase();
   if (/no results|no tracks|not found|no matching/.test(message)) return 'I could not find a reliable match. Try adding the artist name or use `/search` to choose a result.';
   if (/unsupported url|invalid url|not supported/.test(message)) return 'That link is not supported. Try a YouTube, Spotify, Apple Music, or SoundCloud track link, or search by title and artist.';
@@ -867,10 +866,10 @@ function getSourceLabel(track) {
 function getEmojiToken(configuredEmoji, fallback) {
   const value = String(configuredEmoji || '').trim();
   const match = value.match(/^<(a?):([A-Za-z0-9_]{2,32}):(\d{17,20})>$/);
-  if (match) {
-    const emoji = client?.emojis?.cache?.get(match[3]);
-    return emoji ? `<${emoji.animated ? 'a' : ''}:${emoji.name}:${emoji.id}>` : fallback;
-  }
+  // Do not require the emoji to exist in this process's guild cache. The IDs
+  // supplied by the bot owner may be usable as external emojis without being
+  // present in the cache; Discord itself validates permission/access.
+  if (match) return value;
   return value || fallback;
 }
 
@@ -1691,7 +1690,12 @@ async function searchWithFallbackEngines(query, platform, requestedBy, options =
       });
 
       if (result?.hasTracks?.()) {
-        const rankedTracks = prioritizeTracksForPlayback(result.tracks, resolved.rawQuery || resolved.query, strictMode);
+        const rankedTracks = prioritizeTracksForPlayback(
+          result.tracks,
+          resolved.rawQuery || resolved.query,
+          strictMode,
+          { includeVariants: options.includeVariants === true },
+        );
         if (!rankedTracks.length) continue;
         result.setTracks(rankedTracks);
         return {
@@ -1743,15 +1747,10 @@ async function queueAndPlayUnlocked(voiceChannel, query, textChannel, requestedB
       { strictMode },
     );
 
-    const [best, runnerUp] = searchResult.tracks;
-    if (best && runnerUp && best.syncinkMatchConfidence >= 0.75 && runnerUp.syncinkMatchConfidence >= 0.75 &&
-        Math.abs(runnerUp.syncinkMatchConfidence - best.syncinkMatchConfidence) <= 0.06 &&
-        canonicalResultKey(best) !== canonicalResultKey(runnerUp)) {
-      const ambiguous = new Error('Several close matches were found. Use /search and select the recording you want.');
-      ambiguous.code = 'AMBIGUOUS_TRACK';
-      throw ambiguous;
-    }
-
+    // Search ranking already places the strongest title/artist match first.
+    // Similar confidence scores are common for same-title releases and should
+    // not turn a valid /play request into a hard failure.
+    const best = searchResult.tracks[0];
     const result = await player.play(voiceChannel, searchResult, {
       ...baseOptions,
       searchEngine: usedEngine,
@@ -1764,7 +1763,6 @@ async function queueAndPlayUnlocked(voiceChannel, query, textChannel, requestedB
 
     return result;
   } catch (primaryError) {
-    if (primaryError?.code === 'AMBIGUOUS_TRACK') throw primaryError;
     const rawQuery = String(prepared.fallbackQuery || query || '').trim();
     const urlFallbackQuery = isLikelyUrl(rawQuery) ? await fetchTrackTitleFromPage(rawQuery) : '';
     const fallbackTextQuery = urlFallbackQuery || rawQuery;
@@ -2016,7 +2014,9 @@ async function handleAutocomplete(interaction) {
   const strictMode = resolveStrictMode(interaction.guildId, strictOption);
 
   try {
-    const searchResult = await runSearch(query, platform, interaction.user, { strictMode });
+    // Search is a discovery surface: show selectable alternatives even when
+    // the conservative autoplay filter would hide a short/edit variant.
+    const searchResult = await runSearch(query, platform, interaction.user, { strictMode, includeVariants: true });
     const tracks = searchResult.tracks.slice(0, MAX_AUTOCOMPLETE_CHOICES);
 
     const choices = tracks.map((track) => {
@@ -2132,7 +2132,7 @@ async function handleSearch(interaction) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    const searchResult = await runSearch(query, platform, interaction.user, { strictMode });
+    const searchResult = await runSearch(query, platform, interaction.user, { strictMode, includeVariants: true });
     const tracks = searchResult.tracks.slice(0, 10);
     const sessionId = interaction.id;
     searchSessions.set(sessionId, { userId: interaction.user.id, guildId: interaction.guildId, tracks, expiresAt: Date.now() + 120_000 });

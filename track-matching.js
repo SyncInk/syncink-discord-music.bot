@@ -114,14 +114,15 @@ function scoreTrackAgainstQuery(track, rawQuery, strictMode = false) {
   return score;
 }
 
-function prioritizeTracksForPlayback(tracks, rawQuery = '', strictMode = false) {
+function prioritizeTracksForPlayback(tracks, rawQuery = '', strictMode = false, options = {}) {
   if (!Array.isArray(tracks)) return [];
+  const includeVariants = options.includeVariants === true;
   const sourceScore = { youtube: 6, youtubemusic: 6, soundcloud: 5, arbitrary: 3, spotify: 2, apple_music: 2, applemusic: 2 };
   const unique = new Map();
   for (const track of tracks) {
-    if (!track?.url || isUnrequestedVariant(track, rawQuery)) continue;
+    if (!track?.url || (!includeVariants && isUnrequestedVariant(track, rawQuery))) continue;
     const confidence = matchConfidence(track, rawQuery);
-    if (confidence < 0.55) continue;
+    if (!includeVariants && confidence < 0.55) continue;
     const key = canonicalResultKey(track) || String(track.url);
     const officialSignal = /\b(official|vevo|topic|provided to youtube)\b/i.test(`${track.title} ${track.author}`) ? 10 : 0;
     const quality = scoreTrackAgainstQuery(track, rawQuery, strictMode) + (sourceScore[String(track.source || '').toLowerCase()] ?? 1) + officialSignal;
