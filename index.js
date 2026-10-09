@@ -109,7 +109,6 @@ const SUCCESS_COLOR = 0x2ecc71; // Neon Emerald
 const WARNING_COLOR = 0xf39c12; // Cyber Amber
 const ERROR_COLOR = 0xe74c3c; // Refused Crimson
 const BRAND_LOGO_URL = 'https://cdn.discordapp.com/emojis/1558021213547139103.png';
-const SEPARATOR = '────────────────────────────────────────';
 
 const MAX_QUEUE_PREVIEW = 10;
 const MAX_PLAYLIST_LOAD = 25;
@@ -1118,23 +1117,37 @@ function buildNowPlayingCard(queue, track) {
     ? `${timestamp.current.label} ${renderProgressBar(timestamp.progress)} ${timestamp.total.label}`
     : `${formatDurationMs(queue?.node?.playbackTime || 0)} ━━━━━━━━🔘━━━━━━━━ ${current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS))}`;
   const requestedBy = current.requestedBy ? `<@${current.requestedBy.id}>` : 'Unknown';
-  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 100);
+  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 80);
   const linkedTitle = current.url ? `[${title}](${current.url})` : title;
-  const author = truncate(current.author || 'Unknown artist', 100);
+  const author = truncate(current.author || 'Unknown artist', 50);
   const duration = current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS));
   const source = getSourceLabel(current);
   const station = queue?.metadata?.radioStationId ? `  •  ${RADIO_STATIONS[queue.metadata.radioStationId]?.genre || 'Radio'}` : '';
 
+  const nextTrack = queue?.tracks?.toArray?.()?.[0];
+  let upNextText = 'End of queue (Add tracks with `/play`)';
+  if (nextTrack) {
+    const nextTitle = truncate(nextTrack.cleanTitle || nextTrack.title || 'Unknown', 40);
+    const nextAuthor = truncate(nextTrack.author || 'Unknown', 25);
+    const nextDuration = nextTrack.live ? 'LIVE' : (nextTrack.duration || formatDurationMs(nextTrack.durationMS));
+    upNextText = `**${nextTitle}** by **${nextAuthor}** [${nextDuration}]`;
+  } else if (queue?.repeatMode === QueueRepeatMode.AUTOPLAY || twentyFourSevenGuilds.has(queue?.guild?.id)) {
+    upNextText = `${EMOJIS.radio} **Smart Autoplay / Continuous Radio**`;
+  }
+
   const section = new SectionBuilder()
     .addTextDisplayComponents(
       new TextDisplayBuilder().setContent(
-        `### ${EMOJIS.play} Now Playing\n**${linkedTitle}**\n${author} [${duration}]\n\n\`${progressLine}\``
+        `### ${EMOJIS.play} Now Playing\n` +
+        `**${linkedTitle}** by **${author}** [${duration}]\n\n` +
+        `\`${progressLine}\``
       )
     );
 
-  if (current.thumbnail && /^https:\/\//i.test(current.thumbnail)) {
-    section.setThumbnailAccessory(new ThumbnailBuilder().setURL(current.thumbnail).setDescription(`${title} artwork`));
-  }
+  const thumbUrl = (current.thumbnail && /^https:\/\//i.test(current.thumbnail))
+    ? current.thumbnail
+    : BRAND_LOGO_URL;
+  section.setThumbnailAccessory(new ThumbnailBuilder().setURL(thumbUrl).setDescription(`${title} artwork`));
 
   return new ContainerBuilder().setAccentColor(BRAND_COLOR)
     .addSectionComponents(section)
@@ -1142,7 +1155,12 @@ function buildNowPlayingCard(queue, track) {
     .addActionRowComponents(buildControlsRow(queue))
     .addActionRowComponents(buildLibraryControlsRow())
     .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
-    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`Track requested by ${requestedBy}  •  ${source}${station}`));
+    .addTextDisplayComponents(
+      new TextDisplayBuilder().setContent(
+        `Track requested by ${requestedBy}  •  ${source}${station}\n` +
+        `⏭️ **Up Next:** ${upNextText}`
+      )
+    );
 }
 
 function buildNowPlayingEmbed(queue, track) {
@@ -1156,12 +1174,23 @@ function buildNowPlayingEmbed(queue, track) {
     ? `${timestamp.current.label} ${renderProgressBar(timestamp.progress)} ${timestamp.total.label}`
     : `${formatDurationMs(queue?.node?.playbackTime || 0)} ━━━━━━━━🔘━━━━━━━━ ${current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS))}`;
   const requestedBy = current.requestedBy ? `<@${current.requestedBy.id}>` : 'Unknown';
-  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 100);
+  const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 80);
   const linkedTitle = current.url ? `[${title}](${current.url})` : title;
-  const author = truncate(current.author || 'Unknown artist', 80);
+  const author = truncate(current.author || 'Unknown artist', 60);
   const duration = current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS));
   const source = getSourceLabel(current);
   const station = queue?.metadata?.radioStationId ? `  •  ${RADIO_STATIONS[queue.metadata.radioStationId]?.genre || 'Radio'}` : '';
+
+  const nextTrack = queue?.tracks?.toArray?.()?.[0];
+  let upNextText = 'End of queue';
+  if (nextTrack) {
+    const nextTitle = truncate(nextTrack.cleanTitle || nextTrack.title || 'Unknown', 40);
+    const nextAuthor = truncate(nextTrack.author || 'Unknown', 25);
+    const nextDuration = nextTrack.live ? 'LIVE' : (nextTrack.duration || formatDurationMs(nextTrack.durationMS));
+    upNextText = `**[${nextTitle}](${nextTrack.url || 'https://discord.com'})** by **${nextAuthor}** [${nextDuration}]`;
+  } else if (queue?.repeatMode === QueueRepeatMode.AUTOPLAY || twentyFourSevenGuilds.has(queue?.guild?.id)) {
+    upNextText = `${EMOJIS.radio} **Smart Autoplay / Continuous Radio**`;
+  }
 
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
@@ -1169,20 +1198,63 @@ function buildNowPlayingEmbed(queue, track) {
     .setTitle(`${truncate(title, 80)}`)
     .setURL(current.url || 'https://discord.com')
     .setDescription(
-      `${EMOJIS.play} **${linkedTitle}**\n` +
-      `**Artist:** ${author} [${duration}]\n\n` +
+      `**${linkedTitle}**\n` +
+      `${EMOJIS.syncinkmusic} **Artist:** ${author} [${duration}]\n\n` +
       `${EMOJIS.time} \`${progressLine}\`\n\n` +
-      `${SEPARATOR}\n` +
-      `${EMOJIS.members} **Track requested by:** ${requestedBy}  •  ${source}${station}`
+      `${EMOJIS.members} **Requested by:** ${requestedBy} • ${source}${station}\n` +
+      `⏭️ **Up Next:** ${upNextText}`
     )
     .setFooter({ text: `${BRAND_NAME} • Pure Audio Experience`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 
-  if (current.thumbnail && /^https:\/\//i.test(current.thumbnail)) {
-    embed.setThumbnail(current.thumbnail);
-  }
+  const thumbUrl = (current.thumbnail && /^https:\/\//i.test(current.thumbnail)) ? current.thumbnail : BRAND_LOGO_URL;
+  embed.setThumbnail(thumbUrl);
 
   return embed;
+}
+
+function buildNowPlayingPayload(queue, track) {
+  try {
+    return {
+      components: [buildNowPlayingCard(queue, track)],
+      flags: MessageFlags.IsComponentsV2,
+    };
+  } catch (err) {
+    return {
+      embeds: [buildNowPlayingEmbed(queue, track)],
+      components: [buildControlsRow(queue), buildLibraryControlsRow()],
+    };
+  }
+}
+
+async function sendOrEditNowPlaying(target, queue, track) {
+  const payload = buildNowPlayingPayload(queue, track);
+  let message = null;
+  try {
+    if (typeof target.editReply === 'function') {
+      message = await target.editReply(payload);
+    } else if (typeof target.edit === 'function') {
+      message = await target.edit(payload);
+    } else if (typeof target.send === 'function') {
+      message = await target.send(payload);
+    }
+  } catch {
+    const fallback = {
+      embeds: [buildNowPlayingEmbed(queue, track)],
+      components: [buildControlsRow(queue), buildLibraryControlsRow()],
+    };
+    if (typeof target.editReply === 'function') {
+      message = await target.editReply(fallback).catch(() => null);
+    } else if (typeof target.edit === 'function') {
+      message = await target.edit(fallback).catch(() => null);
+    } else if (typeof target.send === 'function') {
+      message = await target.send(fallback).catch(() => null);
+    }
+  }
+  if (message && queue?.guild?.id) {
+    setNowPlayingRegistry(queue, message);
+  }
+  return message;
 }
 
 function buildQueueEmbed(queue) {
@@ -1200,10 +1272,12 @@ function buildQueueEmbed(queue) {
   if (current) {
     const currentDuration = current.live ? 'LIVE' : current.duration || formatDurationMs(current.durationMS);
     const linkedTitle = current.url ? `[${current.title}](${current.url})` : current.title;
-    desc += `**Now Playing:**\n${EMOJIS.play} **${linkedTitle}**\n${EMOJIS.time} \`${currentDuration}\`  •  ${EMOJIS.syncinkmusic} ${current.author || 'Unknown'}\n\n${SEPARATOR}\n`;
+    desc += `▶ **Now Playing:**\n${linkedTitle}\n${EMOJIS.time} \`${currentDuration}\`  •  ${EMOJIS.syncinkmusic} ${current.author || 'Unknown'}\n\n`;
   } else {
-    desc += `${EMOJIS.warning} Queue is currently empty.\n\n${SEPARATOR}\n`;
+    desc += `${EMOJIS.warning} Queue is currently empty.\n\n`;
   }
+
+  embed.setDescription(desc);
 
   if (upcoming.length > 0) {
     const lines = upcoming.map((item, index) => {
@@ -1213,14 +1287,11 @@ function buildQueueEmbed(queue) {
       return `**${index + 1}.** ${linkedTitle}  •  \`${duration}\`  •  *${item.author || 'Artist'}*`;
     });
 
-    embed.setDescription(desc);
     embed.addFields({
       name: `${EMOJIS.syncinkmusic} Up Next (${queue.size} total)`,
-      value: `${lines.join('\n')}\n\n${SEPARATOR}`,
+      value: lines.join('\n'),
       inline: false,
     });
-  } else {
-    embed.setDescription(desc);
   }
 
   return embed;
@@ -1233,13 +1304,13 @@ function buildSearchEmbed(query, platform, results) {
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.looking} There are ${results.length} results`)
-    .setDescription(`Query: **${truncate(query, 80)}**  •  Platform: ${platformEmoji} **${config.label}**\n\n${SEPARATOR}`)
+    .setTitle(`${EMOJIS.looking} Search Results`)
+    .setDescription(`Query: **${truncate(query, 80)}**  •  Platform: ${platformEmoji} **${config.label}**`)
     .setFooter({ text: `${BRAND_NAME} • Choose a track number below or click Cancel`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 
   if (!results.length) {
-    embed.setDescription(`${EMOJIS.refused} No tracks found for: **${truncate(query, 80)}**\n\n${SEPARATOR}`);
+    embed.setDescription(`${EMOJIS.refused} No tracks found for: **${truncate(query, 80)}**`);
     return embed;
   }
 
@@ -1253,7 +1324,7 @@ function buildSearchEmbed(query, platform, results) {
 
   embed.addFields({
     name: 'Top Results',
-    value: lines.join(`\n\n${SEPARATOR}\n\n`),
+    value: lines.join('\n\n'),
     inline: false,
   });
 
@@ -1310,7 +1381,7 @@ function buildLyricsEmbed(query, result) {
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
     .setTitle(`${EMOJIS.syncinkmusic} Lyrics: ${truncate(query, 70)}`)
-    .setDescription(`**${truncate(query, 160)}**\n\n${preview}\n\n${SEPARATOR}`)
+    .setDescription(`**${truncate(query, 160)}**\n\n${preview}`)
     .setFooter({ text: result ? `${result.trackName || ''} ${result.artistName ? `- ${result.artistName}` : ''}`.trim() : BRAND_NAME, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 }
@@ -1320,7 +1391,7 @@ function buildHelpEmbed() {
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
     .setTitle(`${EMOJIS.syncink} ${BRAND_NAME} • Command Guide`)
-    .setDescription(`High-fidelity Discord radio & music playback system.\n\n${SEPARATOR}`)
+    .setDescription('High-fidelity Discord radio & music playback system.')
     .addFields(
       {
         name: `${EMOJIS.radio} Radio & 24/7 Live`,
@@ -1362,8 +1433,8 @@ function buildFavoritesEmbed(user, favorites) {
     .setTitle(`${EMOJIS.heart} ${user.username}'s Favorites Playlist`)
     .setDescription(
       lines.length
-        ? `${lines.join('\n')}\n\n${SEPARATOR}\n${EMOJIS.play} Use \`/playlist play\` to queue this entire playlist!`
-        : `No liked tracks yet. Click the **${EMOJIS.heart} Favorite** button while music plays to build your playlist.\n\n${SEPARATOR}`
+        ? `${lines.join('\n')}\n\n${EMOJIS.play} Use \`/playlist play\` to queue this entire playlist!`
+        : `No liked tracks yet. Click the **${EMOJIS.heart} Favorite** button while music plays to build your playlist.`
     )
     .setFooter({ text: `${BRAND_NAME} • Total Favorites: ${favorites.length}`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
@@ -1397,7 +1468,7 @@ function createNotificationEmbed(title, description, color = BRAND_COLOR) {
     .setTimestamp();
 
   if (description) {
-    embed.setDescription(`${description}\n\n${SEPARATOR}`);
+    embed.setDescription(description);
   }
 
   return embed;
@@ -1902,29 +1973,58 @@ async function handlePlay(interaction) {
   await interaction.deferReply();
 
   try {
-    const { track } = await queueAndPlay(voiceCheck.channel, query, interaction.channel, interaction.user, platform, { strictMode });
-    const strictSuffix = strictMode ? ' *(strict mode enabled)*' : '';
+    const { track, queue } = await queueAndPlay(voiceCheck.channel, query, interaction.channel, interaction.user, platform, { strictMode });
+
+    const isCurrentlyPlaying = queue.currentTrack && (queue.currentTrack === track || queue.currentTrack.url === track.url);
+
+    if (isCurrentlyPlaying) {
+      await sendOrEditNowPlaying(interaction, queue, track);
+      return;
+    }
+
+    const queuePosition = queue.tracks.toArray().findIndex((t) => t === track || t.url === track.url) + 1 || queue.size;
     const duration = track.live ? 'LIVE' : (track.duration || formatDurationMs(track.durationMS));
     const author = track.author || 'Unknown artist';
     const source = getSourceLabel(track);
     const title = track.cleanTitle || track.title;
     const linkedTitle = track.url ? `[${title}](${track.url})` : title;
+    const currentPlaying = queue.currentTrack;
+    const currentPlayingText = currentPlaying
+      ? `**[${truncate(currentPlaying.cleanTitle || currentPlaying.title, 40)}](${currentPlaying.url || 'https://discord.com'})**`
+      : 'None';
 
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
       .setTitle(`${EMOJIS.added} Track Added to Queue`)
       .setDescription(
-        `**${linkedTitle}**${strictSuffix}\n\n` +
-        `${EMOJIS.syncinkmusic} **Artist:** ${author}\n` +
-        `${EMOJIS.time} **Duration:** \`${duration}\`\n` +
-        `${EMOJIS.members} **Requested by:** <@${interaction.user.id}> • ${source}\n\n` +
-        `${SEPARATOR}`
+        `**${linkedTitle}**\n\n` +
+        `• **Position in Queue:** \`#${queuePosition}\`\n` +
+        `• **Artist:** ${author}\n` +
+        `• **Duration:** \`${duration}\`\n` +
+        `• **Requested by:** <@${interaction.user.id}> • ${source}\n\n` +
+        `▶ **Currently Playing:** ${currentPlayingText}`
       )
-      .setThumbnail(track.thumbnail && /^https:\/\//i.test(track.thumbnail) ? track.thumbnail : null)
-      .setFooter({ text: `${BRAND_NAME} • Pure Audio Experience`, iconURL: BRAND_LOGO_URL })
+      .setThumbnail(track.thumbnail && /^https:\/\//i.test(track.thumbnail) ? track.thumbnail : BRAND_LOGO_URL)
+      .setFooter({ text: `${BRAND_NAME} • ${queue.size} track(s) waiting in queue`, iconURL: BRAND_LOGO_URL })
       .setTimestamp();
-    await interaction.editReply({ embeds: [embed] });
+
+    const queueRow = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(BUTTON_IDS.QUEUE)
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji(getButtonEmoji(EMOJIS.queue, '📜'))
+        .setLabel('View Queue'),
+      new ButtonBuilder()
+        .setCustomId(BUTTON_IDS.LIKE)
+        .setStyle(ButtonStyle.Secondary)
+        .setEmoji(getButtonEmoji(EMOJIS.heart, '💖'))
+        .setLabel('Favorite')
+    );
+
+    await interaction.editReply({ embeds: [embed], components: [queueRow] });
+
+    void refreshNowPlayingMessage(queue);
   } catch (error) {
     console.error('[Play Error]', error);
     const errEmbed = createNotificationEmbed(
@@ -2101,7 +2201,6 @@ async function handleRadio(interaction) {
         `Now tuned into **${station.name}**\n\n` +
         `• **Genre / Style:** \`${station.genre}\`\n` +
         `• **Rotation:** Endless official tracks with anti-repetition protection\n\n` +
-        `${SEPARATOR}\n` +
         `${EMOJIS.syncinkmusic} *The station automatically discovers and plays fresh music 24/7.*`
       )
       .setFooter({ text: `${BRAND_NAME} • Station Discovery`, iconURL: BRAND_LOGO_URL })
@@ -2143,7 +2242,6 @@ async function handleLofi(interaction) {
         `• **Genre / Style:** \`${lofiStation.genre}\`\n` +
         `• **Vibe:** Relaxing, studying, and focus instrumental beats\n` +
         `• **Rotation:** Anti-speech and no-talking filters enabled\n\n` +
-        `${SEPARATOR}\n` +
         `${EMOJIS.syncinkmusic} *Continuous 24/7 stream. Use \`/stop\` or \`/leave\` to disconnect.*`
       )
       .setFooter({ text: `${BRAND_NAME} • Lofi Chill Radio`, iconURL: BRAND_LOGO_URL })
@@ -2879,11 +2977,23 @@ async function handleButtonInteraction(interaction) {
       });
       if (DEFAULT_AUTOPLAY && result.queue.repeatMode === QueueRepeatMode.OFF) result.queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
 
+      const isCurrentlyPlaying = result.queue.currentTrack && (result.queue.currentTrack === track || result.queue.currentTrack.url === track.url);
+
+      if (isCurrentlyPlaying) {
+        await sendOrEditNowPlaying(interaction, result.queue, track);
+        return;
+      }
+
+      const queuePosition = result.queue.tracks.toArray().findIndex((t) => t === track || t.url === track.url) + 1 || result.queue.size;
       const duration = track.live ? 'LIVE' : (track.duration || formatDurationMs(track.durationMS));
       const author = track.author || 'Unknown artist';
       const source = getSourceLabel(track);
       const title = track.cleanTitle || track.title;
       const linkedTitle = track.url ? `[${title}](${track.url})` : title;
+      const currentPlaying = result.queue.currentTrack;
+      const currentPlayingText = currentPlaying
+        ? `**[${truncate(currentPlaying.cleanTitle || currentPlaying.title, 40)}](${currentPlaying.url || 'https://discord.com'})**`
+        : 'None';
 
       const embed = new EmbedBuilder()
         .setColor(BRAND_COLOR)
@@ -2891,16 +3001,31 @@ async function handleButtonInteraction(interaction) {
         .setTitle(`${EMOJIS.added} Track Added to Queue`)
         .setDescription(
           `**${linkedTitle}**\n\n` +
-          `${EMOJIS.syncinkmusic} **Artist:** ${author}\n` +
-          `${EMOJIS.time} **Duration:** \`${duration}\`\n` +
-          `${EMOJIS.members} **Requested by:** <@${interaction.user.id}> • ${source}\n\n` +
-          `${SEPARATOR}`
+          `• **Position in Queue:** \`#${queuePosition}\`\n` +
+          `• **Artist:** ${author}\n` +
+          `• **Duration:** \`${duration}\`\n` +
+          `• **Requested by:** <@${interaction.user.id}> • ${source}\n\n` +
+          `▶ **Currently Playing:** ${currentPlayingText}`
         )
-        .setThumbnail(track.thumbnail && /^https:\/\//i.test(track.thumbnail) ? track.thumbnail : null)
-        .setFooter({ text: `${BRAND_NAME} • Pure Audio Experience`, iconURL: BRAND_LOGO_URL })
+        .setThumbnail(track.thumbnail && /^https:\/\//i.test(track.thumbnail) ? track.thumbnail : BRAND_LOGO_URL)
+        .setFooter({ text: `${BRAND_NAME} • ${result.queue.size} track(s) waiting in queue`, iconURL: BRAND_LOGO_URL })
         .setTimestamp();
 
-      await interaction.editReply({ embeds: [embed] });
+      const queueRow = new ActionRowBuilder().addComponents(
+        new ButtonBuilder()
+          .setCustomId(BUTTON_IDS.QUEUE)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji(getButtonEmoji(EMOJIS.queue, '📜'))
+          .setLabel('View Queue'),
+        new ButtonBuilder()
+          .setCustomId(BUTTON_IDS.LIKE)
+          .setStyle(ButtonStyle.Secondary)
+          .setEmoji(getButtonEmoji(EMOJIS.heart, '💖'))
+          .setLabel('Favorite')
+      );
+
+      await interaction.editReply({ embeds: [embed], components: [queueRow] });
+      void refreshNowPlayingMessage(result.queue);
     } catch (error) {
       console.error('[Search Selection Error]', error);
       await interaction.editReply({
@@ -3376,36 +3501,13 @@ player.events.on('playerStart', async (queue, track) => {
       if (storedChannel && storedChannel.isTextBased()) {
         const storedMessage = await storedChannel.messages.fetch(existing.messageId).catch(() => null);
         if (storedMessage) {
-          try {
-            await storedMessage.edit({
-              components: [buildNowPlayingCard(queue, track)],
-              flags: MessageFlags.IsComponentsV2,
-            });
-            return;
-          } catch {
-            await storedMessage.edit({
-              embeds: [buildNowPlayingEmbed(queue, track)],
-              components: [buildControlsRow(queue), buildLibraryControlsRow()],
-            }).catch(() => null);
-            return;
-          }
+          await sendOrEditNowPlaying(storedMessage, queue, track);
+          return;
         }
       }
     }
 
-    try {
-      const message = await channel.send({
-        components: [buildNowPlayingCard(queue, track)],
-        flags: MessageFlags.IsComponentsV2,
-      });
-      setNowPlayingRegistry(queue, message);
-    } catch {
-      const message = await channel.send({
-        embeds: [buildNowPlayingEmbed(queue, track)],
-        components: [buildControlsRow(queue), buildLibraryControlsRow()],
-      });
-      setNowPlayingRegistry(queue, message);
-    }
+    await sendOrEditNowPlaying(channel, queue, track);
   } catch (err) {
     console.error('[playerStart send error]', err);
   }
