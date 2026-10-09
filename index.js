@@ -47,6 +47,12 @@ const {
   ButtonBuilder,
   ButtonStyle,
   MessageFlags,
+  ContainerBuilder,
+  SectionBuilder,
+  TextDisplayBuilder,
+  SeparatorBuilder,
+  SeparatorSpacingSize,
+  ThumbnailBuilder,
 } = require('discord.js');
 const { Player, QueueRepeatMode, QueryType, QueryResolver, onBeforeCreateStream } = require('discord-player');
 const { DefaultExtractors } = require('@discord-player/extractor');
@@ -109,8 +115,10 @@ const MAX_AUTOCOMPLETE_CHOICES = 10;
 
 const BUTTON_IDS = {
   PAUSE_RESUME: 'syncink_pause_resume',
+  PREVIOUS: 'syncink_previous',
   SKIP: 'syncink_skip',
   STOP: 'syncink_stop',
+  QUEUE: 'syncink_queue',
   LIKE: 'syncink_like',
   PLAYLIST: 'syncink_playlist',
 };
@@ -270,23 +278,23 @@ const SOURCE_LABELS = {
 };
 
 const PLATFORM_EMOJIS = {
-  youtube: process.env.EMOJI_YOUTUBE,
-  youtubemusic: process.env.EMOJI_YOUTUBE_MUSIC,
-  soundcloud: process.env.EMOJI_SOUNDCLOUD,
-  spotify: process.env.EMOJI_SPOTIFY,
-  apple_music: process.env.EMOJI_APPLE_MUSIC,
-  applemusic: process.env.EMOJI_APPLE_MUSIC,
-  deezer: process.env.EMOJI_DEEZER,
-  tidal: process.env.EMOJI_TIDAL,
+  youtube: process.env.EMOJI_YOUTUBE || '<:youtubemusic:1558020636328282898>',
+  youtubemusic: process.env.EMOJI_YOUTUBE_MUSIC || '<:youtubemusic:1558020636328282898>',
+  soundcloud: process.env.EMOJI_SOUNDCLOUD || '<:soundcloud:155802149236123147>',
+  spotify: process.env.EMOJI_SPOTIFY || '<:spotify:1558020457960308737>',
+  apple_music: process.env.EMOJI_APPLE_MUSIC || '<:applemusic:1558021838494367804>',
+  applemusic: process.env.EMOJI_APPLE_MUSIC || '<:applemusic:1558021838494367804>',
+  deezer: process.env.EMOJI_DEEZER || '<:deezer:1558021038733004820>',
+  tidal: process.env.EMOJI_TIDAL || '<:tidal:1558020823975989248>',
   arbitrary: process.env.EMOJI_DIRECT_AUDIO,
 };
 
 const CONTROL_EMOJIS = {
-  pauseResume: process.env.EMOJI_PAUSE_RESUME,
-  skip: process.env.EMOJI_SKIP,
-  stop: process.env.EMOJI_STOP,
-  like: process.env.EMOJI_LIKE,
-  playlist: process.env.EMOJI_PLAYLIST,
+  pauseResume: process.env.EMOJI_PAUSE_RESUME || '<:pause:1558035977371525161>',
+  skip: process.env.EMOJI_SKIP || '<:SkipForward:1558032432802824263>',
+  stop: process.env.EMOJI_STOP || '<:delete:155802314692797472>',
+  like: process.env.EMOJI_LIKE || '<:neonheart:1558023683719561327>',
+  playlist: process.env.EMOJI_PLAYLIST || '<:Playlist:1558037416853016105>',
 };
 
 const FALLBACK_PLATFORM_EMOJIS = {
@@ -355,6 +363,7 @@ function createPlaybackNodeOptions(metadata) {
 }
 
 const nowPlayingRegistry = new Map();
+const searchSessions = new Map();
 const guildMessageCooldowns = new Map();
 const playCommandCooldowns = new Map();
 const lastTrackStartTimes = new Map();
@@ -702,7 +711,7 @@ function buildSearchEngineCandidates(platform, resolvedType, looksLikeUrl, detec
   }
 
   if (platform === 'auto') {
-    return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
+    return uniqueQueryTypes([QueryType.SOUNDCLOUD_SEARCH, youtubePriorityEngine, QueryType.AUTO_SEARCH]);
   }
 
   return uniqueQueryTypes([youtubePriorityEngine, QueryType.AUTO_SEARCH, QueryType.SOUNDCLOUD_SEARCH]);
@@ -754,7 +763,11 @@ function getSourceLabel(track) {
 
 function getEmojiToken(configuredEmoji, fallback) {
   const value = String(configuredEmoji || '').trim();
-  return /^<a?:[A-Za-z0-9_]{2,32}:\d{17,20}>$/.test(value) ? value : fallback;
+  const match = value.match(/^<a?:([A-Za-z0-9_]{2,32}):(\d{17,20})>$/);
+  if (!match) return fallback;
+  // Only render uploaded emoji that this bot can actually resolve. This keeps
+  // cards working in servers where the bot cannot see the emoji's home guild.
+  return client?.emojis?.cache?.has(match[2]) ? value : fallback;
 }
 
 function getButtonEmoji(configuredEmoji, fallback) {
@@ -818,22 +831,70 @@ function scoreTrackAgainstQuery(track, rawQuery, strictMode = false) {
   return score;
 }
 
+const NON_OFFICIAL_VARIANTS = [
+  /\b(youtube shorts?|shorts? edit|short version)\b/i,
+  /\bslowed(?:\s*\+?\s*reverb)?\b/i,
+  /\bsped\s*up\b/i,
+  /\bnightcore\b/i,
+  /\bmashup\b/i,
+  /\bcover\b/i,
+  /\bkaraoke\b/i,
+  /\breaction\b/i,
+  /\blyric(?:s| video)\b/i,
+  /\b8d audio\b/i,
+  /\bloop(?:ed)?\b/i,
+  /\bfan ?made\b/i,
+  /\bedit\b/i,
+  /\bremix\b/i,
+  /\breverb\b/i,
+];
+function canonicalSongKey(track) {
+  const title = String(track?.cleanTitle || track?.title || '')
+    .replace(/\b(official\s*(audio|video|music video)|audio|music video|vevo|topic|hd|4k|lyrics?)\b/gi, ' ')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\b(feat\.?|ft\.?)\b.*$/i, ' ');
+  const normalizedTitle = normalizeForMatch(title);
+  // Uploaders differ between mirror channels, but the normalized catalog title
+  // remains stable enough to stop cross-source autoplay repeats.
+  return normalizedTitle ? normalizedTitle.replace(/\s+/g, ' ').trim() : '';
+}
+
+function isUnrequestedVariant(track, rawQuery = '') {
+  const query = String(rawQuery || '');
+  if (isLikelyUrl(query)) return false;
+  const title = String(track?.cleanTitle || track?.title || '');
+  const url = String(track?.url || '');
+  const durationMs = Number(track?.durationMS || 0);
+  if (NON_OFFICIAL_VARIANTS.some((pattern) => pattern.test(title) && !pattern.test(query)) || /\/shorts?\//i.test(url)) return true;
+  if (durationMs > 0 && durationMs < 60_000) return true;
+  return false;
+}
+
 function prioritizeTracksForPlayback(tracks, rawQuery = '', strictMode = false) {
-  if (!Array.isArray(tracks) || tracks.length <= 1) return tracks;
+  if (!Array.isArray(tracks)) return tracks;
 
   const sourceScore = {
-    youtube: 5,
-    soundcloud: 4,
+    soundcloud: 6,
+    youtube: 4,
     arbitrary: 3,
     spotify: 2,
     apple_music: 2,
   };
 
-  return [...tracks].sort((a, b) => {
-    const aScore = scoreTrackAgainstQuery(a, rawQuery, strictMode) + (sourceScore[a?.source] ?? 1);
-    const bScore = scoreTrackAgainstQuery(b, rawQuery, strictMode) + (sourceScore[b?.source] ?? 1);
+  const unique = new Map();
+  for (const track of tracks) {
+    if (!track?.url || isUnrequestedVariant(track, rawQuery)) continue;
+    const key = canonicalSongKey(track) || String(track.url);
+    const old = unique.get(key);
+    const officialSignal = /\b(official|vevo|topic|provided to youtube)\b/i.test(`${track.title} ${track.author} ${track.url}`) ? 18 : 0;
+    const quality = scoreTrackAgainstQuery(track, rawQuery, strictMode) + (sourceScore[track?.source] ?? 1) + officialSignal;
+    if (!old || quality > old.quality) unique.set(key, { track, quality });
+  }
+  return [...unique.values()].sort((a, b) => {
+    const aScore = a.quality;
+    const bScore = b.quality;
     return bScore - aScore;
-  });
+  }).map(({ track }) => track);
 }
 
 function ensureFavoritesStore() {
@@ -963,49 +1024,49 @@ function hasActiveTrack(queue) {
   return Boolean(queue && queue.currentTrack);
 }
 
-function buildControlsRow() {
+function buildControlsRow(queue) {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.pauseResume, '⏯️')),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.skip, '⏭️')),
-    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.stop, '⏹️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PAUSE_RESUME).setStyle(ButtonStyle.Success).setEmoji(getButtonEmoji(queue?.node?.isPaused?.() ? '<:PlayButton:1558035554942058496>' : CONTROL_EMOJIS.pauseResume, queue?.node?.isPaused?.() ? '▶️' : '⏸️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.PREVIOUS).setStyle(ButtonStyle.Primary).setEmoji(getButtonEmoji('<:PreviousTrack:1558030065361616996>', '⏮️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.SKIP).setStyle(ButtonStyle.Primary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.skip, '⏭️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.STOP).setStyle(ButtonStyle.Danger).setEmoji(getButtonEmoji(CONTROL_EMOJIS.stop, '⏹️')),
+    new ButtonBuilder().setCustomId(BUTTON_IDS.QUEUE).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji('<:Queue:1558027632740798494>', '📃')),
+  );
+}
+
+function buildLibraryControlsRow() {
+  return new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(BUTTON_IDS.LIKE).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.like, '❤️')),
     new ButtonBuilder().setCustomId(BUTTON_IDS.PLAYLIST).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(CONTROL_EMOJIS.playlist, '🎵')),
   );
 }
 
-function buildNowPlayingEmbed(queue, track) {
+function buildNowPlayingCard(queue, track) {
   const current = track || queue?.currentTrack;
-
-  if (!current) {
-    return new EmbedBuilder()
-      .setColor(BRAND_COLOR)
-      .setAuthor({ name: `${BRAND_NAME} Now Playing` })
-      .setDescription('Nothing is currently playing.');
-  }
+  if (!current) return new ContainerBuilder().setAccentColor(BRAND_COLOR)
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${BRAND_NAME}\nNothing is currently playing.`));
 
   const timestamp = queue?.node?.getTimestamp?.();
   const progressLine = timestamp
     ? `${timestamp.current.label} ${renderProgressBar(timestamp.progress)} ${timestamp.total.label}`
     : `${formatDurationMs(queue?.node?.playbackTime || 0)} ━━━━━━━━🔘━━━━━━━━ ${current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS))}`;
-
   const requestedBy = current.requestedBy ? `<@${current.requestedBy.id}>` : 'Unknown';
   const title = truncate(current.cleanTitle || current.title || 'Unknown Track', 100);
-  const linkedTitle = current.url ? `**[${title}](${current.url})**` : `**${title}**`;
-
-  const embed = new EmbedBuilder()
-    .setColor(BRAND_COLOR)
-    .setAuthor({ name: '♫  SYNCINK RADIO  •  NOW PLAYING' })
-    .setDescription(`${linkedTitle}\n${truncate(current.author || 'Unknown artist', 100)}\n\n` +
-      `\`${progressLine}\`\n\n` +
-      `**Source**  ${getSourceLabel(current)}\n**Requested by**  ${requestedBy}`)
-    .setFooter({ text: queue?.metadata?.radioStationId ? `${BRAND_NAME}  •  ${RADIO_STATIONS[queue.metadata.radioStationId]?.genre || 'Radio'}` : `${BRAND_NAME}  •  Music playback` })
-    .setTimestamp();
-
-  if (current.thumbnail) {
-    embed.setThumbnail(current.thumbnail);
+  const linkedTitle = current.url ? `[${title}](${current.url})` : title;
+  const source = getSourceLabel(current);
+  const section = new SectionBuilder()
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${getEmojiToken(PLATFORM_EMOJIS[String(current.source || '').toLowerCase()], '▶️')}  Now Playing\n**${linkedTitle}**\n${truncate(current.author || 'Unknown artist', 100)}  ·  ${current.live ? 'LIVE' : (current.duration || formatDurationMs(current.durationMS))}\n\n\`${progressLine}\``));
+  if (current.thumbnail && /^https:\/\//i.test(current.thumbnail)) {
+    section.setThumbnailAccessory(new ThumbnailBuilder().setURL(current.thumbnail).setDescription(`${title} artwork`));
   }
-
-  return embed;
+  const station = queue?.metadata?.radioStationId ? `  ·  ${RADIO_STATIONS[queue.metadata.radioStationId]?.genre || 'Radio'}` : '';
+  return new ContainerBuilder().setAccentColor(0xf2a93b)
+    .addSectionComponents(section)
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addActionRowComponents(buildControlsRow(queue))
+    .addActionRowComponents(buildLibraryControlsRow())
+    .addSeparatorComponents(new SeparatorBuilder().setDivider(true).setSpacing(SeparatorSpacingSize.Small))
+    .addTextDisplayComponents(new TextDisplayBuilder().setContent(`Track requested by ${requestedBy}  ·  ${source}${station}`));
 }
 
 function buildQueueEmbed(queue) {
@@ -1015,7 +1076,7 @@ function buildQueueEmbed(queue) {
   const embed = new EmbedBuilder()
     .setColor(SUCCESS_COLOR)
     .setTitle(`${BRAND_NAME} - Queue`)
-    .setDescription(current ? `Now: **${truncate(current.cleanTitle || current.title || 'Unknown Track', 100)}**` : 'Queue is empty.')
+    .setDescription(`${current ? `Now: **${truncate(current.cleanTitle || current.title || 'Unknown Track', 100)}**` : 'Queue is empty.'}\n\n────────────`)
     .setFooter({ text: `${queue.size} track(s) waiting` })
     .setTimestamp();
 
@@ -1061,19 +1122,34 @@ function buildSearchEmbed(query, platform, results) {
     const title = truncate(track.cleanTitle || track.title || 'Unknown Track', 65);
     const author = truncate(track.author || 'Unknown Artist', 40);
     const duration = track.live ? 'LIVE' : track.duration || formatDurationMs(track.durationMS);
-    if (track.url) {
-      return `${index + 1}. [${title}](${track.url}) - ${author} - \`${duration}\``;
-    }
-    return `${index + 1}. ${title} - ${author} - \`${duration}\``;
+    const linkedTitle = track.url ? `[${title}](${track.url})` : title;
+    return `**${index + 1}. ${getSourceLabel(track)}  ${linkedTitle}**\n${author}  ·  ${duration}`;
   });
 
   embed.addFields({
     name: 'Top Matches',
-    value: lines.join('\n'),
+    value: lines.join('\n\n────────────\n\n'),
     inline: false,
   });
 
   return embed;
+}
+
+function buildSearchResultRows(sessionId, results) {
+  const tracks = results.slice(0, 10);
+  const rows = [];
+  for (let start = 0; start < tracks.length; start += 5) {
+    const row = new ActionRowBuilder();
+    for (let index = start; index < Math.min(start + 5, tracks.length); index += 1) {
+      row.addComponents(new ButtonBuilder()
+        .setCustomId(`syncink_search_pick:${sessionId}:${index}`)
+        .setStyle(ButtonStyle.Success)
+        .setEmoji(getButtonEmoji('<:approved:1558019502019575918>', '▶️'))
+        .setLabel(String(index + 1)));
+    }
+    rows.push(row);
+  }
+  return rows;
 }
 
 function buildLyricsEmbed(query, result) {
@@ -1109,7 +1185,7 @@ function buildHelpEmbed() {
       },
       {
         name: '✨ Enhancements & Audio',
-        value: '`/lyrics`, `/taste`, `/bassboost`, `/8d`, `/strict`, `/leave`',
+        value: '`/lyrics`, `/taste`, `/bassboost`, `/8d`, `/strict`, `/leave`, `/invite`',
       },
       {
         name: '🌐 Supported Platforms',
@@ -1148,7 +1224,7 @@ function createNotificationEmbed(title, description, color = BRAND_COLOR) {
   return new EmbedBuilder()
     .setColor(color)
     .setTitle(title)
-    .setDescription(description)
+    .setDescription(`${description}\n\n────────────`)
     .setFooter({ text: BRAND_NAME })
     .setTimestamp();
 }
@@ -1311,7 +1387,9 @@ async function searchWithFallbackEngines(query, platform, requestedBy, options =
       });
 
       if (result?.hasTracks?.()) {
-        result.setTracks(prioritizeTracksForPlayback(result.tracks, resolved.rawQuery || resolved.query, strictMode));
+        const rankedTracks = prioritizeTracksForPlayback(result.tracks, resolved.rawQuery || resolved.query, strictMode);
+        if (!rankedTracks.length) continue;
+        result.setTracks(rankedTracks);
         return {
           result,
           usedEngine: searchEngine,
@@ -1433,7 +1511,12 @@ function getRecentRadioUrls(queue, guildId) {
   const history = queue?.history?.tracks?.map((track) => track?.url).filter(Boolean).slice(-20) || [];
   const recent = radioRecentTrackUrls.get(guildId) || [];
   const queued = queue?.tracks?.toArray?.().map((track) => track?.url).filter(Boolean) || [];
-  return new Set([...history, ...recent, ...queued]);
+  const seen = new Set([...history, ...recent, ...queued]);
+  for (const track of [...(queue?.history?.tracks || []), ...(queue?.tracks?.toArray?.() || [])]) {
+    const identity = canonicalSongKey(track);
+    if (identity) seen.add(`song:${identity}`);
+  }
+  return seen;
 }
 
 async function findRadioBatch(station, queue, guildId) {
@@ -1447,8 +1530,10 @@ async function findRadioBatch(station, queue, guildId) {
       const result = await runSearch(query, 'auto', client.user);
       for (const track of result.tracks) {
         const durationMs = Number(track?.durationMS || 0);
-        if (!track?.url || track.live || durationMs > 15 * 60 * 1000 || seen.has(track.url) || batchSeen.has(track.url)) continue;
+        const identity = canonicalSongKey(track);
+        if (!track?.url || track.live || durationMs > 15 * 60 * 1000 || isUnrequestedVariant(track, query) || seen.has(track.url) || seen.has(`song:${identity}`) || batchSeen.has(track.url) || batchSeen.has(`song:${identity}`)) continue;
         batchSeen.add(track.url);
+        batchSeen.add(`song:${identity}`);
         collected.push(track);
       }
       if (collected.length >= 8) break;
@@ -1531,8 +1616,8 @@ async function refreshNowPlayingMessage(queue) {
     }
 
     await message.edit({
-      embeds: [buildNowPlayingEmbed(queue)],
-      components: [buildControlsRow()],
+      components: [buildNowPlayingCard(queue)],
+      flags: MessageFlags.IsComponentsV2,
     });
   } catch {
     // A deleted or inaccessible message should not leave a permanent refresh loop.
@@ -1635,7 +1720,7 @@ async function handlePlay(interaction) {
     const embed = new EmbedBuilder()
       .setColor(SUCCESS_COLOR)
       .setTitle('🎶 Track Added to Queue')
-      .setDescription(`**[${track.cleanTitle || track.title}](${track.url || 'https://discord.com'})**${strictSuffix}\n\n⏱️ Duration: \`${track.duration || 'Live'}\` • 👤 Added By: <@${interaction.user.id}>`)
+      .setDescription(`**[${track.cleanTitle || track.title}](${track.url || 'https://discord.com'})**${strictSuffix}\n\n⏱️ Duration: \`${track.duration || 'Live'}\` • 👤 Added By: <@${interaction.user.id}>\n\n────────────`)
       .setThumbnail(track.thumbnail || null)
       .setFooter({ text: BRAND_NAME })
       .setTimestamp();
@@ -1662,8 +1747,15 @@ async function handleSearch(interaction) {
 
   try {
     const searchResult = await runSearch(query, platform, interaction.user, { strictMode });
+    const tracks = searchResult.tracks.slice(0, 10);
+    const sessionId = interaction.id;
+    searchSessions.set(sessionId, { userId: interaction.user.id, guildId: interaction.guildId, tracks, expiresAt: Date.now() + 120_000 });
+    if (searchSessions.size > 200) {
+      for (const [id, session] of searchSessions) if (session.expiresAt < Date.now()) searchSessions.delete(id);
+    }
     await interaction.editReply({
-      embeds: [buildSearchEmbed(query, platform, searchResult.tracks)],
+      embeds: [buildSearchEmbed(query, platform, tracks)],
+      components: buildSearchResultRows(sessionId, tracks),
     });
   } catch (error) {
     console.error('[Search Error]', error);
@@ -2155,6 +2247,18 @@ async function handleCommandInteraction(interaction) {
   if (!interaction.isChatInputCommand()) return;
 
   try {
+    if (interaction.commandName === 'invite') {
+      if (!CLIENT_ID) throw new Error('Set DISCORD_CLIENT_ID to generate your server install link.');
+      const permissions = [
+        PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks,
+        PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.Connect, PermissionFlagsBits.Speak,
+        PermissionFlagsBits.UseVAD, PermissionFlagsBits.UseExternalEmojis,
+      ].reduce((all, bit) => all | bit, 0n);
+      const params = new URLSearchParams({ client_id: CLIENT_ID, permissions: permissions.toString(), scope: 'bot applications.commands' });
+      await interaction.reply({ content: `Add **${BRAND_NAME}** to another server:\nhttps://discord.com/oauth2/authorize?${params}`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
     if (interaction.commandName === 'play') {
       await handlePlay(interaction);
       return;
@@ -2219,8 +2323,8 @@ async function handleCommandInteraction(interaction) {
       }
 
       await safeReply(interaction, {
-        embeds: [buildNowPlayingEmbed(queue)],
-        components: [buildControlsRow()],
+        components: [buildNowPlayingCard(queue)],
+        flags: MessageFlags.IsComponentsV2,
       });
       return;
     }
@@ -2459,6 +2563,41 @@ async function handleCommandInteraction(interaction) {
 
 async function handleButtonInteraction(interaction) {
   if (!interaction.isButton()) return;
+  const pickMatch = interaction.customId.match(/^syncink_search_pick:(\d+):(\d+)$/);
+  if (pickMatch) {
+    const [, sessionId, indexText] = pickMatch;
+    const session = searchSessions.get(sessionId);
+    if (!session || session.expiresAt < Date.now()) {
+      searchSessions.delete(sessionId);
+      await interaction.reply({ content: 'These search results expired. Run `/search` again.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    if (interaction.user.id !== session.userId || interaction.guildId !== session.guildId) {
+      await interaction.reply({ content: 'Only the person who opened these search results can select a track.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const track = session.tracks[Number(indexText)];
+    if (!track) {
+      await interaction.reply({ content: 'That search result is no longer available.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+    const voiceCheck = await ensureVoiceAndPermissions(interaction);
+    if (!voiceCheck.ok) return;
+    searchSessions.delete(sessionId);
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    try {
+      const result = await player.play(voiceCheck.channel, track, {
+        requestedBy: interaction.user,
+        nodeOptions: createPlaybackNodeOptions({ textChannel: interaction.channel }),
+      });
+      if (DEFAULT_AUTOPLAY && result.queue.repeatMode === QueueRepeatMode.OFF) result.queue.setRepeatMode(QueueRepeatMode.AUTOPLAY);
+      await interaction.editReply(`Added **${truncate(track.cleanTitle || track.title || 'Selected track', 100)}** to the queue.`);
+    } catch (error) {
+      console.error('[Search Selection Error]', error);
+      await interaction.editReply(`Could not play that result: ${error.message || error}`);
+    }
+    return;
+  }
   if (!Object.values(BUTTON_IDS).includes(interaction.customId)) return;
 
   if (!interaction.inGuild()) {
@@ -2623,6 +2762,8 @@ async function registerSlashCommands() {
       .setDescription('Queue actions')
       .addSubcommand((sub) => sub.setName('list').setDescription('Shows the current queue for this server'))
       .addSubcommand((sub) => sub.setName('clear').setDescription('Clears all upcoming tracks in queue')),
+
+    new SlashCommandBuilder().setName('invite').setDescription('Get a link to add SyncInk Radio to another server'),
 
     new SlashCommandBuilder().setName('shuffle').setDescription('Shuffle the queue'),
 
@@ -2844,14 +2985,12 @@ async function registerSlashCommands() {
 
   const rest = new REST({ version: '10' }).setToken(TOKEN);
 
-  if (GUILD_ID) {
-    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
-    console.log(`[Slash Commands] Registered to guild ${GUILD_ID}.`);
-    return;
-  }
-
   await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
   console.log('[Slash Commands] Registered globally (can take up to 1 hour to appear).');
+  if (GUILD_ID) {
+    await rest.put(Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID), { body: commands });
+    console.log(`[Slash Commands] Also registered immediately to guild ${GUILD_ID}.`);
+  }
 }
 
 player.events.on('playerStart', async (queue, track) => {
@@ -2869,12 +3008,14 @@ player.events.on('playerStart', async (queue, track) => {
   const requesterId = track?.requestedBy?.id;
   if (requesterId && queue.repeatMode === QueueRepeatMode.AUTOPLAY && musicTaste.getProfile(queue.guild.id, requesterId)?.enabled) {
     const historyUrls = queue.history.tracks.map((item) => item.url).filter(Boolean);
+    const historySongKeys = new Set(queue.history.tracks.map(canonicalSongKey).filter(Boolean));
     void musicTaste.prefetchAutoplay({
       guildId: queue.guild.id,
       userId: requesterId,
       currentTrack: track,
       history: queue.history,
       historyUrls,
+      historySongKeys,
     }).catch((error) => {
       console.error('[Taste Prefetch Error]', error);
     });
@@ -2888,8 +3029,8 @@ player.events.on('playerStart', async (queue, track) => {
         const storedMessage = await storedChannel.messages.fetch(existing.messageId).catch(() => null);
         if (storedMessage) {
           await storedMessage.edit({
-            embeds: [buildNowPlayingEmbed(queue, track)],
-            components: [buildControlsRow()],
+            components: [buildNowPlayingCard(queue, track)],
+            flags: MessageFlags.IsComponentsV2,
           });
           return;
         }
@@ -2897,8 +3038,8 @@ player.events.on('playerStart', async (queue, track) => {
     }
 
     const message = await channel.send({
-      embeds: [buildNowPlayingEmbed(queue, track)],
-      components: [buildControlsRow()],
+      components: [buildNowPlayingCard(queue, track)],
+      flags: MessageFlags.IsComponentsV2,
     });
     setNowPlayingRegistry(queue, message);
   } catch {
@@ -2930,12 +3071,14 @@ player.events.on('willAutoPlay', async (queue, tracks, done) => {
   try {
     const anchor = queue.history.tracks.at(-1) || queue.currentTrack;
     const historyUrls = queue.history.tracks.map((track) => track.url).filter(Boolean);
+    const historySongKeys = new Set(queue.history.tracks.map(canonicalSongKey).filter(Boolean));
     const userId = anchor?.requestedBy?.id;
     const cachedTrack = musicTaste.takePrefetched({
       guildId: queue.guild.id,
       userId,
       currentTrack: anchor,
       historyUrls,
+      historySongKeys,
     });
     const nextTrack = cachedTrack || await musicTaste.chooseAutoplay({
       guildId: queue.guild.id,
@@ -2943,12 +3086,14 @@ player.events.on('willAutoPlay', async (queue, tracks, done) => {
       currentTrack: anchor,
       candidates: tracks,
       historyUrls,
+      historySongKeys,
       allowAI: false,
     });
     finish(nextTrack);
   } catch (error) {
     console.error('[Taste Autoplay Error]', error);
-    finish(tracks.find((track) => track?.url && !queue.history.tracks.find((played) => played.url === track.url)));
+    const historyKeys = new Set(queue.history.tracks.map(canonicalSongKey).filter(Boolean));
+    finish(tracks.find((track) => track?.url && !isUnrequestedVariant(track) && !queue.history.tracks.find((played) => played.url === track.url) && !historyKeys.has(canonicalSongKey(track))));
   }
 });
 
@@ -2997,10 +3142,11 @@ player.events.on('emptyQueue', async (queue) => {
         const title = String(lastTrack.cleanTitle || lastTrack.title || '').trim();
         const queries = [`${artist} songs similar to ${title}`, `${artist} official audio`, `${title} similar songs`].filter(Boolean);
         const playedUrls = new Set(queue.history.tracks.map((item) => item.url).filter(Boolean));
+        const playedSongKeys = new Set(queue.history.tracks.map(canonicalSongKey).filter(Boolean));
         let nextTrack = null;
         for (const query of queries) {
           const res = await runSearch(query, 'auto', client.user);
-          nextTrack = res.tracks.find((item) => item?.url && !playedUrls.has(item.url));
+          nextTrack = res.tracks.find((item) => item?.url && !isUnrequestedVariant(item, query) && !playedUrls.has(item.url) && !playedSongKeys.has(canonicalSongKey(item)));
           if (nextTrack) break;
         }
         if (nextTrack) {

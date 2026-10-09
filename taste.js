@@ -16,6 +16,18 @@ function getTerms(value) {
   return [...new Set(normalize(value).split(' ').filter((word) => word.length > 2 && !STOP_WORDS.has(word)))];
 }
 
+function songIdentity(track) {
+  const clean = (value) => normalize(String(value || '')
+    .replace(/\b(official audio|official video|audio|music video|vevo|topic|lyrics?)\b/gi, ' ')
+    .replace(/\([^)]*\)|\[[^\]]*\]/g, ' ')
+    .replace(/\b(feat\.?|ft\.?)\b.*$/i, ' '));
+  return clean(track?.cleanTitle || track?.title);
+}
+
+function obviousVariant(track) {
+  return /\b(youtube shorts?|shorts? edit|short version|slowed|sped up|nightcore|mashup|cover|karaoke|reaction|lyrics?|8d audio|loop(?:ed)?|fan ?made|edit|remix|reverb)\b/i.test(String(track?.title || track?.cleanTitle || '')) || /\/shorts?\//i.test(String(track?.url || '')) || (Number(track?.durationMS || 0) > 0 && Number(track.durationMS) < 60_000);
+}
+
 function boundedIncrement(map, key, amount, maxEntries = 40) {
   if (!key) return;
   map[key] = Math.min(100, Number(map[key] || 0) + amount);
@@ -186,9 +198,15 @@ class MusicTaste {
     }
   }
 
-  async chooseAutoplay({ guildId, userId, currentTrack, candidates, historyUrls = [], allowAI = true }) {
+  async chooseAutoplay({ guildId, userId, currentTrack, candidates, historyUrls = [], historySongKeys = new Set(), allowAI = true }) {
     const played = new Set(historyUrls.filter(Boolean));
-    const fresh = (Array.isArray(candidates) ? candidates : []).filter((track) => track?.url && !played.has(track.url));
+    const previousSongs = new Set(historySongKeys);
+    const fresh = (Array.isArray(candidates) ? candidates : []).filter((track) => {
+      const identity = songIdentity(track);
+      if (!track?.url || played.has(track.url) || obviousVariant(track) || (identity && previousSongs.has(identity))) return false;
+      previousSongs.add(identity);
+      return true;
+    });
     if (!fresh.length) return null;
 
     const profileKey = this.key(guildId, userId);
@@ -207,7 +225,7 @@ class MusicTaste {
     return [...fresh].sort((a, b) => this.scoreTrack(profile, b) - this.scoreTrack(profile, a))[0];
   }
 
-  async prefetchAutoplay({ guildId, userId, currentTrack, history, historyUrls = [] }) {
+  async prefetchAutoplay({ guildId, userId, currentTrack, history, historyUrls = [], historySongKeys = new Set() }) {
     if (!guildId || !userId || !currentTrack?.extractor || !this.apiKey) return false;
     const key = this.key(guildId, userId);
     const profile = this.getProfile(guildId, userId);
@@ -216,19 +234,19 @@ class MusicTaste {
     const related = await currentTrack.extractor.getRelatedTracks(currentTrack, history);
     const candidates = related?.tracks || [];
     if (!candidates.length) return false;
-    const chosen = await this.chooseAutoplay({ guildId, userId, currentTrack, candidates, historyUrls });
+    const chosen = await this.chooseAutoplay({ guildId, userId, currentTrack, candidates, historyUrls, historySongKeys });
     if (!chosen) return false;
-    this.prefetched.set(key, { currentUrl: currentTrack.url, track: chosen, expiresAt: this.now() + 15 * 60 * 1000 });
+    this.prefetched.set(key, { currentUrl: currentTrack.url, track: chosen, identity: songIdentity(chosen), expiresAt: this.now() + 15 * 60 * 1000 });
     return true;
   }
 
-  takePrefetched({ guildId, userId, currentTrack, historyUrls = [] }) {
+  takePrefetched({ guildId, userId, currentTrack, historyUrls = [], historySongKeys = new Set() }) {
     const key = this.key(guildId, userId);
     const entry = this.prefetched.get(key);
     if (!entry) return null;
     this.prefetched.delete(key);
     if (!this.getProfile(guildId, userId)?.enabled) return null;
-    if (entry.expiresAt < this.now() || entry.currentUrl !== currentTrack?.url || historyUrls.includes(entry.track?.url)) return null;
+    if (entry.expiresAt < this.now() || entry.currentUrl !== currentTrack?.url || historyUrls.includes(entry.track?.url) || new Set(historySongKeys).has(entry.identity)) return null;
     return entry.track;
   }
 }
