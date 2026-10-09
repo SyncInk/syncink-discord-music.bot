@@ -110,7 +110,9 @@ const SUCCESS_COLOR = 0x2ecc71; // Neon Emerald
 const WARNING_COLOR = 0xf39c12; // Cyber Amber
 const ERROR_COLOR = 0xe74c3c; // Refused Crimson
 const BRAND_LOGO_URL = 'https://cdn.discordapp.com/emojis/1558021213547139103.png';
-const NOW_PLAYING_REFRESH_MS = Math.max(10_000, Math.min(60_000, Number(process.env.NOW_PLAYING_REFRESH_MS) || 15_000));
+// Discord message edits are rate-limited; five seconds keeps progress responsive
+// without sending one edit each second or making the player card flicker.
+const NOW_PLAYING_REFRESH_MS = Math.max(5_000, Math.min(10_000, Number(process.env.NOW_PLAYING_REFRESH_MS) || 5_000));
 
 const MAX_QUEUE_PREVIEW = 10;
 const MAX_PLAYLIST_LOAD = 25;
@@ -1034,15 +1036,15 @@ function buildControlsRow(queue) {
   return new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(BUTTON_IDS.PAUSE_RESUME)
-      .setStyle(isPaused ? ButtonStyle.Primary : ButtonStyle.Success)
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji(getButtonEmoji(isPaused ? EMOJIS.play : EMOJIS.pause, isPaused ? '▶️' : '⏸️')),
     new ButtonBuilder()
       .setCustomId(BUTTON_IDS.PREVIOUS)
-      .setStyle(ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji(getButtonEmoji(EMOJIS.previous, '⏮️')),
     new ButtonBuilder()
       .setCustomId(BUTTON_IDS.SKIP)
-      .setStyle(ButtonStyle.Primary)
+      .setStyle(ButtonStyle.Secondary)
       .setEmoji(getButtonEmoji(EMOJIS.skip, '⏭️')),
     new ButtonBuilder()
       .setCustomId(BUTTON_IDS.STOP)
@@ -1250,7 +1252,7 @@ function buildQueueEmbed(queue) {
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle('📜 Music Queue')
+    .setTitle(`${EMOJIS.queue} Music Queue`)
     .setFooter({ text: `${BRAND_NAME} • ${queue.size} track(s) waiting • Volume: ${queue.node.volume}%`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 
@@ -1301,8 +1303,8 @@ function buildQueueCard(queue, page, sessionId) {
   const controls = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:prev`).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(EMOJIS.previous, '⏮️')).setDisabled(safePage === 0),
     new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:next`).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(EMOJIS.arrow, '➡️')).setDisabled(safePage >= totalPages - 1),
-    new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:shuffle`).setStyle(ButtonStyle.Primary).setEmoji(getButtonEmoji(EMOJIS.syncinkmusic, '🔀')).setLabel('Shuffle').setDisabled(tracks.length < 2),
-    new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:clear`).setStyle(ButtonStyle.Danger).setEmoji(getButtonEmoji(EMOJIS.stop, '🗑️')).setLabel('Clear').setDisabled(tracks.length === 0),
+    new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:shuffle`).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(EMOJIS.syncinkmusic, '🔀')).setLabel('Shuffle').setDisabled(tracks.length < 2),
+    new ButtonBuilder().setCustomId(`syncink_queue_view:${sessionId}:clear`).setStyle(ButtonStyle.Secondary).setEmoji(getButtonEmoji(EMOJIS.stop, '🗑️')).setLabel('Clear').setDisabled(tracks.length === 0),
   );
   return new ContainerBuilder().setAccentColor(BRAND_COLOR)
     .addTextDisplayComponents(new TextDisplayBuilder().setContent(`### ${getEmojiToken(EMOJIS.queue, '📜')} SyncInk Radio · Queue\n**Now Playing**\n${currentText}`))
@@ -1329,7 +1331,7 @@ function buildSearchEmbed(query, platform, results) {
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle('🔍 Search Results')
+    .setTitle(`${EMOJIS.looking} Search Results`)
     .setDescription(`Query: **${truncate(query, 80)}**  •  Platform: ${platformEmoji} **${config.label}**`)
     .setFooter({ text: `${BRAND_NAME} • Choose a track number below or click Cancel`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
@@ -1365,7 +1367,7 @@ function buildSearchResultRows(sessionId, results) {
     row1.addComponents(
       new ButtonBuilder()
         .setCustomId(`syncink_search_pick:${sessionId}:${index}`)
-        .setStyle(ButtonStyle.Primary)
+        .setStyle(ButtonStyle.Secondary)
         .setLabel(String(index + 1))
         .setEmoji(getButtonEmoji(EMOJIS.approved, '▶️'))
     );
@@ -1378,7 +1380,7 @@ function buildSearchResultRows(sessionId, results) {
       row2.addComponents(
         new ButtonBuilder()
           .setCustomId(`syncink_search_pick:${sessionId}:${index}`)
-          .setStyle(ButtonStyle.Primary)
+          .setStyle(ButtonStyle.Secondary)
           .setLabel(String(index + 1))
           .setEmoji(getButtonEmoji(EMOJIS.approved, '▶️'))
       );
@@ -1389,7 +1391,7 @@ function buildSearchResultRows(sessionId, results) {
   const cancelRow = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`syncink_search_cancel:${sessionId}`)
-      .setStyle(ButtonStyle.Danger)
+      .setStyle(ButtonStyle.Secondary)
       .setLabel('Cancel')
       .setEmoji(getButtonEmoji(EMOJIS.refused, '❌'))
   );
@@ -1405,7 +1407,7 @@ function buildLyricsEmbed(query, result) {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`🎵 Lyrics: ${truncate(query, 70)}`)
+    .setTitle(`${EMOJIS.syncinkmusic} Lyrics: ${truncate(query, 70)}`)
     .setDescription(`**${truncate(query, 160)}**\n\n${preview}`)
     .setFooter({ text: result ? `${result.trackName || ''} ${result.artistName ? `- ${result.artistName}` : ''}`.trim() : BRAND_NAME, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
@@ -1415,7 +1417,7 @@ function buildHelpEmbed() {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${BRAND_NAME} • Command Guide`)
+    .setTitle(`${EMOJIS.syncink} ${BRAND_NAME} • Command Guide`)
     .setDescription('High-fidelity Discord radio & music playback system.')
     .addFields(
       {
@@ -1455,7 +1457,7 @@ function buildFavoritesEmbed(user, favorites) {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`💖 ${user.username}'s Favorites Playlist`)
+    .setTitle(`${EMOJIS.heart} ${user.username}'s Favorites Playlist`)
     .setDescription(
       lines.length
         ? `${lines.join('\n')}\n\n${EMOJIS.play} Use \`/playlist play\` to queue this entire playlist!`
@@ -1502,12 +1504,19 @@ async function safeReply(interaction, payload) {
 }
 
 function createNotificationEmbed(title, description, color = BRAND_COLOR) {
-  let customEmojiPrefix = '';
-  if (typeof title === 'string') {
-    const match = title.match(/^(<a?:[a-zA-Z0-9_]+:\d+>)\s*/);
-    if (match) {
-      customEmojiPrefix = match[1];
-    }
+  const titleText = String(title || '');
+  const failed = color === ERROR_COLOR || /\b(failed|failure|refused|denied|could not|unavailable|cancelled|canceled|expired|not found|no .+ found|nothing playing|queue is empty|playlist empty|already empty|no history)\b/i.test(titleText);
+  const completed = color === SUCCESS_COLOR || /\b(added|cleared|saved|resumed|paused|stopped|activated|enabled|online|connected|updated|downloaded|playing|removed|completed|started)\b/i.test(titleText);
+  const statusEmoji = failed ? EMOJIS.refused
+    : completed ? EMOJIS.approved
+      : color === WARNING_COLOR ? EMOJIS.warning : EMOJIS.syncink;
+  if (statusEmoji && typeof title === 'string') {
+    const withoutLeadingEmoji = title.replace(/^(?:<a?:[A-Za-z0-9_]{2,32}:\d+>|[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]\uFE0F?)\s*/u, '');
+    title = `${statusEmoji} ${withoutLeadingEmoji}`;
+  }
+
+  if (typeof description === 'string' && description.startsWith(statusEmoji)) {
+    description = description.slice(statusEmoji.length).trimStart();
   }
 
   const cleanTitle = sanitizeEmbedTitle(title) || BRAND_NAME;
@@ -1520,10 +1529,7 @@ function createNotificationEmbed(title, description, color = BRAND_COLOR) {
     .setTimestamp();
 
   if (description) {
-    const finalDesc = customEmojiPrefix ? `${customEmojiPrefix} ${description}` : description;
-    embed.setDescription(resolveEmojiMarkup(finalDesc));
-  } else if (customEmojiPrefix) {
-    embed.setDescription(resolveEmojiMarkup(customEmojiPrefix));
+    embed.setDescription(resolveEmojiMarkup(description));
   }
 
   return embed;
@@ -2083,7 +2089,7 @@ async function handlePlay(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle('➕ Track Added to Queue')
+      .setTitle(`${EMOJIS.approved} ${EMOJIS.added} Track Added to Queue`)
       .setDescription(
         `${EMOJIS.added} **${linkedTitle}**\n\n` +
         `• **Position in Queue:** \`#${queuePosition}\`\n` +
@@ -2286,7 +2292,7 @@ async function handleRadio(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle('📻 Genre Radio Online')
+      .setTitle(`${EMOJIS.approved} ${EMOJIS.radio} Genre Radio Online`)
       .setDescription(
         `Now tuned into **${station.name}**\n\n` +
         `• **Genre / Style:** \`${station.genre}\`\n` +
@@ -2326,7 +2332,7 @@ async function handleLofi(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle('📻 24/7 Lofi Stream Online')
+      .setTitle(`${EMOJIS.approved} ${EMOJIS.radio} 24/7 Lofi Stream Online`)
       .setDescription(
         `Now streaming **${lofiStation.name}**\n\n` +
         `• **Genre / Style:** \`${lofiStation.genre}\`\n` +
@@ -3162,7 +3168,7 @@ async function handleButtonInteraction(interaction) {
       const embed = new EmbedBuilder()
         .setColor(BRAND_COLOR)
         .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-        .setTitle('➕ Track Added to Queue')
+        .setTitle(`${EMOJIS.approved} ${EMOJIS.added} Track Added to Queue`)
         .setDescription(
           `${EMOJIS.added} **${linkedTitle}**\n\n` +
           `• **Position in Queue:** \`#${queuePosition}\`\n` +
