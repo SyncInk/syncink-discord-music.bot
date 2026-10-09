@@ -33,7 +33,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const http = require('node:http');
 const { monitorEventLoopDelay } = require('node:perf_hooks');
-const { exec } = require('node:child_process');
+const { exec, spawn } = require('node:child_process');
 const {
   Client,
   GatewayIntentBits,
@@ -313,6 +313,7 @@ const EMOJIS = {
   youtubemusic: process.env.EMOJI_YOUTUBE_MUSIC || '<:youtubemusic:1558020636322828298>',
   applemusic: process.env.EMOJI_APPLE_MUSIC || '<:applemusic:1558021838494367804>',
   apple_music: process.env.EMOJI_APPLE_MUSIC || '<:applemusic:1558021838494367804>',
+  apple: process.env.EMOJI_APPLE_MUSIC || '<:applemusic:1558021838494367804>',
   soundcloud: process.env.EMOJI_SOUNDCLOUD || '<:soundcloud:1558021492636123147>',
   deezer: process.env.EMOJI_DEEZER || '<:deezer:1558021038733004820>',
   tidal: process.env.EMOJI_TIDAL || '<:tidal:1558020823975989248>',
@@ -343,6 +344,42 @@ const FALLBACK_PLATFORM_EMOJIS = {
   youtube: '▶️', youtubemusic: '▶️', soundcloud: '☁️', spotify: '🟢', apple_music: '🍎', applemusic: '🍎',
   deezer: '💜', tidal: '⬛', arbitrary: '🎵',
 };
+
+const CUSTOM_EMOJI_TO_UNICODE = {
+  syncink: '📻',
+  syncinkmusic: '🎵',
+  PlayButton: '▶️',
+  pause: '⏸️',
+  SkipForward: '⏭️',
+  PreviousTrack: '⏮️',
+  delete: '⏹️',
+  Queue: '📜',
+  Playlist: '📑',
+  AddedtoQueue: '➕',
+  Radio: '📻',
+  time: '⏱️',
+  neonheart: '❤️',
+  syncvolume: '🔊',
+  members: '👥',
+  arrow: '➡️',
+  looking: '🔍',
+  approved: '✅',
+  refused: '❌',
+  syncwarning: '⚠️',
+  spotify: '🟢',
+  youtubemusic: '🔴',
+  applemusic: '🍎',
+  soundcloud: '🟠',
+  deezer: '🟣',
+  tidal: '🔷',
+};
+
+function sanitizeEmbedTitle(rawTitle) {
+  if (!rawTitle || typeof rawTitle !== 'string') return '';
+  return rawTitle.replace(/<a?:([a-zA-Z0-9_]+):\d+>/g, (_, name) => {
+    return CUSTOM_EMOJI_TO_UNICODE[name] || '';
+  }).replace(/\s+/g, ' ').trim();
+}
 
 const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates],
@@ -1264,7 +1301,7 @@ function buildQueueEmbed(queue) {
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.queue} Music Queue`)
+    .setTitle('📜 Music Queue')
     .setFooter({ text: `${BRAND_NAME} • ${queue.size} track(s) waiting • Volume: ${queue.node.volume}%`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 
@@ -1304,7 +1341,7 @@ function buildSearchEmbed(query, platform, results) {
   const embed = new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.looking} Search Results`)
+    .setTitle('🔍 Search Results')
     .setDescription(`Query: **${truncate(query, 80)}**  •  Platform: ${platformEmoji} **${config.label}**`)
     .setFooter({ text: `${BRAND_NAME} • Choose a track number below or click Cancel`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
@@ -1380,7 +1417,7 @@ function buildLyricsEmbed(query, result) {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.syncinkmusic} Lyrics: ${truncate(query, 70)}`)
+    .setTitle(`🎵 Lyrics: ${truncate(query, 70)}`)
     .setDescription(`**${truncate(query, 160)}**\n\n${preview}`)
     .setFooter({ text: result ? `${result.trackName || ''} ${result.artistName ? `- ${result.artistName}` : ''}`.trim() : BRAND_NAME, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
@@ -1390,7 +1427,7 @@ function buildHelpEmbed() {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.syncink} ${BRAND_NAME} • Command Guide`)
+    .setTitle(`${BRAND_NAME} • Command Guide`)
     .setDescription('High-fidelity Discord radio & music playback system.')
     .addFields(
       {
@@ -1430,7 +1467,7 @@ function buildFavoritesEmbed(user, favorites) {
   return new EmbedBuilder()
     .setColor(BRAND_COLOR)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(`${EMOJIS.heart} ${user.username}'s Favorites Playlist`)
+    .setTitle(`💖 ${user.username}'s Favorites Playlist`)
     .setDescription(
       lines.length
         ? `${lines.join('\n')}\n\n${EMOJIS.play} Use \`/playlist play\` to queue this entire playlist!`
@@ -1460,15 +1497,28 @@ async function safeReply(interaction, payload) {
 }
 
 function createNotificationEmbed(title, description, color = BRAND_COLOR) {
+  let customEmojiPrefix = '';
+  if (typeof title === 'string') {
+    const match = title.match(/^(<a?:[a-zA-Z0-9_]+:\d+>)\s*/);
+    if (match) {
+      customEmojiPrefix = match[1];
+    }
+  }
+
+  const cleanTitle = sanitizeEmbedTitle(title) || BRAND_NAME;
+
   const embed = new EmbedBuilder()
     .setColor(color)
     .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-    .setTitle(title)
+    .setTitle(cleanTitle)
     .setFooter({ text: `${BRAND_NAME} • Pure Audio Experience`, iconURL: BRAND_LOGO_URL })
     .setTimestamp();
 
   if (description) {
-    embed.setDescription(description);
+    const finalDesc = customEmojiPrefix ? `${customEmojiPrefix} ${description}` : description;
+    embed.setDescription(finalDesc);
+  } else if (customEmojiPrefix) {
+    embed.setDescription(customEmojiPrefix);
   }
 
   return embed;
@@ -1996,9 +2046,9 @@ async function handlePlay(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle(`${EMOJIS.added} Track Added to Queue`)
+      .setTitle('➕ Track Added to Queue')
       .setDescription(
-        `**${linkedTitle}**\n\n` +
+        `${EMOJIS.added} **${linkedTitle}**\n\n` +
         `• **Position in Queue:** \`#${queuePosition}\`\n` +
         `• **Artist:** ${author}\n` +
         `• **Duration:** \`${duration}\`\n` +
@@ -2196,7 +2246,7 @@ async function handleRadio(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle(`${EMOJIS.radio} Genre Radio Online`)
+      .setTitle('📻 Genre Radio Online')
       .setDescription(
         `Now tuned into **${station.name}**\n\n` +
         `• **Genre / Style:** \`${station.genre}\`\n` +
@@ -2236,7 +2286,7 @@ async function handleLofi(interaction) {
     const embed = new EmbedBuilder()
       .setColor(BRAND_COLOR)
       .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-      .setTitle(`${EMOJIS.radio} 24/7 Lofi Stream Online`)
+      .setTitle('📻 24/7 Lofi Stream Online')
       .setDescription(
         `Now streaming **${lofiStation.name}**\n\n` +
         `• **Genre / Style:** \`${lofiStation.genre}\`\n` +
@@ -2363,15 +2413,26 @@ async function handleTaste(interaction) {
 }
 
 async function handleUpdate(interaction) {
-  // Check permission: Administrator or Guild Owner
+  let isAppOwner = false;
+  try {
+    let app = interaction.client.application;
+    if (!app?.owner && app?.fetch) {
+      app = await app.fetch();
+    }
+    const appOwnerId = app?.owner?.id || app?.owner?.ownerId;
+    if (appOwnerId && appOwnerId === interaction.user.id) {
+      isAppOwner = true;
+    }
+  } catch {}
+
   const isOwner = interaction.guild && interaction.guild.ownerId === interaction.user.id;
   const isAdmin = interaction.memberPermissions && interaction.memberPermissions.has(PermissionFlagsBits.Administrator);
 
-  if (!isOwner && !isAdmin) {
+  if (!isOwner && !isAdmin && !isAppOwner) {
     await safeReplyEmbed(
       interaction,
       '⛔ Permission Denied',
-      'Only the server administrator or server owner can run `/update`.',
+      'Only the server administrator, server owner, or bot owner can run `/update`.',
       ERROR_COLOR,
       true,
     );
@@ -2421,23 +2482,46 @@ async function handleUpdate(interaction) {
       return;
     }
 
+    const needsNpmInstall = output.includes('package.json');
+
     await interaction.editReply({
       embeds: [
         createNotificationEmbed(
           '🚀 Update Downloaded Successfully',
-          `Pulled latest updates from GitHub!\n\`\`\`\n${truncate(output, 500)}\n\`\`\`\n*Installing updated packages (mediaplex & @evan/opus) & restarting...*`,
+          `Pulled latest updates from GitHub!\n\`\`\`\n${truncate(output, 500)}\n\`\`\`\n${needsNpmInstall ? '*Installing updated packages & restarting...*' : '*Restarting bot to load fresh code...*'}`,
           SUCCESS_COLOR,
         ),
       ],
     });
 
-    exec('npm install --omit=dev', { cwd: __dirname }, (npmErr) => {
-      if (npmErr) console.warn('[Auto-Update npm install]', npmErr.message);
-      setTimeout(() => {
-        console.log('[Auto-Update] Restarting process to load fresh code...');
+    const triggerRestart = () => {
+      console.log('[Auto-Update] Restarting process to load fresh code...');
+      if (process.env.pm_id != null || process.env.PM2_HOME != null) {
         process.exit(0);
-      }, 2000);
-    });
+      } else {
+        try {
+          const child = spawn(process.argv[0], process.argv.slice(1), {
+            detached: true,
+            stdio: 'inherit',
+            cwd: __dirname,
+            env: process.env,
+          });
+          child.unref();
+        } catch (e) {
+          console.error('[Auto-Update Spawn Error]', e);
+        }
+        process.exit(0);
+      }
+    };
+
+    if (needsNpmInstall) {
+      exec('npm install --omit=dev', { cwd: __dirname, timeout: 60000 }, (npmErr) => {
+        if (npmErr) console.warn('[Auto-Update npm install]', npmErr.message);
+        setTimeout(triggerRestart, 2000);
+      });
+    } else {
+      setTimeout(triggerRestart, 1500);
+    }
   });
 }
 
@@ -2647,6 +2731,11 @@ async function handleCommandInteraction(interaction) {
 
     if (interaction.commandName === 'taste') {
       await handleTaste(interaction);
+      return;
+    }
+
+    if (interaction.commandName === 'update') {
+      await handleUpdate(interaction);
       return;
     }
 
@@ -2914,11 +3003,6 @@ async function handleCommandInteraction(interaction) {
       await handleFilterCommand(interaction, queue);
       return;
     }
-
-    if (interaction.commandName === 'update') {
-      await handleUpdate(interaction);
-      return;
-    }
   } catch (error) {
     console.error('[Interaction Error]', error);
     await safeReplyEmbed(interaction, `${EMOJIS.refused} Error`, `An error occurred: ${error.message || error}`, ERROR_COLOR, true);
@@ -2998,9 +3082,9 @@ async function handleButtonInteraction(interaction) {
       const embed = new EmbedBuilder()
         .setColor(BRAND_COLOR)
         .setAuthor({ name: BRAND_NAME, iconURL: BRAND_LOGO_URL })
-        .setTitle(`${EMOJIS.added} Track Added to Queue`)
+        .setTitle('➕ Track Added to Queue')
         .setDescription(
-          `**${linkedTitle}**\n\n` +
+          `${EMOJIS.added} **${linkedTitle}**\n\n` +
           `• **Position in Queue:** \`#${queuePosition}\`\n` +
           `• **Artist:** ${author}\n` +
           `• **Duration:** \`${duration}\`\n` +
