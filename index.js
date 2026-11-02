@@ -1565,6 +1565,26 @@ async function ensureVoiceAndPermissions(interaction) {
     return { ok: false, channel: null };
   }
 
+  // Protection: If the bot is already in another voice channel with active listeners or music playing,
+  // do not hop channels and disrupt listeners.
+  const botVoiceChannel = interaction.guild?.members?.me?.voice?.channel;
+  if (botVoiceChannel && botVoiceChannel.id !== voiceChannel.id) {
+    const humanListeners = botVoiceChannel.members?.filter(m => !m.user?.bot)?.size || 0;
+    const queue = player?.nodes?.get(interaction.guildId);
+    const isPlaying = queue && (queue.isPlaying() || queue.currentTrack);
+
+    if (humanListeners > 0 || isPlaying) {
+      await safeReplyEmbed(
+        interaction,
+        `${EMOJIS.warning} Already Active in Another Channel`,
+        `I am currently playing music in **${botVoiceChannel.name}** (<#${botVoiceChannel.id}>) for other listeners.\n\nPlease join <#${botVoiceChannel.id}> to listen together or add songs to the queue!`,
+        WARNING_COLOR,
+        true
+      );
+      return { ok: false, channel: null };
+    }
+  }
+
   return { ok: true, channel: voiceChannel };
 }
 
