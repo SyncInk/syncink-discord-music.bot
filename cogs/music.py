@@ -1659,10 +1659,10 @@ class Music(commands.Cog):
 
     def _music_allowed_guild_id(self) -> Optional[int]:
         """Keep music commands in configured guild if specified; otherwise open across servers."""
-        raw_guild_id = os.getenv("MUSIC_ALLOWED_GUILD_ID") or os.getenv("TARGET_GUILD_ID")
-        if raw_guild_id and raw_guild_id.strip():
+        raw_guild_id = os.getenv("MUSIC_ALLOWED_GUILD_ID")
+        if raw_guild_id and raw_guild_id.strip() and raw_guild_id.strip() != "0":
             try:
-                return int(raw_guild_id)
+                return int(raw_guild_id.strip())
             except (TypeError, ValueError):
                 pass
         return None
@@ -1716,12 +1716,20 @@ class Music(commands.Cog):
         return True
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        # 1. Guild check (if configured)
-        allowed_guild = self._music_allowed_guild_id()
-        if allowed_guild and (not interaction.guild_id or interaction.guild_id != allowed_guild):
+        # 0. Require guild context
+        if not interaction.guild:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Music commands can only be used in a Discord server.", ephemeral=True)
             return False
 
-        # 2. Channel check (if configured)
+        # 1. Guild check (only if explicitly configured)
+        allowed_guild = self._music_allowed_guild_id()
+        if allowed_guild and interaction.guild_id != allowed_guild:
+            if not interaction.response.is_done():
+                await interaction.response.send_message("Music commands are disabled on this server.", ephemeral=True)
+            return False
+
+        # 2. Channel check (only if explicitly configured)
         if not self._is_allowed_channel(interaction.channel_id):
             chan_id = get_music_command_channel_id()
             embed = discord.Embed(
@@ -1734,7 +1742,7 @@ class Music(commands.Cog):
                 await interaction.followup.send(embed=embed, ephemeral=True)
             return False
 
-        # 3. Booster role restriction (if configured)
+        # 3. Booster role restriction (only if explicitly configured)
         if not self._is_booster_or_admin(interaction.user, interaction.guild):
             role_id = get_music_booster_role_id()
             embed = discord.Embed(
@@ -1746,8 +1754,6 @@ class Music(commands.Cog):
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
             return False
-
-        return True
 
         return True
 
@@ -1837,7 +1843,8 @@ class Music(commands.Cog):
         return sent_msg
 
     async def cog_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
-        if interaction.guild_id and interaction.guild_id != self._music_allowed_guild_id():
+        allowed_guild = self._music_allowed_guild_id()
+        if allowed_guild and interaction.guild_id and interaction.guild_id != allowed_guild:
             return
         orig = getattr(error, "original", error)
         if isinstance(error, app_commands.CheckFailure) or isinstance(orig, app_commands.CheckFailure):

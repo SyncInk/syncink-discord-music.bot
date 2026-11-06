@@ -151,12 +151,15 @@ def main():
             if isinstance(orig, discord.errors.NotFound) and orig.code == 10062:
                 return
 
-            log.error(f"Exception in app command {interaction.command}: {error}")
-            traceback.print_exception(type(error), error, error.__traceback__)
+            if isinstance(error, discord.app_commands.CheckFailure) or isinstance(orig, discord.app_commands.CheckFailure):
+                return
 
             cog = interaction.command.binding if interaction.command else None
             if cog and hasattr(cog, "cog_app_command_error"):
                 return
+
+            log.error(f"Exception in app command {interaction.command}: {error}")
+            traceback.print_exception(type(error), error, error.__traceback__)
 
             try:
                 err_msg = (
