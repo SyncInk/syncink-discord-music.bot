@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR" || exit 1
 
 echo "=================================================="
-echo "    Starting SyncInk Radio & Moderation Bot       "
+echo "    Starting SyncInk Radio Bot (Keepalive)        "
 echo "=================================================="
 
 export SYNCINK_RUNNER=1

@@ -42,7 +42,7 @@ class SyncInkRadioBot(commands.Bot):
         
     async def setup_hook(self):
         """Initializes dependencies, DB, background tasks, and loads cogs."""
-        log.info("Setting up SyncInk Radio & Moderation Engine...")
+        log.info("Setting up SyncInk Radio Engine...")
         
         # Load localizations
         i18n.load_locales()
@@ -82,16 +82,6 @@ class SyncInkRadioBot(commands.Bot):
         except Exception as e:
             log.warning(f"Failed to sync slash commands: {e}")
 
-        # Command rate limiter check
-        @self.check
-        async def global_command_rate_limit_check(ctx: commands.Context) -> bool:
-            try:
-                from services.automod_service import AutomodService
-                return await AutomodService.check_command_rate_limit(ctx)
-            except Exception as e:
-                log.error(f"Error in global_command_rate_limit_check: {e}")
-                return True
-
     async def on_message(self, message: discord.Message):
         """Global message processor; ignores DMs and bots."""
         if message.guild is None or message.author.bot:
@@ -100,7 +90,7 @@ class SyncInkRadioBot(commands.Bot):
 
     async def on_ready(self):
         log.info(f"Logged in as {self.user} (ID: {self.user.id})")
-        log.info("SyncInk Radio & Moderation Platform is online and ready.")
+        log.info("SyncInk Radio Platform is online and ready.")
         try:
             activity = discord.Activity(
                 type=discord.ActivityType.listening,
@@ -126,12 +116,7 @@ class SyncInkRadioBot(commands.Bot):
             return
 
         if isinstance(error, (commands.MissingPermissions, commands.NotOwner)):
-            try:
-                from services.automod_service import AutomodService
-                cmd_name = ctx.command.name if ctx.command else "admin_command"
-                await AutomodService.handle_unauthorized_command(ctx, cmd_name)
-            except Exception as e:
-                log.error(f"Error handling unauthorized command in on_command_error: {e}")
+            await ctx.send(embed=ErrorEmbed("You do not have permission to execute this command."), delete_after=5)
             return
 
         if isinstance(error, commands.CheckFailure):

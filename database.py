@@ -98,24 +98,8 @@ class DatabaseManager:
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS guild_settings (
                     guild_id INTEGER PRIMARY KEY,
-                    welcome_channel_id INTEGER,
-                    log_channel_id INTEGER,
-                    autorole_id INTEGER,
-                    log_channel_moderation INTEGER,
-                    automod_log_channel_id INTEGER,
                     music_channel_id INTEGER,
                     dj_role_id INTEGER
-                );
-            """)
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS mod_cases (
-                    case_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    guild_id INTEGER NOT NULL,
-                    user_id INTEGER NOT NULL,
-                    mod_id INTEGER NOT NULL,
-                    action TEXT NOT NULL,
-                    reason TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
             cursor.execute("""

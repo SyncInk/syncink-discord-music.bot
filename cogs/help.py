@@ -68,24 +68,25 @@ class HelpPaginationView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
-            await interaction.response.send_message("Use `?help` or `/help` to open your own guide!", ephemeral=True)
+            await interaction.response.send_message("Use `/help` or `?help` to open your own guide!", ephemeral=True)
             return False
         return True
 
 
 class Help(commands.Cog):
-    """Categorized command guide with interactive dropdown and pagination."""
+    """Categorized command guide with interactive dropdown and pagination for SyncInk Radio."""
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
 
     def _build_overview_page(self, categories: list[tuple[str, str, str]], total_pages: int) -> discord.Embed:
         embed = discord.Embed(
-            title=f"{Emojis.SYNCINK_MUSIC} SyncInk Radio & Moderation Guide",
+            title=f"{Emojis.SYNCINK_MUSIC} SyncInk Radio Guide",
             color=HELP_COLOR
         )
         desc_lines = [
-            "Welcome to the official **SyncInk Radio & Moderation Bot**.\n",
+            "Welcome to the official **SyncInk Radio & Music Bot**.\n",
+            "High-fidelity 48kHz Opus streaming, 24/7 world radio, AI AutoPlay, and interactive player card.\n",
             "Commands support both Discord `/` slash commands and `?` prefix invocations.\n"
         ]
         for cat_emoji, cat_name, cat_desc in categories:
@@ -109,42 +110,39 @@ class Help(commands.Cog):
 
     def _get_help_data(self) -> tuple[list[tuple[str, str, str]], list[tuple[str, list[tuple[str, str]]]]]:
         categories_overview = [
-            (Emojis.RADIO, "Radio & Music Playback", "High-fidelity Opus streaming, 24/7 world radio, AI AutoPlay, queue management, and interactive controls."),
-            (Emojis.MODERATION, "Staff Moderation", "Staff disciplinary actions (warn, timeout/mute, kick, ban, purge) and persistent case tracking.")
+            (Emojis.PLAY_BUTTON, "Playback & Streaming", "Play audio from YouTube, Spotify, and SoundCloud with instant playback controls."),
+            (Emojis.QUEUE, "Queue & Audio Controls", "Manage queue order, real-time player card, shuffle, volume, and repeat modes."),
+            (Emojis.RADIO, "24/7 Radio & AI AutoPlay", "Stream global live radio stations by country flag and configure personalized AI AutoPlay.")
         ]
 
-        music_cmds = [
+        playback_cmds = [
             ("/play <query>", "Stream audio from YouTube, Spotify, or SoundCloud directly into voice."),
-            ("/radio [country] [station]", "Browse and stream 24/7 world live radio stations by country flag/name."),
-            ("/lofi", "Instantly start 24/7 high-fidelity Lo-Fi beats streaming."),
-            ("/autoplay", "Configure intelligent AI AutoPlay recommendations, genres, moods, and languages."),
-            ("/queue", "Display current track queue with interactive pagination controls."),
-            ("/nowplaying (/np)", "Display detailed real-time player card with progress bar and upcoming tracks."),
+            ("/search <query>", "Interactively search and select from top 5 audio results."),
+            ("/pause / /resume", "Pause or resume current playback."),
             ("/skip", "Skip currently playing track."),
             ("/previous", "Play previously played track."),
-            ("/pause / /resume", "Pause or resume voice playback."),
-            ("/stop / /leave", "Stop playback, clear queue, and disconnect bot from voice."),
-            ("/volume <1-150>", "Adjust audio playback volume."),
-            ("/loop <off|track|queue>", "Toggle repeat mode for current track or entire queue."),
-            ("/shuffle", "Randomly shuffle upcoming tracks in queue."),
-            ("/search <query>", "Interactively search and select from top 5 audio results.")
+            ("/replay", "Restart current track from the beginning."),
+            ("/stop / /leave", "Stop playback, clear queue, and disconnect bot from voice.")
         ]
 
-        mod_cmds = [
-            ("?warn / /warn <member> [reason]", "Issue an official warning, DM the member, and log case."),
-            ("?timeout / ?mute <member> <mins> [reason]", "Temporarily restrict member chat access."),
-            ("?untimeout / ?unmute <member> [reason]", "Remove timeout restriction from member."),
-            ("?kick <member> [reason]", "Kick member from the server."),
-            ("?ban <member> [reason]", "Permanently ban member from the server."),
-            ("?unban <user_id> [reason]", "Unban member by user ID."),
-            ("?purge / ?clear <1-100>", "Bulk delete messages in the channel."),
-            ("?modlogs [@member]", "View member infraction history or latest server cases."),
-            ("?case <case_id>", "View full details and audit timestamps for a case.")
+        queue_cmds = [
+            ("/queue", "Display current track queue with interactive pagination controls."),
+            ("/nowplaying (/np)", "Display real-time player card with live progress bar and upcoming tracks."),
+            ("/volume <1-150>", "Adjust audio playback volume."),
+            ("/loop <off|track|queue>", "Toggle repeat mode for current track or entire queue."),
+            ("/shuffle", "Randomly shuffle upcoming tracks in queue.")
+        ]
+
+        radio_cmds = [
+            ("/radio [country] [station]", "Browse and stream 24/7 world live radio stations by country flag/name."),
+            ("/lofi", "Instantly start 24/7 high-fidelity Lo-Fi beats streaming."),
+            ("/autoplay", "Configure intelligent AI AutoPlay recommendations, genres, moods, and languages.")
         ]
 
         category_details = [
-            (f"{Emojis.RADIO} Radio & Music Playback", music_cmds),
-            (f"{Emojis.MODERATION} Staff Moderation Suite", mod_cmds)
+            (f"{Emojis.PLAY_BUTTON} Playback & Streaming", playback_cmds),
+            (f"{Emojis.QUEUE} Queue & Audio Controls", queue_cmds),
+            (f"{Emojis.RADIO} 24/7 Radio & AI AutoPlay", radio_cmds)
         ]
 
         return categories_overview, category_details
@@ -164,22 +162,23 @@ class Help(commands.Cog):
             discord.SelectOption(
                 label="Overview",
                 value="0",
-                description="General bot introduction & categories",
+                description="General bot introduction & features",
                 emoji=EmojiPartials.QUESTION
             )
         ]
 
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO]
+        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ"]
+
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
-            emoji = EmojiPartials.RADIO if i == 1 else EmojiPartials.MODERATION
-            desc = "Music & Radio commands" if i == 1 else "Staff moderation actions"
-            label = "Radio & Music" if i == 1 else "Staff Moderation"
             select_options.append(
                 discord.SelectOption(
-                    label=label,
+                    label=labels_list[i - 1],
                     value=str(i),
-                    description=desc,
-                    emoji=emoji
+                    description=descs_list[i - 1],
+                    emoji=emojis_list[i - 1]
                 )
             )
 
@@ -196,22 +195,23 @@ class Help(commands.Cog):
             discord.SelectOption(
                 label="Overview",
                 value="0",
-                description="General bot introduction & categories",
+                description="General bot introduction & features",
                 emoji=EmojiPartials.QUESTION
             )
         ]
 
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO]
+        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ"]
+
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
-            emoji = EmojiPartials.RADIO if i == 1 else EmojiPartials.MODERATION
-            desc = "Music & Radio commands" if i == 1 else "Staff moderation actions"
-            label = "Radio & Music" if i == 1 else "Staff Moderation"
             select_options.append(
                 discord.SelectOption(
-                    label=label,
+                    label=labels_list[i - 1],
                     value=str(i),
-                    description=desc,
-                    emoji=emoji
+                    description=descs_list[i - 1],
+                    emoji=emojis_list[i - 1]
                 )
             )
 

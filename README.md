@@ -1,6 +1,6 @@
-# SyncInk Radio & Moderation Bot 🎵🛡️
+# SyncInk Radio Bot 🎵📻
 
-High-fidelity Discord Radio, Music Playback, AI DJ AutoPlay, and Staff Moderation engine for the **SyncInk Ecosystem**.
+High-fidelity Discord Radio, Music Playback, and AI DJ AutoPlay engine for the **SyncInk Ecosystem**.
 
 Built with `discord.py`, native Opus hardware encoding, zero-buffer socket reconnections, and Discord Components V2 UI.
 
@@ -8,21 +8,14 @@ Built with `discord.py`, native Opus hardware encoding, zero-buffer socket recon
 
 ## 🌟 Key Features
 
-### 🎧 Radio & Music Playback
 * **48kHz Native Opus Streaming**: Hardware-aligned 48kHz stereo 192kbps playback with direct Opus container extraction (`bestaudio[ext=webm]`, Format 251) eliminating CPU resampling jitter.
 * **Global 24/7 Live Radio**: Built-in worldwide radio directory browsing by country flags and station search.
-* **Interactive Components V2 Player Card**: Real-time progress bar, dynamic thumbnail accessories, and 2-row button controls:
-  * Row 1: `Previous`, `Pause/Resume`, `Next`, `Repeat`, `Stop`
-  * Row 2: `Queue`, `Shuffle`, `Radio`
+* **Interactive Components V2 Player Card**: Real-time progress bar, dynamic thumbnail accessories, and 2-row button controls using authentic custom server emojis:
+  * **Row 1**: `Previous`, `Pause/Resume`, `Next`, `Repeat`, `Stop`
+  * **Row 2**: `Queue`, `Shuffle`, `Radio`
 * **AI DJ & AutoPlay**: Intelligent multi-tiered recommendations (Gemini, OpenAI, Heuristic Clusters), hard language isolation, mood & genre preferences, and manual play taste learning.
 * **Interactive Search**: `/search <query>` with multi-option interactive picker.
-
-### 🛡️ Staff Moderation Suite
-* **Full Disciplinary Suite**: `warn`, `timeout` / `mute`, `untimeout` / `unmute`, `kick`, `ban`, `unban`, and `purge` / `clear`.
-* **Persistent Case Logging**: Automatically records every moderation case with timestamp, target, moderator, and reason into PostgreSQL or local SQLite.
-* **Case History & Registry**: Inspect user infractions with `?modlogs @member` and full case records with `?case <id>`.
-* **Disciplinary DM Alerts**: Automatically and safely notifies warned/timed-out members via direct message.
-* **Security & Rate Limiting**: Progressive warning ladder for unauthorized command executions and flood protection.
+* **Dual Database Persistence**: Automatic local SQLite storage (`./data/syncink_radio.db`) or optional cloud PostgreSQL.
 
 ---
 
@@ -44,7 +37,7 @@ Copy `.env.example` to `.env`:
 ```bash
 cp .env.example .env
 ```
-Fill in your `DISCORD_TOKEN`. `DATABASE_URL` is optional (defaults to `./data/syncink_radio.db`).
+Fill in your `DISCORD_TOKEN`.
 
 ### 4. Running the Bot
 * **Normal**: `python main.py`
@@ -55,32 +48,26 @@ Fill in your `DISCORD_TOKEN`. `DATABASE_URL` is optional (defaults to `./data/sy
 
 ## 📜 Commands Reference
 
-### Radio & Music (`/`)
+### Playback & Streaming (`/` or `?`)
 * `/play <query>` - Play audio from YouTube, Spotify, or SoundCloud
-* `/radio [country] [station]` - 24/7 live world radio streams
-* `/lofi` - Instant 24/7 high-fidelity Lo-Fi beats
-* `/autoplay` - Open AutoPlay Control Center
-* `/queue` - View upcoming tracks with pagination
-* `/nowplaying` (`/np`) - Real-time player card
+* `/search <query>` - Search and select from top 5 audio results
+* `/pause` / `/resume` - Toggle pause
 * `/skip` - Skip current track
 * `/previous` - Return to previous track
-* `/pause` / `/resume` - Toggle pause
+* `/replay` - Restart current track
 * `/stop` / `/leave` - Disconnect bot & clear queue
+
+### Queue & Sound Controls
+* `/queue` - View upcoming tracks with interactive pagination
+* `/nowplaying` (`/np`) - Real-time player card with progress bar
 * `/volume <1-150>` - Adjust playback volume
 * `/loop <off|track|queue>` - Repeat modes
-* `/shuffle` - Shuffle queue
-* `/search <query>` - Search top 5 results
+* `/shuffle` - Randomly shuffle queue
 
-### Moderation (`?` or `/`)
-* `?warn <member> [reason]` - Issue warning & DM member
-* `?timeout` / `?mute <member> <mins> [reason]` - Temporarily timeout member
-* `?untimeout` / `?unmute <member> [reason]` - Remove member timeout
-* `?kick <member> [reason]` - Kick member from server
-* `?ban <member> [reason]` - Permanently ban member
-* `?unban <user_id> [reason]` - Unban member by ID
-* `?purge` / `?clear <1-100>` - Bulk delete messages
-* `?modlogs [@member]` - View infractions or server registry
-* `?case <case_id>` - View specific case details
+### 24/7 Global Radio & AI AutoPlay
+* `/radio [country] [station]` - Stream live world radio stations
+* `/lofi` - Instant 24/7 high-fidelity Lo-Fi beats
+* `/autoplay` - Open AutoPlay Control Center with genre/language preferences
 
 ---
 
