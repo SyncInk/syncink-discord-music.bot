@@ -2093,6 +2093,11 @@ class Music(commands.Cog):
             audio_source = self.service.create_audio_source(track, volume=queue.volume)
         except Exception as src_err:
             log.error(f"[Audio Source Error] {src_err}")
+            if queue.voice_client and (queue.voice_client.is_playing() or queue.voice_client.is_paused()):
+                try:
+                    queue.voice_client.stop()
+                except Exception:
+                    pass
             if track.is_radio:
                 queue.active_radio_station = None
                 queue.active_radio_station_info = None
@@ -2330,6 +2335,15 @@ class Music(commands.Cog):
                         # Gapless prefetch: queue the next song in background so transitions are 0s delay
                         AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
                         return
+                    else:
+                        # play_track already initiated next advance; do not fall through to send end of queue!
+                        return
+
+        # Double check: if voice client is still playing or queue has tracks, DO NOT declare end of queue!
+        if queue.voice_client and (queue.voice_client.is_playing() or queue.voice_client.is_paused()):
+            return
+        if queue.tracks:
+            return
 
         # End of queue reached for normal music
         queue.current_track = None
@@ -3083,6 +3097,31 @@ class Music(commands.Cog):
         queue.voice_client.stop()
         await interaction.response.send_message(f"{Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", ephemeral=True)
 
+    @app_commands.command(name="invite", description="Get the official bot invite link to add SyncInk Radio to your server.")
+    async def slash_invite(self, interaction: discord.Interaction):
+        client_id = self.bot.user.id if self.bot.user else 1500567606648897819
+        invite_url = f"https://discord.com/oauth2/authorize?client_id={client_id}&permissions=36700160&scope=bot%20applications.commands"
+        embed = discord.Embed(
+            title=f"{Emojis.SYNCINK_MUSIC} Invite SyncInk Radio",
+            description=(
+                "Bring high-fidelity 24/7 radio, YouTube, Spotify, and AI AutoPlay to your server!\n\n"
+                f"{Emojis.APPROVED} **Permissions Included:** Voice Connect, Speak, Embed Links, External Emojis\n"
+                f"{Emojis.CHECK_YES} **Installation Scope:** Guild Server Bot + Slash Commands\n\n"
+                f"[**Click here to invite SyncInk Radio**]({invite_url})"
+            ),
+            color=BRAND_COLOR
+        )
+        embed.set_footer(text="SyncInk Radio Platform • 24/7 Streaming")
+        view = discord.ui.View()
+        btn = discord.ui.Button(
+            label="Add to Discord Server",
+            style=discord.ButtonStyle.link,
+            url=invite_url,
+            emoji=EmojiPartials.SYNCINK_MUSIC
+        )
+        view.add_item(btn)
+        await interaction.response.send_message(embed=embed, view=view)
+
     # ==========================================
     # PREFIX COMMANDS (?)
     # ==========================================
@@ -3438,6 +3477,28 @@ class Music(commands.Cog):
         await ctx.send(f"{Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
+
+    @commands.command(name="invite", description="Get the official bot invite link to add SyncInk Radio to any server.")
+    async def cmd_invite(self, ctx: commands.Context):
+        client_id = self.bot.user.id if self.bot.user else 1500567606648897819
+        invite_url = f"https://discord.com/oauth2/authorize?client_id={client_id}&permissions=36700160&scope=bot%20applications.commands"
+        embed = discord.Embed(
+            title=f"{Emojis.SYNCINK_MUSIC} Invite SyncInk Radio",
+            description=(
+                "Bring high-fidelity 24/7 radio, YouTube, Spotify, and AI AutoPlay to your server!\n\n"
+                f"[**Click here to invite SyncInk Radio**]({invite_url})"
+            ),
+            color=BRAND_COLOR
+        )
+        view = discord.ui.View()
+        btn = discord.ui.Button(
+            label="Add to Discord Server",
+            style=discord.ButtonStyle.link,
+            url=invite_url,
+            emoji=EmojiPartials.SYNCINK_MUSIC
+        )
+        view.add_item(btn)
+        await ctx.send(embed=embed, view=view)
 
 async def setup(bot: commands.Bot):
     await bot.add_cog(Music(bot))

@@ -92,6 +92,11 @@ class SyncInkRadioBot(commands.Bot):
         log.info(f"Logged in as {self.user} (ID: {self.user.id})")
         log.info("SyncInk Radio Platform is online and ready.")
         try:
+            from utils.emoji_manager import EmojiManager
+            await EmojiManager.sync_application_emojis(self)
+        except Exception as ee:
+            log.warning(f"EmojiManager sync error: {ee}")
+        try:
             activity = discord.Activity(
                 type=discord.ActivityType.listening,
                 name="/play | SyncInk Radio & AI DJ"

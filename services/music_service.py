@@ -332,7 +332,7 @@ class MusicService:
     def __init__(self):
         self.queues: Dict[int, GuildMusicQueue] = {}
         self.ydl_opts = {
-            'format': 'bestaudio[ext=webm]/bestaudio[ext=m4a]/bestaudio/best',
+            'format': 'bestaudio/bestaudio*/best/ba/b',
             'noplaylist': True,
             'quiet': True,
             'no_warnings': True,
@@ -341,11 +341,17 @@ class MusicService:
             'source_address': '0.0.0.0',
             'skip_download': True,
             'socket_timeout': 15,
+            'http_headers': {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language': 'en-us,en;q=0.5',
+            },
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['android', 'web', 'mweb'],
+                    'player_client': ['mweb', 'web', 'android', 'ios'],
                 }
             },
+            'js_runtimes': {'node': {}},
         }
 
     @classmethod
@@ -422,35 +428,43 @@ class MusicService:
         opts = dict(self.ydl_opts)
         opts['extract_flat'] = 'in_playlist'
 
-        def _extract():
+        def _extract(opts_to_use):
             if yt_dlp is None:
                 raise RuntimeError("yt-dlp is not installed. An administrator can run `?fixmusic` or `pip install yt-dlp` to enable audio playback.")
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with yt_dlp.YoutubeDL(opts_to_use) as ydl:
                 return ydl.extract_info(search_query, download=False)
 
         info = None
         try:
-            info = await loop.run_in_executor(None, _extract)
+            info = await loop.run_in_executor(None, _extract, opts)
         except Exception as primary_err:
             log.warning(f"[Music Extract] Primary extraction failed for '{search_query}': {primary_err}")
-            # If search query is not a direct URL and not soundcloud, attempt soundcloud fallback
-            if not query.startswith("http://") and not query.startswith("https://") and detected_platform != "soundcloud":
-                log.info(f"[Music Extract] Attempting SoundCloud fallback for: {query}")
-                sc_query = f"scsearch{limit}:{query}"
-                def _sc_fallback():
-                    sc_opts = dict(self.ydl_opts)
-                    sc_opts.pop('extractor_args', None)
-                    sc_opts['extract_flat'] = 'in_playlist'
-                    with yt_dlp.YoutubeDL(sc_opts) as ydl:
-                        return ydl.extract_info(sc_query, download=False)
-                try:
-                    info = await loop.run_in_executor(None, _sc_fallback)
-                    detected_platform = "soundcloud"
-                except Exception as sc_err:
-                    log.error(f"[Music Extract] SoundCloud fallback also failed: {sc_err}")
+            # Format / client retry with broad format
+            fb_opts = dict(opts)
+            fb_opts['format'] = 'best/ba/b'
+            fb_opts.pop('extractor_args', None)
+            try:
+                info = await loop.run_in_executor(None, _extract, fb_opts)
+            except Exception as fb_err:
+                log.warning(f"[Music Extract] Fallback format extraction failed: {fb_err}")
+                # If search query is not a direct URL and not soundcloud, attempt soundcloud fallback
+                if not query.startswith("http://") and not query.startswith("https://") and detected_platform != "soundcloud":
+                    log.info(f"[Music Extract] Attempting SoundCloud fallback for: {query}")
+                    sc_query = f"scsearch{limit}:{query}"
+                    def _sc_fallback():
+                        sc_opts = dict(self.ydl_opts)
+                        sc_opts.pop('extractor_args', None)
+                        sc_opts['extract_flat'] = 'in_playlist'
+                        with yt_dlp.YoutubeDL(sc_opts) as ydl:
+                            return ydl.extract_info(sc_query, download=False)
+                    try:
+                        info = await loop.run_in_executor(None, _sc_fallback)
+                        detected_platform = "soundcloud"
+                    except Exception as sc_err:
+                        log.error(f"[Music Extract] SoundCloud fallback also failed: {sc_err}")
+                        raise RuntimeError(f"Audio extraction failed: {primary_err}")
+                else:
                     raise RuntimeError(f"Audio extraction failed: {primary_err}")
-            else:
-                raise RuntimeError(f"Audio extraction failed: {primary_err}")
 
         if not info:
             return []
@@ -506,16 +520,41 @@ class MusicService:
         opts["noplaylist"] = True
         opts["extract_flat"] = False
 
-        def _refresh():
-            with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(track.url, download=False)
-            if info and info.get("entries"):
-                info = next((entry for entry in info["entries"] if entry), None)
-            if not info or not info.get("url"):
-                raise RuntimeError("The source did not return a playable audio stream.")
-            return info
+        def _do_extract(extract_opts, target_url):
+            with yt_dlp.YoutubeDL(extract_opts) as ydl:
+                res = ydl.extract_info(target_url, download=False)
+            if res and res.get("entries"):
+                res = next((entry for entry in res["entries"] if entry), None)
+            return res
 
-        info = await loop.run_in_executor(None, _refresh)
+        info = None
+        try:
+            info = await loop.run_in_executor(None, _do_extract, opts, track.url)
+        except Exception as primary_err:
+            log.warning(f"[Refresh Stream] Primary refresh failed on '{track.title}': {primary_err}")
+            # Fallback 1: Broad format and web client
+            fallback_opts = dict(opts)
+            fallback_opts['format'] = 'best/ba/b'
+            fallback_opts.pop('extractor_args', None)
+            try:
+                info = await loop.run_in_executor(None, _do_extract, fallback_opts, track.url)
+            except Exception as fb_err:
+                log.warning(f"[Refresh Stream] Fallback format failed for '{track.title}': {fb_err}")
+                # Fallback 2: Search by title and artist if direct URL failed
+                if track.title:
+                    fallback_query = f"ytsearch1:{track.title} {track.author or ''}".strip()
+                    try:
+                        info = await loop.run_in_executor(None, _do_extract, fallback_opts, fallback_query)
+                    except Exception:
+                        pass
+
+        if not info or not info.get("url"):
+            # If all refreshes failed but we already have an existing stream_url, attempt using it
+            if track.stream_url and track.stream_url.startswith("http"):
+                log.warning(f"[Refresh Stream] Using cached stream_url for {track.title}")
+                return track.stream_url
+            raise RuntimeError("The source did not return a playable audio stream.")
+
         track.stream_url = info["url"]
         track.is_live = bool(info.get("is_live", track.is_live))
         if info.get("thumbnail"):
@@ -533,11 +572,12 @@ class MusicService:
             "-reconnect_at_eof 1 "
             "-reconnect_on_network_error 1 "
             "-reconnect_on_http_error 5xx,408,429 "
-            "-reconnect_delay_max 2 "
-            "-rw_timeout 15000000 "
-            "-thread_queue_size 4096 "
-            "-probesize 1000000 "
-            "-analyzeduration 1000000 "
+            "-reconnect_delay_max 5 "
+            "-rw_timeout 20000000 "
+            "-thread_queue_size 8192 "
+            "-probesize 10000000 "
+            "-analyzeduration 15000000 "
+            '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" '
             "-nostdin"
         )
         options = "-vn -ar 48000 -ac 2 -nostats -loglevel error"

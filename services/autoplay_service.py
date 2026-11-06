@@ -1275,7 +1275,7 @@ class AutoPlayService:
                     valid_candidates.append(cand)
 
         # 5. Extract and verify audio stream with duration bounds
-        for cand in valid_candidates[:5]:
+        for cand in valid_candidates[:8]:
             title = cand["title"]
             artist = cand["artist"]
             query = f"{artist} - {title}"
