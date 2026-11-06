@@ -29,7 +29,7 @@ from utils.emojis import Emojis, EmojiPartials
 from utils.logger import log
 
 ERROR_MESSAGE = (
-    "### <a:refused:1547035200926654624> Something went wrong while running the command, "
+    "### <a:refused:1558019488408932423> Something went wrong while running the command, "
     "please try again or contact server administrator on "
     "https://discord.com/channels/1520457643842342912/1520460764937322566"
 )
@@ -92,7 +92,7 @@ def make_error_embed(
     formatted_desc = description
     if not (description.startswith("<") or description.startswith(":") or description.startswith("⚠️") or description.startswith("❌") or is_raw_header):
         formatted_desc = f"{icon} **{description}**"
-    elif is_raw_header and not ("<a:syncwarning" in description or "<:syncwarning" in description):
+    elif is_raw_header and not any(tag in description for tag in ("<a:syncwarning", "<:syncwarning", "<a:refused", "<:refused", "<a:approved", "<:approved")):
         formatted_desc = description.replace("### ", f"### {icon} ", 1)
 
     if details:
@@ -342,7 +342,8 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.build_components()
         await interaction.response.edit_message(view=self)
-        await interaction.followup.send(msg, ephemeral=True)
+        embed_status = discord.Embed(description=f"### {msg}", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_status, ephemeral=True)
 
     async def on_prev(self, interaction: discord.Interaction):
         if not self.queue.history:
@@ -355,25 +356,28 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         self.queue.tracks.insert(0, prev_track)
         if self.queue.voice_client:
             self.queue.voice_client.stop()
-        await interaction.response.send_message(
-            f"{Emojis.PREVIOUS} Jumped back to previous track: **{prev_track.clean_title}**",
-            ephemeral=True
+        embed_prev = discord.Embed(
+            description=f"### {Emojis.PREVIOUS} Jumped back to previous track: **{prev_track.clean_title}**",
+            color=BRAND_COLOR
         )
+        await interaction.response.send_message(embed=embed_prev, ephemeral=True)
 
     async def on_skip(self, interaction: discord.Interaction):
         vc = self.queue.voice_client
         if not vc or not self.queue.current_track:
             embed = discord.Embed(description=f"### {Emojis.WARNING} Nothing is currently playing.", color=0xFEE75C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
         played_sec = self.queue.get_playback_time()
         AutoPlayService.get_instance().record_track_skip(interaction.user.id, self.queue.current_track, played_sec)
         skipped_name = self.queue.current_track.clean_title
         self.queue.manual_skip = True
         vc.stop()
-        await interaction.response.send_message(
-            f"{Emojis.NEXT} Skipped: **{skipped_name}**",
-            ephemeral=True
+        embed_skip = discord.Embed(
+            description=f"### {Emojis.NEXT} Skipped: **{skipped_name}**",
+            color=BRAND_COLOR
         )
+        await interaction.response.send_message(embed=embed_skip, ephemeral=True)
 
     async def on_stop(self, interaction: discord.Interaction):
         self.queue.tracks.clear()
@@ -579,7 +583,8 @@ class QueueLayoutView(discord.ui.View):
         random.shuffle(self.queue.tracks)
         new_embed = self.music_cog.build_queue_embed(self.queue)
         await interaction.response.edit_message(embed=new_embed, view=self)
-        await interaction.followup.send(f"{Emojis.SHUFFLE} Upcoming tracks shuffled!", ephemeral=True)
+        embed_shuf = discord.Embed(description=f"### {Emojis.SHUFFLE} Upcoming tracks shuffled!", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_shuf, ephemeral=True)
 
 
 class CountrySearchModal(discord.ui.Modal, title="Search Radio Countries"):
@@ -1202,7 +1207,8 @@ class AutoPlayBlockArtistModal(discord.ui.Modal, title="Block or Unblock Artist"
             prof.artist_affinity[artist_name] = -10.0
             AutoPlayService.get_instance().save_profiles()
             msg = f"{Emojis.REFUSED} Blocked **{artist_name}**. AutoPlay will never recommend songs by this artist."
-        await interaction.response.send_message(msg, ephemeral=True)
+        embed = discord.Embed(description=f"### {msg}", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 class AutoPlayFeedbackView(discord.ui.View):
@@ -1218,27 +1224,29 @@ class AutoPlayFeedbackView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if not self.music_cog._is_booster_or_admin(interaction.user, interaction.guild):
-            await interaction.response.send_message(
-                f"{Emojis.WARNING} Music commands and controls are exclusive to Boosters and Admins!",
-                ephemeral=True
+            embed = discord.Embed(
+                description=f"### {Emojis.WARNING} Music commands and controls are exclusive to Boosters and Admins!",
+                color=0xED4245
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
         return True
 
-    @discord.ui.button(label="Like", emoji="👍", style=discord.ButtonStyle.secondary, custom_id="ap_btn_like")
+    @discord.ui.button(label="Like", emoji=EmojiPartials.LIKE, style=discord.ButtonStyle.secondary, custom_id="ap_btn_like")
     async def on_like(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok, msg = AutoPlayService.get_instance().record_explicit_feedback(
             interaction.user.id, self.track, "like"
         )
         button.style = discord.ButtonStyle.success
         button.disabled = True
+        embed = discord.Embed(description=f"### {Emojis.APPROVED} {msg}", color=BRAND_COLOR)
         try:
             await interaction.response.edit_message(view=self)
-            await interaction.followup.send(f"{Emojis.APPROVED} {msg}", ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
-            await interaction.response.send_message(f"{Emojis.APPROVED} {msg}", ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Dislike", emoji="👎", style=discord.ButtonStyle.secondary, custom_id="ap_btn_dislike")
+    @discord.ui.button(label="Dislike", emoji=EmojiPartials.DISLIKE, style=discord.ButtonStyle.secondary, custom_id="ap_btn_dislike")
     async def on_dislike(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok, msg = AutoPlayService.get_instance().record_explicit_feedback(
             interaction.user.id, self.track, "dislike"
@@ -1249,13 +1257,17 @@ class AutoPlayFeedbackView(discord.ui.View):
         self.queue.prefetched_autoplay_track = None
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
+        embed = discord.Embed(
+            description=f"### {Emojis.REFUSED} {msg}\nCurrent playback will continue smoothly, and next selections will be refined.",
+            color=BRAND_COLOR
+        )
         try:
             await interaction.response.edit_message(view=self)
-            await interaction.followup.send(f"{Emojis.REFUSED} {msg} Current playback will continue smoothly, and next selections will be refined.", ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
-            await interaction.response.send_message(f"{Emojis.REFUSED} {msg} Current playback will continue smoothly, and next selections will be refined.", ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="More Like This", emoji="🎶", style=discord.ButtonStyle.secondary, custom_id="ap_btn_more")
+    @discord.ui.button(label="More Like This", emoji=EmojiPartials.SYNCINK_MUSIC, style=discord.ButtonStyle.secondary, custom_id="ap_btn_more")
     async def on_more(self, interaction: discord.Interaction, button: discord.ui.Button):
         ok, msg = AutoPlayService.get_instance().record_explicit_feedback(
             interaction.user.id, self.track, "more_like_this"
@@ -1266,11 +1278,12 @@ class AutoPlayFeedbackView(discord.ui.View):
         self.queue.prefetched_autoplay_track = None
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
+        embed = discord.Embed(description=f"### {Emojis.AI} {msg}", color=BRAND_COLOR)
         try:
             await interaction.response.edit_message(view=self)
-            await interaction.followup.send(f"{Emojis.AI} {msg}", ephemeral=True)
+            await interaction.followup.send(embed=embed, ephemeral=True)
         except Exception:
-            await interaction.response.send_message(f"{Emojis.AI} {msg}", ephemeral=True)
+            await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Discover", emoji="✨", style=discord.ButtonStyle.secondary, custom_id="ap_btn_discover")
     async def on_discover(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1288,10 +1301,11 @@ class AutoPlayFeedbackView(discord.ui.View):
         self.queue.prefetched_autoplay_track = None
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
-        await interaction.response.send_message(
-            f"{Emojis.AI} AutoPlay Discovery mode switched to **{mode_desc}**.",
-            ephemeral=True
+        embed = discord.Embed(
+            description=f"### {Emojis.AI} AutoPlay Discovery mode switched to **{mode_desc}**.",
+            color=BRAND_COLOR
         )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(label="Tune DJ", emoji="⚙️", style=discord.ButtonStyle.secondary, custom_id="ap_btn_tune")
     async def on_tune(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1539,10 +1553,11 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user.id:
-            await interaction.response.send_message(
-                f"{Emojis.WARNING} Only the requester can configure this AutoPlay control panel.",
-                ephemeral=True
+            embed = discord.Embed(
+                description=f"### {Emojis.WARNING} Only the requester can configure this AutoPlay control panel.",
+                color=0xED4245
             )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
         return True
 
@@ -1567,7 +1582,8 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             await interaction.response.edit_message(view=self)
         except Exception:
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        await interaction.followup.send(f"{Emojis.APPROVED} {msg}", ephemeral=True)
+        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} {msg}", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_lang_select(self, interaction: discord.Interaction):
         val = interaction.data["values"][0]
@@ -1590,7 +1606,8 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             await interaction.response.edit_message(view=self)
         except Exception:
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        await interaction.followup.send(f"{Emojis.APPROVED} {msg}", ephemeral=True)
+        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} {msg}", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_disc_select(self, interaction: discord.Interaction):
         val = interaction.data["values"][0]
@@ -1605,7 +1622,8 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             await interaction.response.edit_message(view=self)
         except Exception:
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        await interaction.followup.send(f"{Emojis.APPROVED} Discovery mode updated to **{val.title()}**.", ephemeral=True)
+        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} Discovery mode updated to **{val.title()}**.", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_toggle(self, interaction: discord.Interaction):
         self.queue.autoplay = not self.queue.autoplay
@@ -1620,7 +1638,8 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             await interaction.response.edit_message(view=self)
         except Exception:
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        await interaction.followup.send(f"{Emojis.AI} AutoPlay is now **{status}**.", ephemeral=True)
+        embed_msg = discord.Embed(description=f"### {Emojis.AI} AutoPlay is now **{status}**.", color=BRAND_COLOR)
+        await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_block_artist(self, interaction: discord.Interaction):
         await interaction.response.send_modal(AutoPlayBlockArtistModal(self.music_cog, self.user.id))
@@ -1719,14 +1738,16 @@ class Music(commands.Cog):
         # 0. Require guild context
         if not interaction.guild:
             if not interaction.response.is_done():
-                await interaction.response.send_message("Music commands can only be used in a Discord server.", ephemeral=True)
+                embed = discord.Embed(description=f"### {Emojis.WARNING} Music commands can only be used in a Discord server.", color=0xED4245)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
 
         # 1. Guild check (only if explicitly configured)
         allowed_guild = self._music_allowed_guild_id()
         if allowed_guild and interaction.guild_id != allowed_guild:
             if not interaction.response.is_done():
-                await interaction.response.send_message("Music commands are disabled on this server.", ephemeral=True)
+                embed = discord.Embed(description=f"### {Emojis.WARNING} Music commands are disabled on this server.", color=0xED4245)
+                await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
 
         # 2. Channel check (only if explicitly configured)
@@ -2905,7 +2926,8 @@ class Music(commands.Cog):
             return
         queue.voice_client.pause()
         queue.paused_at = time.time()
-        await interaction.response.send_message(f"{Emojis.PAUSE_BUTTON} Playback paused. Resume anytime with `/resume`.", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.PAUSE_BUTTON} Playback paused.\nResume anytime with `/resume`.", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
             try:
                 view = MusicPlayerLayoutView(self, queue)
@@ -2923,7 +2945,8 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
-        await interaction.response.send_message(f"{Emojis.PLAY_BUTTON} Playback resumed.", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
             try:
                 view = MusicPlayerLayoutView(self, queue)
@@ -2946,7 +2969,8 @@ class Music(commands.Cog):
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
-        await interaction.response.send_message(f"{Emojis.NEXT} Skipped: **{skipped}**", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.NEXT} Skipped: **{skipped}**", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="previous", description="Replay the previous track in history.")
     async def slash_previous(self, interaction: discord.Interaction):
@@ -2960,7 +2984,8 @@ class Music(commands.Cog):
         queue.tracks.insert(0, prev)
         if queue.voice_client:
             queue.voice_client.stop()
-        await interaction.response.send_message(f"{Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="stop", description="Stop music and clear the queue.")
     async def slash_stop(self, interaction: discord.Interaction):
@@ -3028,14 +3053,16 @@ class Music(commands.Cog):
             await self.send_error_embed(interaction, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
-        await interaction.response.send_message(f"{Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
     @app_commands.describe(mode="Repeat mode")
     async def slash_loop(self, interaction: discord.Interaction, mode: Literal["off", "track", "queue"]):
         queue = self.service.get_queue(interaction.guild_id)
         queue.repeat_mode = mode
-        await interaction.response.send_message(f"{Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="volume", description="Set audio gain volume (1% to 200%).")
     @app_commands.describe(percent="Volume percentage")
@@ -3045,7 +3072,8 @@ class Music(commands.Cog):
         queue.volume = val
         if queue.voice_client and queue.voice_client.source and hasattr(queue.voice_client.source, "volume"):
             queue.voice_client.source.volume = val / 100.0
-        await interaction.response.send_message(f"{Emojis.SYNCBOT} Volume adjusted to **{val}%**.", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
     @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive AI DJ settings)")
@@ -3084,7 +3112,8 @@ class Music(commands.Cog):
         if queue.is_247:
             queue.cancel_inactivity()
         status = "ENABLED" if queue.is_247 else "DISABLED"
-        await interaction.response.send_message(f"{Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="replay", description="Replay current track from the beginning.")
     async def slash_replay(self, interaction: discord.Interaction):
@@ -3095,7 +3124,8 @@ class Music(commands.Cog):
         curr = queue.current_track
         queue.tracks.insert(0, curr)
         queue.voice_client.stop()
-        await interaction.response.send_message(f"{Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", ephemeral=True)
+        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", color=BRAND_COLOR)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="invite", description="Get the official bot invite link to add SyncInk Radio to your server.")
     async def slash_invite(self, interaction: discord.Interaction):
@@ -3135,7 +3165,8 @@ class Music(commands.Cog):
                 if queue.paused_at is not None:
                     queue.total_paused_duration += (time.time() - queue.paused_at)
                     queue.paused_at = None
-                await ctx.send(f"{Emojis.PLAY_BUTTON} Playback resumed.")
+                embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
+                await ctx.send(embed=embed, delete_after=5)
                 return
             await self.send_error_embed(
                 ctx,
@@ -3152,7 +3183,7 @@ class Music(commands.Cog):
         queue.voice_client = vc
         queue.text_channel = ctx.channel
 
-        msg = await ctx.send(f"🔍 Searching for **{query}**...")
+        msg = await ctx.send(embed=discord.Embed(description=f"{Emojis.LOOKING} Searching for **{query}**...", color=BRAND_COLOR))
         try:
             tracks = await self.service.search_and_extract(query, ctx.author, platform="auto", limit=1)
         except Exception as e:
@@ -3208,7 +3239,7 @@ class Music(commands.Cog):
         queue.voice_client = vc
         queue.text_channel = ctx.channel
 
-        msg = await ctx.send(f"🔍 Searching results for **{query}**...")
+        msg = await ctx.send(embed=discord.Embed(description=f"{Emojis.LOOKING} Searching results for **{query}**...", color=BRAND_COLOR))
         try:
             tracks = await self.service.search_and_extract(query, ctx.author, platform="auto", limit=10)
         except Exception as e:
@@ -3239,7 +3270,8 @@ class Music(commands.Cog):
             return
         queue.voice_client.pause()
         queue.paused_at = time.time()
-        await ctx.send(f"{Emojis.PAUSE_BUTTON} Playback paused.", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.PAUSE_BUTTON} Playback paused.", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
         if queue.now_playing_message:
@@ -3259,7 +3291,8 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
-        await ctx.send(f"{Emojis.PLAY_BUTTON} Playback resumed.", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
         if queue.now_playing_message:
@@ -3283,7 +3316,8 @@ class Music(commands.Cog):
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
-        await ctx.send(f"{Emojis.NEXT} Skipped: **{skipped}**", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.NEXT} Skipped: **{skipped}**", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3299,7 +3333,8 @@ class Music(commands.Cog):
         queue.tracks.insert(0, prev)
         if queue.voice_client:
             queue.voice_client.stop()
-        await ctx.send(f"{Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3380,7 +3415,8 @@ class Music(commands.Cog):
             await self.send_error_embed(ctx, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
-        await ctx.send(f"{Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3397,7 +3433,8 @@ class Music(commands.Cog):
         else:
             m = mode.lower().strip()
             queue.repeat_mode = m if m in ("off", "track", "queue") else "track"
-        await ctx.send(f"{Emojis.REPEAT} Repeat mode set to: **{queue.repeat_mode.upper()}**", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.REPEAT} Repeat mode set to: **{queue.repeat_mode.upper()}**", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3405,7 +3442,8 @@ class Music(commands.Cog):
     async def cmd_volume(self, ctx: commands.Context, percent: Optional[int] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if percent is None:
-            await ctx.send(f"🔊 Current volume: **{queue.volume}%**", delete_after=5)
+            embed = discord.Embed(description=f"### 🔊 Current volume: **{queue.volume}%**", color=BRAND_COLOR)
+            await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
             return
@@ -3413,7 +3451,8 @@ class Music(commands.Cog):
         queue.volume = val
         if queue.voice_client and queue.voice_client.source and hasattr(queue.voice_client.source, "volume"):
             queue.voice_client.source.volume = val / 100.0
-        await ctx.send(f"{Emojis.SYNCBOT} Volume adjusted to **{val}%**.", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3425,12 +3464,14 @@ class Music(commands.Cog):
             if m in ("on", "true", "enable", "1"):
                 queue.autoplay = True
                 AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-                await ctx.send(f"{Emojis.AI} AI AutoPlay is now **ENABLED**.", delete_after=5)
+                embed = discord.Embed(description=f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.", color=BRAND_COLOR)
+                await ctx.send(embed=embed, delete_after=5)
             elif m in ("off", "false", "disable", "0"):
                 queue.autoplay = False
                 queue.prefetched_autoplay_track = None
                 queue.prefetched_autoplay_meta = None
-                await ctx.send(f"{Emojis.REFUSED} AI AutoPlay is now **DISABLED**.", delete_after=5)
+                embed = discord.Embed(description=f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**.", color=0xED4245)
+                await ctx.send(embed=embed, delete_after=5)
             else:
                 queue.autoplay = not queue.autoplay
                 if queue.autoplay:
@@ -3439,7 +3480,8 @@ class Music(commands.Cog):
                     queue.prefetched_autoplay_track = None
                     queue.prefetched_autoplay_meta = None
                 status = "ENABLED" if queue.autoplay else "DISABLED"
-                await ctx.send(f"{Emojis.AI} AI AutoPlay is now **{status}**.", delete_after=5)
+                embed = discord.Embed(description=f"### {Emojis.AI} AI AutoPlay is now **{status}**.", color=BRAND_COLOR)
+                await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
         else:
@@ -3461,7 +3503,8 @@ class Music(commands.Cog):
         if queue.is_247:
             queue.cancel_inactivity()
         status = "ENABLED" if queue.is_247 else "DISABLED"
-        await ctx.send(f"{Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
@@ -3474,7 +3517,8 @@ class Music(commands.Cog):
         curr = queue.current_track
         queue.tracks.insert(0, curr)
         queue.voice_client.stop()
-        await ctx.send(f"{Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", delete_after=5)
+        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", color=BRAND_COLOR)
+        await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 

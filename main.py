@@ -168,7 +168,7 @@ def main():
 
             try:
                 err_msg = (
-                    "### <a:refused:1547035200926654624> Something went wrong while running the command, "
+                    "### <a:refused:1558019488408932423> Something went wrong while running the command, "
                     "please try again or contact server administrator on "
                     "https://discord.com/channels/1520457643842342912/1520460764937322566"
                 )

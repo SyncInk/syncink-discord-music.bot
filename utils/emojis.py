@@ -5,13 +5,13 @@ class Emojis:
     # Animated application emojis (<a:name:id>) verified via Discord CDN
     ALERT = "<a:syncalert:1547036006455189626>"
     SETTINGS = "<a:settings:1547035963073765508>"
-    REFUSED = "<a:refused:1547035200926654624>"
-    APPROVED = "<a:approved:1547035150964236379>"
+    REFUSED = "<a:refused:1558019488408932423>"
+    APPROVED = "<a:approved:1558019502019575918>"
     WARNING = "<a:syncwarning:1547034231438319616>"
     CHECK_YES = "<a:check_yes:1547034079076032512>"
 
     # Static application emojis (<:name:id>) verified via Discord CDN
-    AI = "<:SyncInkAI:1549154093421826058>"
+    AI = "<:SyncInkAI:1568405549572165703>"
     CHATGPT = AI
     CONNECTION_GOOD = "<:goodconnection:1551311911948394697>"
     CONNECTION_MODERATE = "<:moderateconnection:1551311891173740644>"
@@ -39,7 +39,7 @@ class Emojis:
     # Interactive Server Emojis
     ARROW = "<a:arrow:1558799019927543878>"
     PURPLE_HEART_EXCLAIM = "<a:purpleheartexclaim:1558799132871757844>"
-    S_ARROW = "<:s_arrow:1558799699102793801>"
+    S_ARROW = "<:s_arrow:1568408148463718490>"
     TIME = "<:time:1558804154963468288>"
     PENGUBONK = "<a:pengubonk:1558803021507600506>"
     EARTH_BLURPLE = "<a:earthblurple:1558803274813935666>"
@@ -109,8 +109,8 @@ class EmojiPartials:
     # Animated partials
     ALERT = discord.PartialEmoji(name="syncalert", id=1547036006455189626, animated=True)
     SETTINGS = discord.PartialEmoji(name="settings", id=1547035963073765508, animated=True)
-    REFUSED = discord.PartialEmoji(name="refused", id=1547035200926654624, animated=True)
-    APPROVED = discord.PartialEmoji(name="approved", id=1547035150964236379, animated=True)
+    REFUSED = discord.PartialEmoji(name="refused", id=1558019488408932423, animated=True)
+    APPROVED = discord.PartialEmoji(name="approved", id=1558019502019575918, animated=True)
     WARNING = discord.PartialEmoji(name="syncwarning", id=1547034231438319616, animated=True)
     CHECK_YES = discord.PartialEmoji(name="check_yes", id=1547034079076032512, animated=True)
     LOADING = discord.PartialEmoji(name="Loading", id=1547095365679849492, animated=True)
@@ -118,7 +118,7 @@ class EmojiPartials:
     CONNECTION_PING = discord.PartialEmoji(name="connectionping", id=1551311432392646737, animated=True)
 
     # Static partials
-    AI = discord.PartialEmoji(name="SyncInkAI", id=1549154093421826058, animated=False)
+    AI = discord.PartialEmoji(name="SyncInkAI", id=1568405549572165703, animated=False)
     CHATGPT = AI
     CONNECTION_GOOD = discord.PartialEmoji(name="goodconnection", id=1551311911948394697, animated=False)
     CONNECTION_MODERATE = discord.PartialEmoji(name="moderateconnection", id=1551311891173740644, animated=False)
@@ -141,7 +141,7 @@ class EmojiPartials:
     # Interactive partials
     ARROW = discord.PartialEmoji(name="arrow", id=1558799019927543878, animated=True)
     PURPLE_HEART_EXCLAIM = discord.PartialEmoji(name="purpleheartexclaim", id=1558799132871757844, animated=True)
-    S_ARROW = discord.PartialEmoji(name="s_arrow", id=1558799699102793801, animated=False)
+    S_ARROW = discord.PartialEmoji(name="s_arrow", id=1568408148463718490, animated=False)
     TIME = discord.PartialEmoji(name="time", id=1558804154963468288, animated=False)
     PENGUBONK = discord.PartialEmoji(name="pengubonk", id=1558803021507600506, animated=True)
     EARTH_BLURPLE = discord.PartialEmoji(name="earthblurple", id=1558803274813935666, animated=True)
@@ -216,6 +216,10 @@ OLD_TAG_MAP = {
     "<:others:1513337572078911488>": "<:others:1553533697364598814>",
     "<:SyncPartnership:1522289808599290006>": "<:SyncPartnership:1553532869950046340>",
     "<a:7049earthblurple:1558803274813935666>": "<a:earthblurple:1558803274813935666>",
+    "<a:approved:1547035150964236379>": "<a:approved:1558019502019575918>",
+    "<a:refused:1547035200926654624>": "<a:refused:1558019488408932423>",
+    "<:SyncInkAI:1549154093421826058>": "<:SyncInkAI:1568405549572165703>",
+    "<:s_arrow:1558799699102793801>": "<:s_arrow:1568408148463718490>",
 }
 
 # Comprehensive mapping of raw emoji names to valid custom Discord emoji tags
@@ -252,7 +256,7 @@ EMOJI_NAME_MAP = {
     "noconnection": "<:noconnection:1551311810223931484>",
     "connectionping": "<a:connectionping:1551311432392646737>",
     "syncbot": "<:syncbot:1552437282059980810>",
-    "syncinkai": "<:SyncInkAI:1549154093421826058>",
+    "syncinkai": "<:SyncInkAI:1568405549572165703>",
     "cpu": "<:CPU:1551310556038701118>",
 
     # Roles & Brand Emojis
@@ -267,15 +271,15 @@ EMOJI_NAME_MAP = {
     "region": "<a:region:1562591209543966831>",
     "argument": "<:argument:1562587869762158762>",
     "syncbot": "<:syncbot:1552437282059980810>",
-    "syncinkai": "<:SyncInkAI:1549154093421826058>",
-    "ai": "<:SyncInkAI:1549154093421826058>",
+    "syncinkai": "<:SyncInkAI:1568405549572165703>",
+    "ai": "<:SyncInkAI:1568405549572165703>",
     "partnered": "<:partnered:1551337413660381255>",
     "partner": "<:partnered:1551337413660381255>",
     "verified": "<:verified:1551336293017845822>",
     "syncalert": "<a:syncalert:1547036006455189626>",
     "syncwarning": "<a:syncwarning:1547034231438319616>",
-    "refused": "<a:refused:1547035200926654624>",
-    "approved": "<a:approved:1547035150964236379>",
+    "refused": "<a:refused:1558019488408932423>",
+    "approved": "<a:approved:1558019502019575918>",
     "check_yes": "<a:check_yes:1547034079076032512>",
     "checkyes": "<a:check_yes:1547034079076032512>",
     "syncinkmainlogo": "<:syncinkmainlogo:1547034265076760707>",
@@ -306,8 +310,10 @@ EMOJI_NAME_MAP = {
     "arrow": "<a:arrow:1558799019927543878>",
     "purpleheartexclaim": "<a:purpleheartexclaim:1558799132871757844>",
     "purple_heart_exclaim": "<a:purpleheartexclaim:1558799132871757844>",
-    "s_arrow": "<:s_arrow:1558799699102793801>",
-    "sarrow": "<:s_arrow:1558799699102793801>",
+    "s_arrow": "<:s_arrow:1568408148463718490>",
+    "sarrow": "<:s_arrow:1568408148463718490>",
+    "like": "<:like:1559660676853797005>",
+    "dislike": "<:dislike:1559660727373930657>",
     "time": "<:time:1558804154963468288>",
     "pengubonk": "<a:pengubonk:1558803021507600506>",
     "7049earthblurple": "<a:earthblurple:1558803274813935666>",

@@ -45,6 +45,8 @@ class EmojiManager:
         "connectionping": ("CONNECTION_PING", "CONNECTION_PING"),
         "syncbot": ("SYNCBOT", "SYNCBOT"),
         "syncinkai": ("AI", "AI"),
+        "s_arrow": ("S_ARROW", "S_ARROW"),
+        "sarrow": ("S_ARROW", "S_ARROW"),
         "punjabipop": ("PUNJABI_POP", "PUNJABI_POP"),
         "loficoffee": ("LOFI_COFFEE", "LOFI_COFFEE"),
         "kpop": ("KPOP", "KPOP"),
