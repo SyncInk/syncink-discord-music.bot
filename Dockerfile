@@ -1,20 +1,20 @@
-FROM node:20-bookworm-slim
+FROM python:3.11-slim
+
+# Install system dependencies (ffmpeg and opus are mandatory for stutter-free audio)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg \
+    libopus0 \
+    libsodium23 \
+    git \
+    gcc \
+    python3-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends ffmpeg ca-certificates python3 python-is-python3 \
-  && rm -rf /var/lib/apt/lists/*
-
-COPY package.json package-lock.json ./
-ENV YOUTUBE_DL_SKIP_PYTHON_CHECK=1
-ENV YTDL_NO_UPDATE=1
-RUN npm ci --omit=dev --no-audit --no-fund
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-ENV NODE_ENV=production
-ENV FFMPEG_PATH=/usr/bin/ffmpeg
-EXPOSE 3000
-
-CMD ["npm", "run", "start:railway"]
+CMD ["python", "main.py"]
