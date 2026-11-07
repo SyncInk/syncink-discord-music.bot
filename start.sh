@@ -30,7 +30,7 @@ while true; do
     echo ""
     echo "[SyncInk] Checking GitHub for updates..."
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        GIT_TERMINAL_PROMPT=0 git pull origin main 2>/dev/null || {
+        GIT_TERMINAL_PROMPT=0 git pull --autostash origin main 2>/dev/null || {
             echo "[SyncInk] Note: GitHub pull skipped. Continuing locally..."
         }
     fi

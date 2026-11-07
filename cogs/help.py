@@ -116,14 +116,15 @@ class Help(commands.Cog):
         categories_overview = [
             (Emojis.PLAY_BUTTON, "Playback & Streaming", "Play audio from YouTube, Spotify, and SoundCloud with instant playback controls."),
             (Emojis.QUEUE, "Queue & Audio Controls", "Manage queue order, real-time player card, shuffle, volume, and repeat modes."),
-            (Emojis.RADIO, "24/7 Radio & AI AutoPlay", "Stream global live radio stations by country flag and configure personalized AI AutoPlay.")
+            (Emojis.RADIO, "24/7 Radio & AI AutoPlay", "Stream global live radio stations by country flag and configure personalized AI AutoPlay."),
+            (Emojis.SETTINGS, "System & Auto-Deployment", "Automated GitHub updating, self-restart, git status, and server invite.")
         ]
 
         playback_cmds = [
             ("/play <query>", "Stream audio from YouTube, Spotify, or SoundCloud directly into voice."),
             ("/search <query>", "Interactively search and select from top 5 audio results."),
             ("/pause / /resume", "Pause or resume current playback."),
-            ("/skip", "Skip currently playing track."),
+            ("/skip", "Skip currently playing track or switch to next radio station."),
             ("/previous", "Play previously played track."),
             ("/replay", "Restart current track from the beginning."),
             ("/stop / /leave", "Stop playback, clear queue, and disconnect bot from voice.")
@@ -132,7 +133,7 @@ class Help(commands.Cog):
         queue_cmds = [
             ("/queue", "Display current track queue with interactive pagination controls."),
             ("/nowplaying (/np)", "Display real-time player card with live progress bar and upcoming tracks."),
-            ("/volume <1-150>", "Adjust audio playback volume."),
+            ("/volume <1-200>", "Adjust audio playback volume."),
             ("/loop <off|track|queue>", "Toggle repeat mode for current track or entire queue."),
             ("/shuffle", "Randomly shuffle upcoming tracks in queue.")
         ]
@@ -143,10 +144,18 @@ class Help(commands.Cog):
             ("/autoplay", "Configure intelligent AI AutoPlay recommendations, genres, moods, and languages.")
         ]
 
+        system_cmds = [
+            ("/update", "Check GitHub for latest commits, pull updates, and automatically restart bot."),
+            ("/restart", "Gracefully reboot the bot process without touching terminal."),
+            ("/gitstatus", "View current active Git commit, branch, and deployment timestamp."),
+            ("/invite", "Get official bot invite link with full external emoji and embed permissions.")
+        ]
+
         category_details = [
             (f"{Emojis.PLAY_BUTTON} Playback & Streaming", playback_cmds),
             (f"{Emojis.QUEUE} Queue & Audio Controls", queue_cmds),
-            (f"{Emojis.RADIO} 24/7 Radio & AI AutoPlay", radio_cmds)
+            (f"{Emojis.RADIO} 24/7 Radio & AI AutoPlay", radio_cmds),
+            (f"{Emojis.SETTINGS} System & Auto-Deployment", system_cmds)
         ]
 
         return categories_overview, category_details
@@ -171,9 +180,9 @@ class Help(commands.Cog):
             )
         ]
 
-        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO]
-        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ"]
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
+        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ", "Auto GitHub updates, restart, git status"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
@@ -204,9 +213,9 @@ class Help(commands.Cog):
             )
         ]
 
-        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO]
-        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ"]
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
+        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ", "Auto GitHub updates, restart, git status"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
