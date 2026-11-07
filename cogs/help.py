@@ -68,7 +68,11 @@ class HelpPaginationView(discord.ui.View):
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.author_id:
-            await interaction.response.send_message("Use `/help` or `?help` to open your own guide!", ephemeral=True)
+            embed = discord.Embed(
+                description=f"### {Emojis.WARNING} Use `/help` or `?help` to open your own guide!",
+                color=0xFEE75C
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
         return True
 

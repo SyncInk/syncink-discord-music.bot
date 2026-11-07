@@ -25,7 +25,7 @@ from services.radio_service import (
     get_country_flag,
 )
 from services.autoplay_service import AutoPlayService, normalize_title
-from utils.emojis import Emojis, EmojiPartials
+from utils.emojis import Emojis, EmojiPartials, format_discord_emojis
 from utils.logger import log
 
 ERROR_MESSAGE = (
@@ -92,11 +92,13 @@ def make_error_embed(
     formatted_desc = description
     if not (description.startswith("<") or description.startswith(":") or description.startswith("⚠️") or description.startswith("❌") or is_raw_header):
         formatted_desc = f"{icon} **{description}**"
-    elif is_raw_header and not any(tag in description for tag in ("<a:syncwarning", "<:syncwarning", "<a:refused", "<:refused", "<a:approved", "<:approved")):
+    elif is_raw_header and not any(tag in description for tag in ("<a:sync_alert", "<:sync_alert", "<a:syncwarning", "<:syncwarning", "<a:refused", "<:refused", "<a:approved", "<:approved", "<a:sync_check_yes")):
         formatted_desc = description.replace("### ", f"### {icon} ", 1)
 
     if details:
         formatted_desc += f"\n\n> {details}"
+
+    formatted_desc = format_discord_emojis(formatted_desc)
 
     embed = discord.Embed(
         description=formatted_desc,
@@ -368,6 +370,26 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             embed = discord.Embed(description=f"### {Emojis.WARNING} Nothing is currently playing.", color=0xFEE75C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
+
+        is_radio = (
+            self.queue.current_track.is_radio
+            or getattr(self.queue.current_track, "platform", "") == "radio"
+            or bool(self.queue.active_radio_station)
+        )
+        if is_radio:
+            await interaction.response.defer(ephemeral=True)
+            success = await self.music_cog.skip_to_next_radio_station(self.queue, user=interaction.user)
+            st_name = (
+                self.queue.active_radio_station_info.get("name", "Next Station")
+                if self.queue.active_radio_station_info else "Next Station"
+            )
+            embed_skip = discord.Embed(
+                description=f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**",
+                color=BRAND_COLOR
+            )
+            await interaction.followup.send(embed=embed_skip, ephemeral=True)
+            return
+
         played_sec = self.queue.get_playback_time()
         AutoPlayService.get_instance().record_track_skip(interaction.user.id, self.queue.current_track, played_sec)
         skipped_name = self.queue.current_track.clean_title
@@ -383,6 +405,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         self.queue.tracks.clear()
         self.queue.active_radio_station = None
         self.queue.active_radio_station_info = None
+        self.queue.active_country_stations = None
         self.queue.autoplay = False
         if self.queue.voice_client:
             self.queue.voice_client.stop()
@@ -393,7 +416,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             except Exception:
                 pass
             self.queue.now_playing_message = None
-        self.music_cog.start_inactivity_countdown(self.queue, delay=60)
+        self.music_cog.start_inactivity_countdown(self.queue, delay=30, reason="empty_queue")
         embed = discord.Embed(
             description=f"{Emojis.DELETE} Playback stopped and queue cleared.",
             color=BRAND_COLOR
@@ -1363,7 +1386,7 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             f"-# Tune your personalized listening experience using the interactive controls below:"
         )
 
-        embed = discord.Embed(description=desc, color=BRAND_COLOR)
+        embed = discord.Embed(description=format_discord_emojis(desc), color=BRAND_COLOR)
         embed.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
         return embed
 
@@ -1390,16 +1413,20 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
 
         # 1. Native Discord V2 Header & Status Container with Native Separators
         header_text = discord.ui.TextDisplay(
-            f"### {Emojis.AI} SyncInk AI DJ • Auto Play Control Center\n"
-            "Your personal AI music companion continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends."
+            format_discord_emojis(
+                f"### {Emojis.AI} SyncInk AI DJ • Auto Play Control Center\n"
+                "Your personal AI music companion continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends."
+            )
         )
         sep1 = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
         status_display = discord.ui.TextDisplay(
-            f"**Status:** {status_str} • **Listening Mode:** `{mode_str}`\n"
-            f"**Discovery Style:** {disc_str}\n"
-            f"**Style Focus:** {mood_genre_str}\n"
-            f"**Language Focus:** {lang_str}\n"
-            f"**Top Learned Artists:** {fav_str}"
+            format_discord_emojis(
+                f"**Status:** {status_str} • **Listening Mode:** `{mode_str}`\n"
+                f"**Discovery Style:** {disc_str}\n"
+                f"**Style Focus:** {mood_genre_str}\n"
+                f"**Language Focus:** {lang_str}\n"
+                f"**Top Learned Artists:** {fav_str}"
+            )
         )
         sep2 = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
         footer_hint = discord.ui.TextDisplay("-# Tune your personalized listening experience using the interactive controls below:")
@@ -1942,7 +1969,10 @@ class Music(commands.Cog):
 
         # Member left or moved away from the bot's channel
         if before.channel == bot_vc.channel and after.channel != bot_vc.channel:
-            human_members = [m for m in bot_vc.channel.members if not m.bot]
+            human_members = [
+                m for m in bot_vc.channel.members
+                if not m.bot and m.id != member.id and (not m.voice or m.voice.channel == bot_vc.channel)
+            ]
             if len(human_members) == 0:
                 queue = self.service.get_queue(member.guild.id)
                 if not queue.is_247:
@@ -1951,10 +1981,10 @@ class Music(commands.Cog):
         # Member joined or moved back into the bot's channel
         elif after.channel == bot_vc.channel and before.channel != bot_vc.channel:
             queue = self.service.get_queue(member.guild.id)
-            if queue.current_track is not None or (bot_vc.is_playing() or bot_vc.is_paused()):
+            if queue.current_track is not None or bool(queue.tracks):
                 queue.cancel_inactivity()
             else:
-                self.start_inactivity_countdown(queue, delay=60, reason="empty_queue")
+                self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
 
     async def ensure_voice(self, interaction: discord.Interaction) -> Optional[discord.VoiceClient]:
         member = interaction.user
@@ -2234,8 +2264,14 @@ class Music(commands.Cog):
         # Queue is empty - Handle Radio vs Normal Autoplay
         if was_radio:
             if was_manual_skip:
+                requester = last_track.requested_by if last_track else None
+                switched = await self.skip_to_next_radio_station(queue, user=requester)
+                if switched:
+                    return
+
                 queue.active_radio_station = None
                 queue.active_radio_station_info = None
+                queue.active_country_stations = None
                 queue.current_track = None
                 if queue.now_playing_message:
                     try:
@@ -2249,7 +2285,7 @@ class Music(commands.Cog):
                         color=BRAND_COLOR
                     )
                     await queue.text_channel.send(embed=embed_finished)
-                self.start_inactivity_countdown(queue, delay=60, reason="empty_queue")
+                self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
                 return
 
             # Check 24/7 predefined radio presets (lofi, synthwave, etc.)
@@ -2293,6 +2329,7 @@ class Music(commands.Cog):
             # Live Country Radio stream ended or failed unexpectedly
             queue.active_radio_station = None
             queue.active_radio_station_info = None
+            queue.active_country_stations = None
             queue.current_track = None
 
             if queue.now_playing_message:
@@ -2310,7 +2347,7 @@ class Music(commands.Cog):
                     warn_desc = f"### {Emojis.WARNING} Live radio stream for **{last_radio_title}** was disconnected or interrupted.\nPlease choose another station from the {menu_link}."
 
                 warn_embed = discord.Embed(
-                    description=warn_desc,
+                    description=format_discord_emojis(warn_desc),
                     color=0xED4245
                 )
                 try:
@@ -2318,7 +2355,7 @@ class Music(commands.Cog):
                 except Exception:
                     pass
 
-            self.start_inactivity_countdown(queue, delay=60, reason="empty_queue")
+            self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
             return
 
         # Normal music playback - Check AI-Powered AutoPlay
@@ -2360,11 +2397,13 @@ class Music(commands.Cog):
                         # play_track already initiated next advance; do not fall through to send end of queue!
                         return
 
-        # Double check: if voice client is still playing or queue has tracks, DO NOT declare end of queue!
-        if queue.voice_client and (queue.voice_client.is_playing() or queue.voice_client.is_paused()):
-            return
+        # Double check: if queue has tracks, DO NOT declare end of queue!
         if queue.tracks:
             return
+
+        # Explicitly stop voice client so discord.py voice thread is idle
+        if queue.voice_client and (queue.voice_client.is_playing() or queue.voice_client.is_paused()):
+            queue.voice_client.stop()
 
         # End of queue reached for normal music
         queue.current_track = None
@@ -2382,15 +2421,15 @@ class Music(commands.Cog):
             )
             await queue.text_channel.send(embed=embed_finished)
 
-        self.start_inactivity_countdown(queue, delay=60)
+        self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
 
-    def start_inactivity_countdown(self, queue: GuildMusicQueue, delay: int = 60, reason: str = "empty_queue"):
+    def start_inactivity_countdown(self, queue: GuildMusicQueue, delay: int = 30, reason: str = "empty_queue"):
         if queue.is_247:
             return
         queue.cancel_inactivity()
         queue.inactivity_task = asyncio.create_task(self._inactivity_countdown(queue.guild_id, delay=delay, reason=reason))
 
-    async def _inactivity_countdown(self, guild_id: int, delay: int = 60, reason: str = "empty_queue"):
+    async def _inactivity_countdown(self, guild_id: int, delay: int = 30, reason: str = "empty_queue"):
         try:
             await asyncio.sleep(delay)
             queue = self.service.get_queue(guild_id)
@@ -2404,10 +2443,15 @@ class Music(commands.Cog):
                 return
 
             # Check if active playback or upcoming tracks exist
-            is_active = (queue.current_track is not None) or bool(queue.tracks) or vc.is_playing() or vc.is_paused()
+            has_tracks = bool(queue.tracks)
+            is_playing_music = (queue.current_track is not None)
+            is_active = is_playing_music or has_tracks
 
             # Check if alone in VC (only bots)
-            human_members = [m for m in vc.channel.members if not m.bot] if vc.channel else []
+            human_members = [
+                m for m in vc.channel.members
+                if not m.bot and (not m.voice or m.voice.channel == vc.channel)
+            ] if vc.channel else []
             alone = len(human_members) == 0
 
             if not is_active or alone:
@@ -2418,7 +2462,7 @@ class Music(commands.Cog):
                 if text_chan:
                     try:
                         if alone or reason == "alone":
-                            leave_desc = f"### {Emojis.WARNING} Left the voice channel as no one was in the voice channel."
+                            leave_desc = "### Left the voice channel as no one was in the voice channel."
                         else:
                             leave_desc = "### Left the voice channel due to empty queue"
 
@@ -2447,6 +2491,113 @@ class Music(commands.Cog):
             pass
         except Exception as err:
             log.exception(f"Error in inactivity countdown: {err}")
+
+    async def skip_to_next_radio_station(self, queue: GuildMusicQueue, user: Optional[discord.Member] = None) -> bool:
+        """Cycles to the next live radio station in the current country list or preset."""
+        country_name = queue.active_radio_station
+        current_info = queue.active_radio_station_info or {}
+        requester = user or (queue.current_track.requested_by if queue.current_track else None)
+
+        # 1. Preset stations (lofi, synthwave, bollywood, etc.)
+        if country_name and country_name in RADIO_STATIONS:
+            preset_keys = list(RADIO_STATIONS.keys())
+            try:
+                curr_idx = preset_keys.index(country_name)
+                next_key = preset_keys[(curr_idx + 1) % len(preset_keys)]
+            except ValueError:
+                next_key = "lofi"
+
+            queue.active_radio_station = next_key
+            station = RADIO_STATIONS[next_key]
+            queue.active_radio_station_info = station
+            queries = list(station.get("queries", []))
+            random.shuffle(queries)
+            for query in queries[:3]:
+                try:
+                    tracks = await self.service.search_and_extract(query, requester, platform="radio", limit=5)
+                except Exception:
+                    continue
+                chosen = next((t for t in tracks if t.url not in queue.radio_recent_urls), None) or (tracks[0] if tracks else None)
+                if chosen:
+                    chosen.is_radio = True
+                    chosen.radio_station_id = next_key
+                    chosen.platform = "radio"
+                    queue.radio_recent_urls.append(chosen.url)
+                    queue.radio_recent_urls = queue.radio_recent_urls[-50:]
+                    return await self.play_track(queue, chosen)
+            return False
+
+        # 2. Country radio stations
+        if not country_name:
+            country_name = "India"
+
+        stations = getattr(queue, "active_country_stations", None)
+        if not stations:
+            stations = RadioService.get_instance().get_country_stations(country_name, limit=150)
+            queue.active_country_stations = stations
+
+        if not stations:
+            return False
+
+        # Find current station index
+        curr_idx = -1
+        for idx, s in enumerate(stations):
+            if current_info.get("stationuuid") and s.get("stationuuid") == current_info.get("stationuuid"):
+                curr_idx = idx
+                break
+            if current_info.get("url") and s.get("url") == current_info.get("url"):
+                curr_idx = idx
+                break
+            if current_info.get("name") and s.get("name") == current_info.get("name"):
+                curr_idx = idx
+                break
+
+        # Cycle to next station
+        next_idx = (curr_idx + 1) % len(stations)
+        # Try up to 5 consecutive stations if one is unreachable
+        for offset in range(min(5, len(stations))):
+            target_idx = (next_idx + offset) % len(stations)
+            next_station = stations[target_idx]
+            target_channel = queue.text_channel
+            if not target_channel and queue.voice_client and queue.voice_client.guild:
+                target_channel = queue.voice_client.guild.system_channel
+
+            if target_channel:
+                flag = get_country_flag(country_name)
+                track = make_radio_track(next_station, country_name, requester, flag=flag)
+                queue.active_radio_station = country_name
+                queue.active_radio_station_info = next_station
+                queue.active_country_stations = stations
+                queue.tracks.clear()
+                try:
+                    stream_started = await self.play_track(queue, track)
+                    if stream_started:
+                        # Update now playing view
+                        view = MusicPlayerLayoutView(self, queue)
+                        if queue.now_playing_message:
+                            try:
+                                await queue.now_playing_message.edit(view=view)
+                            except Exception:
+                                pass
+                        # Send station tuned embed
+                        info_embed = discord.Embed(
+                            description=format_discord_emojis(f"{Emojis.RADIO} **Tuned into {next_station['name']} ({flag} {country_name})**\n{Emojis.S_ARROW} *Use dropdown below or Next button to switch station anytime:*"),
+                            color=BRAND_COLOR
+                        )
+                        switch_view = RadioStationSelectView(self, requester, country_name, stations)
+                        try:
+                            msg = await target_channel.send(embed=info_embed, view=switch_view)
+                            if msg:
+                                queue.radio_menu_url = msg.jump_url
+                                queue.radio_menu_message = msg
+                        except Exception:
+                            pass
+                        return True
+                except Exception as e:
+                    log.warning(f"[Radio Next Error] Failed to tune station {next_station.get('name')}: {e}")
+                    continue
+
+        return False
 
     async def start_radio_for_interaction(self, interaction: discord.Interaction, station_id: str):
         if not interaction.response.is_done():
@@ -2961,6 +3112,23 @@ class Music(commands.Cog):
         if not queue.voice_client or not queue.current_track:
             await self.send_error_embed(interaction, description="Nothing is currently playing to skip.", is_warning=True)
             return
+
+        is_radio = (
+            queue.current_track.is_radio
+            or getattr(queue.current_track, "platform", "") == "radio"
+            or bool(queue.active_radio_station)
+        )
+        if is_radio:
+            await interaction.response.defer(ephemeral=True)
+            success = await self.skip_to_next_radio_station(queue, user=interaction.user)
+            st_name = (
+                queue.active_radio_station_info.get("name", "Next Station")
+                if queue.active_radio_station_info else "Next Station"
+            )
+            embed = discord.Embed(description=f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**", color=BRAND_COLOR)
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
         to_drop = max(0, count - 1)
         for _ in range(min(to_drop, len(queue.tracks))):
             queue.tracks.pop(0)
@@ -2993,17 +3161,20 @@ class Music(commands.Cog):
         queue.tracks.clear()
         queue.active_radio_station = None
         queue.active_radio_station_info = None
+        queue.active_country_stations = None
         queue.manual_skip = True
         queue.autoplay = False
         if queue.voice_client:
             queue.voice_client.stop()
+        queue.current_track = None
         if queue.now_playing_message:
             try:
                 await queue.now_playing_message.delete()
             except Exception:
                 pass
             queue.now_playing_message = None
-        embed = discord.Embed(description=f"{Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
+        self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+        embed = discord.Embed(description=f"### {Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="leave", description="Disconnect from voice channel.")
@@ -3018,7 +3189,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(interaction.guild_id)
-            embed = discord.Embed(description=f"{Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
+            embed = discord.Embed(description=f"### {Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             await self.send_error_embed(interaction, description="Not currently connected to voice.", is_warning=True)
@@ -3030,7 +3201,7 @@ class Music(commands.Cog):
         if action == "clear":
             count = len(queue.tracks)
             queue.tracks.clear()
-            embed = discord.Embed(description=f"{Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
+            embed = discord.Embed(description=f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             embed = self.build_queue_embed(queue)
@@ -3070,8 +3241,12 @@ class Music(commands.Cog):
         val = max(1, min(200, percent))
         queue = self.service.get_queue(interaction.guild_id)
         queue.volume = val
-        if queue.voice_client and queue.voice_client.source and hasattr(queue.voice_client.source, "volume"):
-            queue.voice_client.source.volume = val / 100.0
+        if queue.voice_client and queue.voice_client.source:
+            src = queue.voice_client.source
+            if hasattr(src, "volume"):
+                src.volume = val / 100.0
+            if hasattr(src, "original") and hasattr(src.original, "volume"):
+                src.original.volume = val / 100.0
         embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3130,7 +3305,7 @@ class Music(commands.Cog):
     @app_commands.command(name="invite", description="Get the official bot invite link to add SyncInk Radio to your server.")
     async def slash_invite(self, interaction: discord.Interaction):
         client_id = self.bot.user.id if self.bot.user else 1500567606648897819
-        invite_url = f"https://discord.com/oauth2/authorize?client_id={client_id}&permissions=36700160&scope=bot%20applications.commands"
+        invite_url = f"https://discord.com/oauth2/authorize?client_id={client_id}&permissions=8&scope=bot%20applications.commands"
         embed = discord.Embed(
             title=f"{Emojis.SYNCINK_MUSIC} Invite SyncInk Radio",
             description=(
@@ -3308,6 +3483,24 @@ class Music(commands.Cog):
         if not queue.voice_client or not queue.current_track:
             await self.send_error_embed(ctx, description="Nothing is currently playing to skip.", is_warning=True)
             return
+
+        is_radio = (
+            queue.current_track.is_radio
+            or getattr(queue.current_track, "platform", "") == "radio"
+            or bool(queue.active_radio_station)
+        )
+        if is_radio:
+            success = await self.skip_to_next_radio_station(queue, user=ctx.author)
+            st_name = (
+                queue.active_radio_station_info.get("name", "Next Station")
+                if queue.active_radio_station_info else "Next Station"
+            )
+            embed = discord.Embed(description=f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**", color=BRAND_COLOR)
+            await ctx.send(embed=embed, delete_after=5)
+            if ctx.message:
+                asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
+            return
+
         to_drop = max(0, count - 1)
         for _ in range(min(to_drop, len(queue.tracks))):
             queue.tracks.pop(0)
@@ -3344,6 +3537,7 @@ class Music(commands.Cog):
         queue.tracks.clear()
         queue.active_radio_station = None
         queue.active_radio_station_info = None
+        queue.active_country_stations = None
         queue.manual_skip = True
         queue.autoplay = False
         if queue.voice_client:
@@ -3355,8 +3549,8 @@ class Music(commands.Cog):
             except Exception:
                 pass
             queue.now_playing_message = None
-        self.start_inactivity_countdown(queue, delay=60)
-        embed = discord.Embed(description=f"{Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
+        self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+        embed = discord.Embed(description=f"### {Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
         await ctx.send(embed=embed, delete_after=10)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3373,7 +3567,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(ctx.guild.id)
-            embed = discord.Embed(description=f"{Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
+            embed = discord.Embed(description=f"### {Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3386,7 +3580,7 @@ class Music(commands.Cog):
         if action.lower() == "clear":
             count = len(queue.tracks)
             queue.tracks.clear()
-            embed = discord.Embed(description=f"{Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
+            embed = discord.Embed(description=f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3442,15 +3636,19 @@ class Music(commands.Cog):
     async def cmd_volume(self, ctx: commands.Context, percent: Optional[int] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if percent is None:
-            embed = discord.Embed(description=f"### 🔊 Current volume: **{queue.volume}%**", color=BRAND_COLOR)
+            embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Current volume: **{queue.volume}%**", color=BRAND_COLOR)
             await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
             return
         val = max(1, min(200, percent))
         queue.volume = val
-        if queue.voice_client and queue.voice_client.source and hasattr(queue.voice_client.source, "volume"):
-            queue.voice_client.source.volume = val / 100.0
+        if queue.voice_client and queue.voice_client.source:
+            src = queue.voice_client.source
+            if hasattr(src, "volume"):
+                src.volume = val / 100.0
+            if hasattr(src, "original") and hasattr(src.original, "volume"):
+                src.original.volume = val / 100.0
         embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:

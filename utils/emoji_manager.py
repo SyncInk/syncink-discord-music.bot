@@ -36,15 +36,24 @@ class EmojiManager:
         "like": ("LIKE", "LIKE"),
         "dislike": ("DISLIKE", "DISLIKE"),
         "playing": ("PLAYING", "PLAYING"),
+        "sync_alert": ("WARNING", "WARNING"),
         "syncalert": ("ALERT", "ALERT"),
         "syncwarning": ("WARNING", "WARNING"),
+        "sync_warning": ("WARNING", "WARNING"),
         "refused": ("REFUSED", "REFUSED"),
         "approved": ("APPROVED", "APPROVED"),
+        "sync_check_yes": ("CHECK_YES", "CHECK_YES"),
+        "synccheckyes": ("CHECK_YES", "CHECK_YES"),
         "check_yes": ("CHECK_YES", "CHECK_YES"),
+        "checkyes": ("CHECK_YES", "CHECK_YES"),
         "loading": ("LOADING", "LOADING"),
         "connectionping": ("CONNECTION_PING", "CONNECTION_PING"),
+        "syncrobot": ("SYNCBOT", "SYNCBOT"),
         "syncbot": ("SYNCBOT", "SYNCBOT"),
+        "sync_bot": ("SYNCBOT", "SYNCBOT"),
         "syncinkai": ("AI", "AI"),
+        "syncink_ai": ("AI", "AI"),
+        "ai": ("AI", "AI"),
         "s_arrow": ("S_ARROW", "S_ARROW"),
         "sarrow": ("S_ARROW", "S_ARROW"),
         "punjabipop": ("PUNJABI_POP", "PUNJABI_POP"),
@@ -94,6 +103,16 @@ class EmojiManager:
                     id=emoji.id,
                     animated=emoji.animated
                 ))
+                # Sync aliases
+                if emoji_attr == "WARNING":
+                    setattr(Emojis, "ALERT", tag)
+                    setattr(EmojiPartials, "ALERT", EmojiPartials.WARNING)
+                elif emoji_attr == "SYNCBOT":
+                    setattr(Emojis, "BOT", tag)
+                    setattr(EmojiPartials, "BOT", EmojiPartials.SYNCBOT)
+                elif emoji_attr == "AI":
+                    setattr(Emojis, "CHATGPT", tag)
+                    setattr(EmojiPartials, "CHATGPT", EmojiPartials.AI)
                 synced_count += 1
 
         # Update PLATFORM_EMOJIS_MAP in music_service if loaded

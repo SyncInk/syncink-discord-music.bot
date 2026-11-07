@@ -281,6 +281,16 @@ class BufferedAudioSource(discord.AudioSource):
 
         self._thread = threading.Thread(target=self._fill_buffer, daemon=True)
         self._thread.start()
+        self._underrun_count = 0
+
+    @property
+    def volume(self) -> float:
+        return getattr(self.original, "volume", 1.0)
+
+    @volume.setter
+    def volume(self, val: float):
+        if hasattr(self.original, "volume"):
+            self.original.volume = val
 
     def _fill_buffer(self):
         try:
@@ -305,9 +315,16 @@ class BufferedAudioSource(discord.AudioSource):
         if self._stopped.is_set():
             return b""
         try:
-            return self._buffer.get_nowait()
+            data = self._buffer.get_nowait()
+            self._underrun_count = 0
+            return data
         except queue.Empty:
             if self._finished:
+                return b""
+            self._underrun_count += 1
+            # If thread has finished or 50 frames (1s) of silence while thread exited, return EOF
+            if self._underrun_count > 50 and not self._thread.is_alive():
+                self._finished = True
                 return b""
             # Buffer underrun safeguard: output 20ms of silence (3840 bytes)
             return b"\x00" * 3840

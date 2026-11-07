@@ -3,12 +3,12 @@ import discord
 class Emojis:
     """Centralized custom Discord application emojis for SyncInk Support Bot."""
     # Animated application emojis (<a:name:id>) verified via Discord CDN
-    ALERT = "<a:syncalert:1547036006455189626>"
+    ALERT = "<a:sync_alert:1513822294831534220>"
     SETTINGS = "<a:settings:1547035963073765508>"
     REFUSED = "<a:refused:1558019488408932423>"
     APPROVED = "<a:approved:1558019502019575918>"
-    WARNING = "<a:syncwarning:1547034231438319616>"
-    CHECK_YES = "<a:check_yes:1547034079076032512>"
+    WARNING = "<a:sync_alert:1513822294831534220>"
+    CHECK_YES = "<a:sync_check_yes:1518997998128988160>"
 
     # Static application emojis (<:name:id>) verified via Discord CDN
     AI = "<:SyncInkAI:1568405549572165703>"
@@ -18,7 +18,7 @@ class Emojis:
     CONNECTION_LOW = "<:lowconnection:1551311863675879494>"
     CONNECTION_NONE = "<:noconnection:1551311810223931484>"
     CONNECTION_PING = "<a:connectionping:1551311432392646737>"
-    SYNCBOT = "<:syncbot:1552437282059980810>"
+    SYNCBOT = "<:syncrobot:1538932141273120828>"
     BOT = SYNCBOT
     CPU = "<:CPU:1551310556038701118>"
     # Official Server Role Emojis (Default fallbacks; updated dynamically by EmojiManager)
@@ -107,12 +107,12 @@ class Emojis:
 class EmojiPartials:
     """discord.PartialEmoji instances for interactive UI components (Buttons, Menus)."""
     # Animated partials
-    ALERT = discord.PartialEmoji(name="syncalert", id=1547036006455189626, animated=True)
+    ALERT = discord.PartialEmoji(name="sync_alert", id=1513822294831534220, animated=True)
     SETTINGS = discord.PartialEmoji(name="settings", id=1547035963073765508, animated=True)
     REFUSED = discord.PartialEmoji(name="refused", id=1558019488408932423, animated=True)
     APPROVED = discord.PartialEmoji(name="approved", id=1558019502019575918, animated=True)
-    WARNING = discord.PartialEmoji(name="syncwarning", id=1547034231438319616, animated=True)
-    CHECK_YES = discord.PartialEmoji(name="check_yes", id=1547034079076032512, animated=True)
+    WARNING = discord.PartialEmoji(name="sync_alert", id=1513822294831534220, animated=True)
+    CHECK_YES = discord.PartialEmoji(name="sync_check_yes", id=1518997998128988160, animated=True)
     LOADING = discord.PartialEmoji(name="Loading", id=1547095365679849492, animated=True)
     PENDING = discord.PartialEmoji(name="pending", id=1547110867466985532, animated=True)
     CONNECTION_PING = discord.PartialEmoji(name="connectionping", id=1551311432392646737, animated=True)
@@ -124,7 +124,7 @@ class EmojiPartials:
     CONNECTION_MODERATE = discord.PartialEmoji(name="moderateconnection", id=1551311891173740644, animated=False)
     CONNECTION_LOW = discord.PartialEmoji(name="lowconnection", id=1551311863675879494, animated=False)
     CONNECTION_NONE = discord.PartialEmoji(name="noconnection", id=1551311810223931484, animated=False)
-    SYNCBOT = discord.PartialEmoji(name="syncbot", id=1552437282059980810, animated=False)
+    SYNCBOT = discord.PartialEmoji(name="syncrobot", id=1538932141273120828, animated=False)
     BOT = SYNCBOT
     CPU = discord.PartialEmoji(name="CPU", id=1551310556038701118, animated=False)
     ROLE_OWNER = discord.PartialEmoji(name="👑")
@@ -220,6 +220,10 @@ OLD_TAG_MAP = {
     "<a:refused:1547035200926654624>": "<a:refused:1558019488408932423>",
     "<:SyncInkAI:1549154093421826058>": "<:SyncInkAI:1568405549572165703>",
     "<:s_arrow:1558799699102793801>": "<:s_arrow:1568408148463718490>",
+    "<a:syncwarning:1547034231438319616>": "<a:sync_alert:1513822294831534220>",
+    "<a:syncalert:1547036006455189626>": "<a:sync_alert:1513822294831534220>",
+    "<a:check_yes:1547034079076032512>": "<a:sync_check_yes:1518997998128988160>",
+    "<:syncbot:1552437282059980810>": "<:syncrobot:1538932141273120828>",
 }
 
 # Comprehensive mapping of raw emoji names to valid custom Discord emoji tags
@@ -255,7 +259,9 @@ EMOJI_NAME_MAP = {
     "lowconnection": "<:lowconnection:1551311863675879494>",
     "noconnection": "<:noconnection:1551311810223931484>",
     "connectionping": "<a:connectionping:1551311432392646737>",
-    "syncbot": "<:syncbot:1552437282059980810>",
+    "syncbot": "<:syncrobot:1538932141273120828>",
+    "syncrobot": "<:syncrobot:1538932141273120828>",
+    "bot": "<:syncrobot:1538932141273120828>",
     "syncinkai": "<:SyncInkAI:1568405549572165703>",
     "cpu": "<:CPU:1551310556038701118>",
 
@@ -270,18 +276,21 @@ EMOJI_NAME_MAP = {
     "experience": "<:experience:1562588852324143125>",
     "region": "<a:region:1562591209543966831>",
     "argument": "<:argument:1562587869762158762>",
-    "syncbot": "<:syncbot:1552437282059980810>",
-    "syncinkai": "<:SyncInkAI:1568405549572165703>",
     "ai": "<:SyncInkAI:1568405549572165703>",
     "partnered": "<:partnered:1551337413660381255>",
     "partner": "<:partnered:1551337413660381255>",
     "verified": "<:verified:1551336293017845822>",
-    "syncalert": "<a:syncalert:1547036006455189626>",
-    "syncwarning": "<a:syncwarning:1547034231438319616>",
+    "syncalert": "<a:sync_alert:1513822294831534220>",
+    "sync_alert": "<a:sync_alert:1513822294831534220>",
+    "syncwarning": "<a:sync_alert:1513822294831534220>",
+    "sync_warning": "<a:sync_alert:1513822294831534220>",
+    "warning": "<a:sync_alert:1513822294831534220>",
     "refused": "<a:refused:1558019488408932423>",
     "approved": "<a:approved:1558019502019575918>",
-    "check_yes": "<a:check_yes:1547034079076032512>",
-    "checkyes": "<a:check_yes:1547034079076032512>",
+    "sync_check_yes": "<a:sync_check_yes:1518997998128988160>",
+    "synccheckyes": "<a:sync_check_yes:1518997998128988160>",
+    "check_yes": "<a:sync_check_yes:1518997998128988160>",
+    "checkyes": "<a:sync_check_yes:1518997998128988160>",
     "syncinkmainlogo": "<:syncinkmainlogo:1547034265076760707>",
     "syncink_lock": "<:syncink_lock:1547034002689491025>",
     "syncinksuggestion": "<:syncinksuggestion:1547033969646903437>",
