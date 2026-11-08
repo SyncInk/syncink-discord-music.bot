@@ -167,8 +167,9 @@ def main():
             traceback.print_exception(type(error), error, error.__traceback__)
 
             try:
-                err_msg = (
-                    "### <a:refused:1558019488408932423> Something went wrong while running the command, "
+                from utils.emojis import Emojis, format_discord_emojis
+                err_msg = format_discord_emojis(
+                    f"### {Emojis.REFUSED} Something went wrong while running the command, "
                     "please try again or contact server administrator on "
                     "https://discord.com/channels/1520457643842342912/1520460764937322566"
                 )

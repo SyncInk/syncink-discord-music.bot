@@ -29,7 +29,7 @@ from utils.emojis import Emojis, EmojiPartials, format_discord_emojis
 from utils.logger import log
 
 ERROR_MESSAGE = (
-    "### <a:refused:1558019488408932423> Something went wrong while running the command, "
+    f"### {Emojis.REFUSED} Something went wrong while running the command, "
     "please try again or contact server administrator on "
     "https://discord.com/channels/1520457643842342912/1520460764937322566"
 )
@@ -1665,7 +1665,7 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             await interaction.response.edit_message(view=self)
         except Exception:
             await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        embed_msg = discord.Embed(description=f"### {Emojis.AI} AutoPlay is now **{status}**.", color=BRAND_COLOR)
+        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AutoPlay is now **{status}**."), color=BRAND_COLOR)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_block_artist(self, interaction: discord.Interaction):
@@ -2281,7 +2281,7 @@ class Music(commands.Cog):
                     queue.now_playing_message = None
                 if queue.text_channel:
                     embed_finished = discord.Embed(
-                        description="### Reached the end of the queue. Please queue some track(s) again!",
+                        description=format_discord_emojis(f"### {Emojis.TIME} Reached the end of the queue. Please queue some track(s) again!"),
                         color=BRAND_COLOR
                     )
                     await queue.text_channel.send(embed=embed_finished)
@@ -2416,7 +2416,7 @@ class Music(commands.Cog):
 
         if queue.text_channel:
             embed_finished = discord.Embed(
-                description="### Reached the end of the queue. Please queue some track(s) again!",
+                description=format_discord_emojis(f"### {Emojis.TIME} Reached the end of the queue. Please queue some track(s) again!"),
                 color=BRAND_COLOR
             )
             await queue.text_channel.send(embed=embed_finished)
@@ -2462,12 +2462,12 @@ class Music(commands.Cog):
                 if text_chan:
                     try:
                         if alone or reason == "alone":
-                            leave_desc = "### Left the voice channel as no one was in the voice channel."
+                            leave_desc = f"### {Emojis.WARNING} Left the voice channel as no one was in the voice channel."
                         else:
-                            leave_desc = "### Left the voice channel due to empty queue"
+                            leave_desc = f"### {Emojis.WARNING} Left the voice channel due to empty queue"
 
                         embed_leave = discord.Embed(
-                            description=leave_desc,
+                            description=format_discord_emojis(leave_desc),
                             color=0xED4245
                         )
                         await text_chan.send(embed=embed_leave)
@@ -3189,7 +3189,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(interaction.guild_id)
-            embed = discord.Embed(description=f"### {Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
+            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.DELETE} Left the voice channel and cleared active session."), color=BRAND_COLOR)
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             await self.send_error_embed(interaction, description="Not currently connected to voice.", is_warning=True)
@@ -3258,7 +3258,7 @@ class Music(commands.Cog):
             queue.autoplay = True
             AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
             embed = discord.Embed(
-                description=f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes.",
+                description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes."),
                 color=BRAND_COLOR
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3267,7 +3267,7 @@ class Music(commands.Cog):
             queue.prefetched_autoplay_track = None
             queue.prefetched_autoplay_meta = None
             embed = discord.Embed(
-                description=f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**.",
+                description=format_discord_emojis(f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**."),
                 color=0xED4245
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3567,7 +3567,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(ctx.guild.id)
-            embed = discord.Embed(description=f"### {Emojis.DELETE} Left the voice channel and cleared active session.", color=BRAND_COLOR)
+            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.DELETE} Left the voice channel and cleared active session."), color=BRAND_COLOR)
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3662,13 +3662,13 @@ class Music(commands.Cog):
             if m in ("on", "true", "enable", "1"):
                 queue.autoplay = True
                 AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-                embed = discord.Embed(description=f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.", color=BRAND_COLOR)
+                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**."), color=BRAND_COLOR)
                 await ctx.send(embed=embed, delete_after=5)
             elif m in ("off", "false", "disable", "0"):
                 queue.autoplay = False
                 queue.prefetched_autoplay_track = None
                 queue.prefetched_autoplay_meta = None
-                embed = discord.Embed(description=f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**.", color=0xED4245)
+                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**."), color=0xED4245)
                 await ctx.send(embed=embed, delete_after=5)
             else:
                 queue.autoplay = not queue.autoplay
@@ -3678,7 +3678,7 @@ class Music(commands.Cog):
                     queue.prefetched_autoplay_track = None
                     queue.prefetched_autoplay_meta = None
                 status = "ENABLED" if queue.autoplay else "DISABLED"
-                embed = discord.Embed(description=f"### {Emojis.AI} AI AutoPlay is now **{status}**.", color=BRAND_COLOR)
+                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **{status}**."), color=BRAND_COLOR)
                 await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
