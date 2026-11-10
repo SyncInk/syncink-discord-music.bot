@@ -3,10 +3,45 @@ import re
 from typing import Set, Dict
 
 # Set of emoji IDs verified to belong to this bot's application or accessible guilds
-VERIFIED_BOT_EMOJI_IDS: Set[int] = set()
+VERIFIED_BOT_EMOJI_IDS: Set[int] = {
+    1513822294831534220,  # sync_alert
+    1518997998128988160,  # sync_check_yes
+    1558019488408932423,  # refused
+    1558019502019575918,  # approved
+    1568405549572165703,  # SyncInkAI
+    1568408148463718490,  # s_arrow
+    1538932141273120828,  # syncrobot
+    1559660676853797005,  # like
+    1559660727373930657,  # dislike
+}
 
 # Map of normalized emoji names -> verified custom Discord emoji tags (<:name:id> or <a:name:id>)
-VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {}
+VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {
+    "sync_alert": "<a:sync_alert:1513822294831534220>",
+    "syncwarning": "<a:sync_alert:1513822294831534220>",
+    "syncalert": "<a:sync_alert:1513822294831534220>",
+    "sync_warning": "<a:sync_alert:1513822294831534220>",
+    "warning": "<a:sync_alert:1513822294831534220>",
+    "alert": "<a:sync_alert:1513822294831534220>",
+    "sync_check_yes": "<a:sync_check_yes:1518997998128988160>",
+    "synccheckyes": "<a:sync_check_yes:1518997998128988160>",
+    "check_yes": "<a:sync_check_yes:1518997998128988160>",
+    "checkyes": "<a:sync_check_yes:1518997998128988160>",
+    "approved": "<a:approved:1558019502019575918>",
+    "refused": "<a:refused:1558019488408932423>",
+    "cancelled": "<a:refused:1558019488408932423>",
+    "syncinkai": "<:SyncInkAI:1568405549572165703>",
+    "syncink_ai": "<:SyncInkAI:1568405549572165703>",
+    "ai": "<:SyncInkAI:1568405549572165703>",
+    "chatgpt": "<:SyncInkAI:1568405549572165703>",
+    "s_arrow": "<:s_arrow:1568408148463718490>",
+    "sarrow": "<:s_arrow:1568408148463718490>",
+    "syncrobot": "<:syncrobot:1538932141273120828>",
+    "syncbot": "<:syncrobot:1538932141273120828>",
+    "bot": "<:syncrobot:1538932141273120828>",
+    "like": "<:like:1559660676853797005>",
+    "dislike": "<:dislike:1559660727373930657>",
+}
 
 # Universal, high-compatibility visual Unicode fallbacks
 UNICODE_FALLBACKS: Dict[str, str] = {
@@ -117,27 +152,26 @@ UNICODE_FALLBACKS: Dict[str, str] = {
 class Emojis:
     """
     Centralized emoji registry for SyncInk Radio.
-    Defaults to universal visual Unicode symbols so un-uploaded or cross-application
-    emojis never display broken raw text (:name:).
-    Dynamically upgraded to high-resolution application emojis by EmojiManager upon startup.
+    Defaults to verified custom Discord application emojis.
+    Dynamically upgraded or synced with application emojis by EmojiManager upon startup.
     """
     # System Alerts & Notices
-    ALERT = "⚠️"
-    WARNING = "⚠️"
+    ALERT = "<a:sync_alert:1513822294831534220>"
+    WARNING = "<a:sync_alert:1513822294831534220>"
     SETTINGS = "⚙️"
-    REFUSED = "❌"
-    APPROVED = "✅"
-    CHECK_YES = "✅"
+    REFUSED = "<a:refused:1558019488408932423>"
+    APPROVED = "<a:approved:1558019502019575918>"
+    CHECK_YES = "<a:sync_check_yes:1518997998128988160>"
     LOADING = "⏳"
     PENDING = "⏳"
 
     # AI & Core Identity
-    AI = "🤖"
-    CHATGPT = "🤖"
-    SYNCBOT = "🤖"
-    BOT = "🤖"
+    AI = "<:SyncInkAI:1568405549572165703>"
+    CHATGPT = "<:SyncInkAI:1568405549572165703>"
+    SYNCBOT = "<:syncrobot:1538932141273120828>"
+    BOT = "<:syncrobot:1538932141273120828>"
     CPU = "💻"
-    S_ARROW = "▸"
+    S_ARROW = "<:s_arrow:1568408148463718490>"
     ARROW = "➜"
     TIME = "⏱️"
     LOOKING = "🔍"
@@ -154,8 +188,8 @@ class Emojis:
     RADIO = "📻"
     SYNCINK_RADIO = "📻"
     DELETE = "🗑️"
-    LIKE = "👍"
-    DISLIKE = "👎"
+    LIKE = "<:like:1559660676853797005>"
+    DISLIKE = "<:dislike:1559660727373930657>"
     PLAYING = "🎶"
     SCALE = "⚖️"
     REFRESH = "🔄"
@@ -215,26 +249,25 @@ class Emojis:
 class EmojiPartials:
     """
     discord.PartialEmoji instances for interactive UI components (Buttons, Select Menus).
-    Initialized with safe Unicode fallbacks so Discord never throws 400 Bad Request
-    when application emojis are missing. Upgraded dynamically by EmojiManager.
+    Initialized with verified application emojis. Upgraded dynamically by EmojiManager.
     """
     # System Alerts & Notices
-    ALERT = discord.PartialEmoji(name="⚠️")
-    WARNING = discord.PartialEmoji(name="⚠️")
+    ALERT = discord.PartialEmoji(name="sync_alert", id=1513822294831534220, animated=True)
+    WARNING = discord.PartialEmoji(name="sync_alert", id=1513822294831534220, animated=True)
     SETTINGS = discord.PartialEmoji(name="⚙️")
-    REFUSED = discord.PartialEmoji(name="❌")
-    APPROVED = discord.PartialEmoji(name="✅")
-    CHECK_YES = discord.PartialEmoji(name="✅")
+    REFUSED = discord.PartialEmoji(name="refused", id=1558019488408932423, animated=True)
+    APPROVED = discord.PartialEmoji(name="approved", id=1558019502019575918, animated=True)
+    CHECK_YES = discord.PartialEmoji(name="sync_check_yes", id=1518997998128988160, animated=True)
     LOADING = discord.PartialEmoji(name="⏳")
     PENDING = discord.PartialEmoji(name="⏳")
 
     # AI & Navigation
-    AI = discord.PartialEmoji(name="🤖")
-    CHATGPT = discord.PartialEmoji(name="🤖")
-    SYNCBOT = discord.PartialEmoji(name="🤖")
-    BOT = discord.PartialEmoji(name="🤖")
+    AI = discord.PartialEmoji(name="SyncInkAI", id=1568405549572165703, animated=False)
+    CHATGPT = discord.PartialEmoji(name="SyncInkAI", id=1568405549572165703, animated=False)
+    SYNCBOT = discord.PartialEmoji(name="syncrobot", id=1538932141273120828, animated=False)
+    BOT = discord.PartialEmoji(name="syncrobot", id=1538932141273120828, animated=False)
     CPU = discord.PartialEmoji(name="💻")
-    S_ARROW = discord.PartialEmoji(name="▸")
+    S_ARROW = discord.PartialEmoji(name="s_arrow", id=1568408148463718490, animated=False)
     ARROW = discord.PartialEmoji(name="➜")
     TIME = discord.PartialEmoji(name="⏱️")
     LOOKING = discord.PartialEmoji(name="🔍")
@@ -251,8 +284,8 @@ class EmojiPartials:
     RADIO = discord.PartialEmoji(name="📻")
     SYNCINK_RADIO = discord.PartialEmoji(name="📻")
     DELETE = discord.PartialEmoji(name="🗑️")
-    LIKE = discord.PartialEmoji(name="👍")
-    DISLIKE = discord.PartialEmoji(name="👎")
+    LIKE = discord.PartialEmoji(name="like", id=1559660676853797005, animated=False)
+    DISLIKE = discord.PartialEmoji(name="dislike", id=1559660727373930657, animated=False)
     PLAYING = discord.PartialEmoji(name="🎶")
     SCALE = discord.PartialEmoji(name="⚖️")
     REFRESH = discord.PartialEmoji(name="🔄")
@@ -397,22 +430,28 @@ def format_discord_emojis(text: str) -> str:
 
     # 6. Safety catch for common reported broken emojis to prevent any text leaks
     safety_replacements = {
-        ":syncwarning:": UNICODE_FALLBACKS.get("syncwarning", "⚠️"),
-        ":syncalert:": UNICODE_FALLBACKS.get("syncalert", "⚠️"),
-        ":sync_alert:": UNICODE_FALLBACKS.get("sync_alert", "⚠️"),
-        ":sync_warning:": UNICODE_FALLBACKS.get("sync_warning", "⚠️"),
-        ":warning:": UNICODE_FALLBACKS.get("warning", "⚠️"),
-        ":SyncInkAI:": UNICODE_FALLBACKS.get("syncinkai", "🤖"),
-        ":syncinkai:": UNICODE_FALLBACKS.get("syncinkai", "🤖"),
-        ":s_arrow:": UNICODE_FALLBACKS.get("s_arrow", "▸"),
-        ":sarrow:": UNICODE_FALLBACKS.get("sarrow", "▸"),
-        ":check_yes:": UNICODE_FALLBACKS.get("check_yes", "✅"),
-        ":sync_check_yes:": UNICODE_FALLBACKS.get("sync_check_yes", "✅"),
-        ":synccheckyes:": UNICODE_FALLBACKS.get("synccheckyes", "✅"),
-        ":refused:": UNICODE_FALLBACKS.get("refused", "❌"),
-        ":approved:": UNICODE_FALLBACKS.get("approved", "✅"),
-        ":syncbot:": UNICODE_FALLBACKS.get("syncbot", "🤖"),
-        ":syncrobot:": UNICODE_FALLBACKS.get("syncrobot", "🤖"),
+        ":syncwarning:": Emojis.WARNING,
+        ":syncalert:": Emojis.WARNING,
+        ":sync_alert:": Emojis.WARNING,
+        ":sync_warning:": Emojis.WARNING,
+        ":warning:": Emojis.WARNING,
+        ":alert:": Emojis.ALERT,
+        ":SyncInkAI:": Emojis.AI,
+        ":syncinkai:": Emojis.AI,
+        ":s_arrow:": Emojis.S_ARROW,
+        ":sarrow:": Emojis.S_ARROW,
+        ":check_yes:": Emojis.CHECK_YES,
+        ":sync_check_yes:": Emojis.CHECK_YES,
+        ":synccheckyes:": Emojis.CHECK_YES,
+        ":checkyes:": Emojis.CHECK_YES,
+        ":refused:": Emojis.REFUSED,
+        ":cancelled:": Emojis.REFUSED,
+        ":approved:": Emojis.APPROVED,
+        ":syncbot:": Emojis.SYNCBOT,
+        ":syncrobot:": Emojis.SYNCBOT,
+        ":bot:": Emojis.SYNCBOT,
+        ":like:": Emojis.LIKE,
+        ":dislike:": Emojis.DISLIKE,
     }
     for colon_name, fallback_symbol in safety_replacements.items():
         if colon_name in text:

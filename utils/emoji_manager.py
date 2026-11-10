@@ -1,4 +1,6 @@
 import os
+import aiohttp
+import base64
 import discord
 from typing import Dict, List, Optional
 from utils.logger import log
@@ -14,10 +16,22 @@ from utils.emojis import (
 class EmojiManager:
     """
     Dynamically discovers, synchronizes, and auto-uploads Application Emojis
-    directly to the SyncInk Radio application profile (via bot.fetch_application_emojis
-    and bot.create_application_emoji).
+    directly to the SyncInk Radio application profile via Discord API v10 REST.
     Guarantees cross-server compatibility and completely eliminates raw broken :name: text.
     """
+
+    # User-verified custom emojis
+    DEFAULT_KNOWN_EMOJIS = {
+        "sync_alert": {"id": 1513822294831534220, "name": "sync_alert", "animated": True, "tag": "<a:sync_alert:1513822294831534220>"},
+        "sync_check_yes": {"id": 1518997998128988160, "name": "sync_check_yes", "animated": True, "tag": "<a:sync_check_yes:1518997998128988160>"},
+        "refused": {"id": 1558019488408932423, "name": "refused", "animated": True, "tag": "<a:refused:1558019488408932423>"},
+        "approved": {"id": 1558019502019575918, "name": "approved", "animated": True, "tag": "<a:approved:1558019502019575918>"},
+        "syncinkai": {"id": 1568405549572165703, "name": "SyncInkAI", "animated": False, "tag": "<:SyncInkAI:1568405549572165703>"},
+        "s_arrow": {"id": 1568408148463718490, "name": "s_arrow", "animated": False, "tag": "<:s_arrow:1568408148463718490>"},
+        "syncrobot": {"id": 1538932141273120828, "name": "syncrobot", "animated": False, "tag": "<:syncrobot:1538932141273120828>"},
+        "like": {"id": 1559660676853797005, "name": "like", "animated": False, "tag": "<:like:1559660676853797005>"},
+        "dislike": {"id": 1559660727373930657, "name": "dislike", "animated": False, "tag": "<:dislike:1559660727373930657>"},
+    }
 
     # Essential application emojis and their candidate filenames in assets/emojis
     EMOJI_ASSET_FILES = {
@@ -118,97 +132,192 @@ class EmojiManager:
     @classmethod
     async def sync_application_emojis(cls, bot: discord.Client):
         log.info("[EmojiManager] Synchronizing Application and Bot Profile Emojis...")
-        app_emojis: List[discord.Emoji] = []
 
-        # Ensure bot.application_id is set if bot.user is available
-        if not getattr(bot, "application_id", None) and getattr(bot, "user", None):
+        # 1. Resolve Application ID and Token
+        app_id = None
+        try:
+            if hasattr(bot, "application_id") and bot.application_id:
+                app_id = bot.application_id
+        except Exception:
+            pass
+
+        if not app_id and hasattr(bot, "application") and bot.application:
+            app_id = bot.application.id
+
+        if not app_id:
             try:
-                bot.application_id = bot.user.id
+                app_info = await bot.application_info()
+                app_id = app_info.id
             except Exception:
                 pass
 
-        # 1. Fetch Application Emojis currently uploaded to this bot application
-        try:
-            if hasattr(bot, "fetch_application_emojis"):
-                fetched = await bot.fetch_application_emojis()
-                app_emojis = list(fetched)
-                log.info(f"[EmojiManager] Fetched {len(app_emojis)} existing application emojis from bot profile.")
-        except Exception as e:
-            log.warning(f"[EmojiManager] fetch_application_emojis error: {e}")
+        if not app_id and getattr(bot, "user", None):
+            app_id = bot.user.id
 
-        existing_names = {
-            e.name.lower().replace("-", "_").replace(" ", ""): e for e in app_emojis
-        }
+        # Internal connection cache
+        if app_id and hasattr(bot, "_connection"):
+            try:
+                bot._connection.application_id = app_id
+            except Exception:
+                pass
 
-        # 2. Automatically upload missing emojis from local assets to bot profile
+        token = getattr(bot.http, "token", None) or os.getenv("DISCORD_BOT_TOKEN") or os.getenv("DISCORD_TOKEN") or os.getenv("TOKEN")
+
+        # Map of normalized name -> emoji dict {id, name, animated, tag}
+        app_emoji_dict: Dict[str, dict] = {}
+
+        # 2. Fetch via Discord API v10 REST
+        if app_id and token:
+            headers = {
+                "Authorization": f"Bot {token}",
+                "Content-Type": "application/json"
+            }
+            url = f"https://discord.com/api/v10/applications/{app_id}/emojis"
+            try:
+                timeout = aiohttp.ClientTimeout(total=15)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            items = data.get("items", []) if isinstance(data, dict) else (data if isinstance(data, list) else [])
+                            log.info(f"[EmojiManager] REST: Found {len(items)} existing application emojis for App ID {app_id}.")
+                            for it in items:
+                                eid = int(it["id"])
+                                ename = it["name"]
+                                eanim = bool(it.get("animated", False))
+                                etag = f"<a:{ename}:{eid}>" if eanim else f"<:{ename}:{eid}>"
+                                norm = ename.lower().replace("-", "_").replace(" ", "")
+                                app_emoji_dict[norm] = {
+                                    "id": eid,
+                                    "name": ename,
+                                    "animated": eanim,
+                                    "tag": etag
+                                }
+                        else:
+                            log.warning(f"[EmojiManager] REST fetch emojis returned HTTP {resp.status}")
+            except Exception as fe:
+                log.warning(f"[EmojiManager] REST fetch emojis failed: {fe}")
+
+        # Fallback to bot.fetch_application_emojis if REST was empty and library supports it
+        if not app_emoji_dict and hasattr(bot, "fetch_application_emojis"):
+            try:
+                lib_emojis = await bot.fetch_application_emojis()
+                for em in lib_emojis:
+                    norm = em.name.lower().replace("-", "_").replace(" ", "")
+                    app_emoji_dict[norm] = {
+                        "id": em.id,
+                        "name": em.name,
+                        "animated": em.animated,
+                        "tag": str(em)
+                    }
+                log.info(f"[EmojiManager] Library fetch found {len(lib_emojis)} application emojis.")
+            except Exception as le:
+                log.debug(f"[EmojiManager] Library fetch application emojis error: {le}")
+
+        # 3. Auto-Upload missing emojis directly to application profile
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         candidate_dirs = [
             os.path.join(base_dir, "assets", "emojis"),
-            r"D:\SyncInk Radio emojies",
-            r"D:\SyncInk Support\assets\emojis",
-            r"D:\",
+            os.path.join(base_dir, "assets"),
         ]
 
-        if hasattr(bot, "create_application_emoji"):
-            for target_name, file_candidates in cls.EMOJI_ASSET_FILES.items():
-                norm_key = target_name.lower().replace("-", "_").replace(" ", "")
-                if norm_key in existing_names:
-                    continue
+        if app_id and token:
+            headers = {
+                "Authorization": f"Bot {token}",
+                "Content-Type": "application/json"
+            }
+            url = f"https://discord.com/api/v10/applications/{app_id}/emojis"
+            timeout = aiohttp.ClientTimeout(total=20)
+            try:
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    for target_name, file_candidates in cls.EMOJI_ASSET_FILES.items():
+                        norm_key = target_name.lower().replace("-", "_").replace(" ", "")
+                        if norm_key in app_emoji_dict:
+                            continue
 
-                # Locate image asset file
-                found_path = None
-                for c_dir in candidate_dirs:
-                    if not os.path.isdir(c_dir):
-                        continue
-                    for f_name in file_candidates:
-                        p = os.path.join(c_dir, f_name)
-                        if os.path.isfile(p):
-                            found_path = p
-                            break
-                    if found_path:
-                        break
+                        # Locate image asset file
+                        found_path = None
+                        for c_dir in candidate_dirs:
+                            if not os.path.isdir(c_dir):
+                                continue
+                            for f_name in file_candidates:
+                                p = os.path.join(c_dir, f_name)
+                                if os.path.isfile(p):
+                                    found_path = p
+                                    break
+                            if found_path:
+                                break
 
-                if not found_path:
-                    continue
+                        if not found_path:
+                            continue
 
-                # Read and upload if within Discord's 256KB limit
-                try:
-                    file_size = os.path.getsize(found_path)
-                    if file_size > 256 * 1024:
-                        log.debug(f"[EmojiManager] Skipping '{target_name}': file {found_path} exceeds 256KB ({file_size} bytes)")
-                        continue
+                        file_size = os.path.getsize(found_path)
+                        if file_size > 256 * 1024:
+                            log.debug(f"[EmojiManager] Skipping '{target_name}': {found_path} exceeds 256KB")
+                            continue
 
-                    with open(found_path, "rb") as img_file:
-                        img_bytes = img_file.read()
+                        try:
+                            with open(found_path, "rb") as f:
+                                img_bytes = f.read()
 
-                    new_emoji = await bot.create_application_emoji(name=target_name, image=img_bytes)
-                    app_emojis.append(new_emoji)
-                    existing_names[norm_key] = new_emoji
-                    log.info(f"[EmojiManager] Auto-uploaded application emoji '{target_name}' (ID: {new_emoji.id}) to bot application.")
-                except discord.HTTPException as he:
-                    log.warning(f"[EmojiManager] Discord HTTP error uploading '{target_name}': {he}")
-                except Exception as ex:
-                    log.warning(f"[EmojiManager] Could not upload '{target_name}': {ex}")
+                            b64_img = base64.b64encode(img_bytes).decode("utf-8")
+                            ext = os.path.splitext(found_path)[1].lower().strip(".")
+                            mime = "image/gif" if ext == "gif" else "image/png"
+                            data_uri = f"data:{mime};base64,{b64_img}"
 
-        # 3. Combine with bot's accessible guild emojis
-        all_emojis: List[discord.Emoji] = list(app_emojis)
+                            payload = {
+                                "name": target_name,
+                                "image": data_uri
+                            }
+                            async with session.post(url, headers=headers, json=payload) as post_resp:
+                                if post_resp.status in (200, 201):
+                                    created = await post_resp.json()
+                                    eid = int(created["id"])
+                                    ename = created["name"]
+                                    eanim = bool(created.get("animated", False))
+                                    etag = f"<a:{ename}:{eid}>" if eanim else f"<:{ename}:{eid}>"
+                                    app_emoji_dict[norm_key] = {
+                                        "id": eid,
+                                        "name": ename,
+                                        "animated": eanim,
+                                        "tag": etag
+                                    }
+                                    log.info(f"[EmojiManager] Auto-uploaded Application Emoji '{target_name}' (ID: {eid}) directly to SyncInk Radio profile!")
+                                else:
+                                    resp_text = await post_resp.text()
+                                    log.warning(f"[EmojiManager] Failed upload '{target_name}': HTTP {post_resp.status} - {resp_text[:120]}")
+                        except Exception as up_err:
+                            log.warning(f"[EmojiManager] Error uploading '{target_name}': {up_err}")
+            except Exception as sess_err:
+                log.warning(f"[EmojiManager] Upload session error: {sess_err}")
+
+        # 4. Integrate guild emojis
         for guild in getattr(bot, "guilds", []):
-            all_emojis.extend(guild.emojis)
+            for gemoji in guild.emojis:
+                norm = gemoji.name.lower().replace("-", "_").replace(" ", "")
+                if norm not in app_emoji_dict:
+                    app_emoji_dict[norm] = {
+                        "id": gemoji.id,
+                        "name": gemoji.name,
+                        "animated": gemoji.animated,
+                        "tag": str(gemoji)
+                    }
 
-        # 4. Update global verified caches in utils.emojis
+        # 5. Integrate pre-configured known application emojis (user-specified)
+        for norm, d in cls.DEFAULT_KNOWN_EMOJIS.items():
+            if norm not in app_emoji_dict:
+                app_emoji_dict[norm] = d
+
+        # 6. Update global verified registries
         VERIFIED_BOT_EMOJI_IDS.clear()
         VERIFIED_BOT_EMOJIS_BY_NAME.clear()
 
-        emoji_obj_by_name: Dict[str, discord.Emoji] = {}
-        for emoji in all_emojis:
-            VERIFIED_BOT_EMOJI_IDS.add(emoji.id)
-            clean_name = emoji.name.lower().replace("-", "_").replace(" ", "")
-            tag = str(emoji)
-            VERIFIED_BOT_EMOJIS_BY_NAME[clean_name] = tag
-            EMOJI_NAME_MAP[clean_name] = tag
-            emoji_obj_by_name[clean_name] = emoji
+        for norm, d in app_emoji_dict.items():
+            VERIFIED_BOT_EMOJI_IDS.add(d["id"])
+            VERIFIED_BOT_EMOJIS_BY_NAME[norm] = d["tag"]
+            EMOJI_NAME_MAP[norm] = d["tag"]
 
-        # Setup standard aliases in verified map
+        # Setup standard aliases
         alias_pairs = [
             ("syncwarning", "sync_alert"),
             ("syncalert", "sync_alert"),
@@ -228,30 +337,30 @@ class EmojiManager:
         ]
         for alias, target in alias_pairs:
             if target in VERIFIED_BOT_EMOJIS_BY_NAME:
-                VERIFIED_BOT_EMOJIS_BY_NAME[alias] = VERIFIED_BOT_EMOJIS_BY_NAME[target]
-                EMOJI_NAME_MAP[alias] = VERIFIED_BOT_EMOJIS_BY_NAME[target]
-                if target in emoji_obj_by_name:
-                    emoji_obj_by_name[alias] = emoji_obj_by_name[target]
+                tag = VERIFIED_BOT_EMOJIS_BY_NAME[target]
+                VERIFIED_BOT_EMOJIS_BY_NAME[alias] = tag
+                EMOJI_NAME_MAP[alias] = tag
+                if target in app_emoji_dict and alias not in app_emoji_dict:
+                    app_emoji_dict[alias] = app_emoji_dict[target]
 
-        # 5. Dynamically bind verified emojis into Emojis and EmojiPartials
+        # 7. Dynamically bind into Emojis and EmojiPartials
         synced_count = 0
         for name_key, (emoji_attr, partial_attr) in cls.MAPPINGS.items():
-            if name_key in emoji_obj_by_name:
-                em = emoji_obj_by_name[name_key]
-                setattr(Emojis, emoji_attr, str(em))
+            if name_key in app_emoji_dict:
+                d = app_emoji_dict[name_key]
+                setattr(Emojis, emoji_attr, d["tag"])
                 setattr(EmojiPartials, partial_attr, discord.PartialEmoji(
-                    name=em.name,
-                    id=em.id,
-                    animated=em.animated
+                    name=d["name"],
+                    id=d["id"],
+                    animated=d["animated"]
                 ))
                 synced_count += 1
             else:
-                # Use clean Unicode fallback if not uploaded
                 fallback = UNICODE_FALLBACKS.get(name_key, "⚠️")
                 setattr(Emojis, emoji_attr, fallback)
                 setattr(EmojiPartials, partial_attr, discord.PartialEmoji(name=fallback))
 
-        # Synchronize core aliases
+        # Core aliases
         if hasattr(Emojis, "WARNING"):
             setattr(Emojis, "ALERT", getattr(Emojis, "WARNING"))
             setattr(EmojiPartials, "ALERT", getattr(EmojiPartials, "WARNING"))
@@ -278,4 +387,4 @@ class EmojiManager:
         except Exception:
             pass
 
-        log.info(f"[EmojiManager] Synchronized {synced_count} custom emojis into active UI system. ({len(VERIFIED_BOT_EMOJI_IDS)} verified IDs)")
+        log.info(f"[EmojiManager] Synchronized {synced_count} application emojis into active bot system! ({len(VERIFIED_BOT_EMOJI_IDS)} verified IDs)")

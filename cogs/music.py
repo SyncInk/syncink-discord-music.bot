@@ -91,7 +91,7 @@ def make_error_embed(
 
     formatted_desc = description
     if not (description.startswith("<") or description.startswith(":") or description.startswith("⚠️") or description.startswith("❌") or is_raw_header):
-        formatted_desc = f"{icon} **{description}**"
+        formatted_desc = f"### {icon} {description}"
     elif is_raw_header and not any(tag in description for tag in ("<a:sync_alert", "<:sync_alert", "<a:syncwarning", "<:syncwarning", "<a:refused", "<:refused", "<a:approved", "<:approved", "<a:sync_check_yes")):
         formatted_desc = description.replace("### ", f"### {icon} ", 1)
 
@@ -104,6 +104,13 @@ def make_error_embed(
         description=formatted_desc,
         color=color
     )
+    embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
+    return embed
+
+def make_success_embed(description: str, color: int = BRAND_COLOR) -> discord.Embed:
+    formatted_desc = format_discord_emojis(description)
+    embed = discord.Embed(description=formatted_desc, color=color)
+    embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
     return embed
 
 async def _delayed_delete_msg(msg: discord.Message, delay: int = 30):
@@ -897,9 +904,10 @@ class RadioStationSearchModal(discord.ui.Modal, title="Search Radio Stations"):
         self.parent_view.build_components()
 
         info_embed = discord.Embed(
-            description=f"{Emojis.RADIO} Found **{len(matched)}** station(s) for **{search_query}** in {self.parent_view.flag} **{self.parent_view.country_name}**.\n{Emojis.S_ARROW} *Select a station from the dropdown below:*",
+            description=format_discord_emojis(f"### {Emojis.RADIO} Found **{len(matched)}** station(s) for **{search_query}** in {self.parent_view.flag} **{self.parent_view.country_name}**\n{Emojis.S_ARROW} *Select a station from the dropdown below:*"),
             color=BRAND_COLOR
         )
+        info_embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
         try:
             await interaction.edit_original_response(embed=info_embed, view=self.parent_view)
             orig = await interaction.original_response()
@@ -1102,9 +1110,10 @@ class RadioStationSelectView(discord.ui.View):
         self.build_components()
         flag = get_country_flag(self.country_name)
         embed = discord.Embed(
-            description=f"{Emojis.RADIO} **{flag} {self.country_name} Radio Stations** ({len(self.stations)} available)\n{Emojis.S_ARROW} *Select a station below or use 🔍 Search to find any station:*",
+            description=format_discord_emojis(f"### {Emojis.RADIO} {flag} {self.country_name} Radio Stations ({len(self.stations)} available)\n{Emojis.S_ARROW} *Select a station below or use 🔍 Search to find any station:*"),
             color=BRAND_COLOR
         )
+        embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
         try:
             await interaction.edit_original_response(embed=embed, view=self)
             orig = await interaction.original_response()
@@ -2436,6 +2445,7 @@ class Music(commands.Cog):
                 description=format_discord_emojis(f"### {Emojis.TIME} Reached the end of the queue. Please queue some track(s) again!"),
                 color=BRAND_COLOR
             )
+            embed_finished.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             await queue.text_channel.send(embed=embed_finished)
 
         self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
@@ -2487,6 +2497,7 @@ class Music(commands.Cog):
                             description=format_discord_emojis(leave_desc),
                             color=0xED4245
                         )
+                        embed_leave.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
                         await text_chan.send(embed=embed_leave)
                     except Exception as e:
                         log.warning(f"Could not send leave embed: {e}")
@@ -2598,9 +2609,10 @@ class Music(commands.Cog):
                                 pass
                         # Send station tuned embed
                         info_embed = discord.Embed(
-                            description=format_discord_emojis(f"{Emojis.RADIO} **Tuned into {next_station['name']} ({flag} {country_name})**\n{Emojis.S_ARROW} *Use dropdown below or Next button to switch station anytime:*"),
+                            description=format_discord_emojis(f"### {Emojis.RADIO} Tuned into {next_station['name']} ({flag} {country_name})\n{Emojis.S_ARROW} *Use dropdown below or Next button to switch station anytime:*"),
                             color=BRAND_COLOR
                         )
+                        info_embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
                         switch_view = RadioStationSelectView(self, requester, country_name, stations)
                         try:
                             msg = await target_channel.send(embed=info_embed, view=switch_view)
@@ -2750,9 +2762,10 @@ class Music(commands.Cog):
             menu_link = f"[radio menu]({queue.radio_menu_url})" if getattr(queue, "radio_menu_url", None) else "the radio menu"
             switch_view = RadioStationSelectView(self, user, country_name, stations or [])
             warn_embed = discord.Embed(
-                description=f"### {Emojis.WARNING} Station **{station.get('name', 'Live Radio')}** is currently offline or unreachable.\n{Emojis.S_ARROW} *Please choose another station from {menu_link} or use 🔍 Search:*",
+                description=format_discord_emojis(f"### {Emojis.WARNING} Station **{station.get('name', 'Live Radio')}** is currently offline or unreachable.\n{Emojis.S_ARROW} *Please choose another station from {menu_link} or use 🔍 Search:*"),
                 color=0xED4245
             )
+            warn_embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             if is_switch_callback and is_interaction:
                 try:
                     await target.edit_original_response(embed=warn_embed, view=switch_view)
@@ -2805,9 +2818,10 @@ class Music(commands.Cog):
         if stations:
             switch_view = RadioStationSelectView(self, user, country_name, stations)
             info_embed = discord.Embed(
-                description=f"{Emojis.RADIO} **Tuned into {station['name']} ({flag} {country_name})**\n{Emojis.S_ARROW} *Use dropdown below to switch station anytime (🔍 Search available):*",
+                description=format_discord_emojis(f"### {Emojis.RADIO} Tuned into {station['name']} ({flag} {country_name})\n{Emojis.S_ARROW} *Use dropdown below to switch station anytime (🔍 Search available):*"),
                 color=BRAND_COLOR
             )
+            info_embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             if is_switch_callback and is_interaction:
                 try:
                     await target.edit_original_response(embed=info_embed, view=switch_view)
@@ -3108,7 +3122,7 @@ class Music(commands.Cog):
             return
         queue.voice_client.pause()
         queue.paused_at = time.time()
-        embed = discord.Embed(description=f"### {Emojis.PAUSE_BUTTON} Playback paused.\nResume anytime with `/resume`.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PAUSE_BUTTON} Playback paused.\nResume anytime with `/resume`.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
             try:
@@ -3127,7 +3141,7 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
-        embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PLAY_BUTTON} Playback resumed.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
             try:
@@ -3156,7 +3170,7 @@ class Music(commands.Cog):
                 queue.active_radio_station_info.get("name", "Next Station")
                 if queue.active_radio_station_info else "Next Station"
             )
-            embed = discord.Embed(description=f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**", color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**")
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
@@ -3168,7 +3182,7 @@ class Music(commands.Cog):
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.NEXT} Skipped: **{skipped}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.NEXT} Skipped: **{skipped}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="previous", description="Replay the previous track in history.")
@@ -3183,7 +3197,7 @@ class Music(commands.Cog):
         queue.tracks.insert(0, prev)
         if queue.voice_client:
             queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="stop", description="Stop music and clear the queue.")
@@ -3205,7 +3219,7 @@ class Music(commands.Cog):
                 pass
             queue.now_playing_message = None
         self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
-        embed = discord.Embed(description=f"### {Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.DELETE} Stopped playback and cleared the session.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="leave", description="Disconnect from voice channel.")
@@ -3220,7 +3234,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(interaction.guild_id)
-            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.DELETE} Left the voice channel and cleared active session."), color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.DELETE} Left the voice channel and cleared active session.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             await self.send_error_embed(interaction, description="Not currently connected to voice.", is_warning=True)
@@ -3232,7 +3246,7 @@ class Music(commands.Cog):
         if action == "clear":
             count = len(queue.tracks)
             queue.tracks.clear()
-            embed = discord.Embed(description=f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             embed = self.build_queue_embed(queue)
@@ -3255,7 +3269,7 @@ class Music(commands.Cog):
             await self.send_error_embed(interaction, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
-        embed = discord.Embed(description=f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="loop", description="Toggle loop mode.")
@@ -3263,7 +3277,7 @@ class Music(commands.Cog):
     async def slash_loop(self, interaction: discord.Interaction, mode: Literal["off", "track", "queue"]):
         queue = self.service.get_queue(interaction.guild_id)
         queue.repeat_mode = mode
-        embed = discord.Embed(description=f"### {Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="volume", description="Set audio gain volume (1% to 200%).")
@@ -3278,7 +3292,7 @@ class Music(commands.Cog):
                 src.volume = val / 100.0
             if hasattr(src, "original") and hasattr(src.original, "volume"):
                 src.original.volume = val / 100.0
-        embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
@@ -3288,18 +3302,17 @@ class Music(commands.Cog):
         if mode == "on":
             queue.autoplay = True
             AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-            embed = discord.Embed(
-                description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes."),
-                color=BRAND_COLOR
+            embed = make_success_embed(
+                f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes."
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         elif mode == "off":
             queue.autoplay = False
             queue.prefetched_autoplay_track = None
             queue.prefetched_autoplay_meta = None
-            embed = discord.Embed(
-                description=format_discord_emojis(f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**."),
-                color=0xED4245
+            embed = make_error_embed(
+                description="AI AutoPlay is now **DISABLED**.",
+                is_warning=False
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
@@ -3318,7 +3331,7 @@ class Music(commands.Cog):
         if queue.is_247:
             queue.cancel_inactivity()
         status = "ENABLED" if queue.is_247 else "DISABLED"
-        embed = discord.Embed(description=f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="replay", description="Replay current track from the beginning.")
@@ -3329,6 +3342,10 @@ class Music(commands.Cog):
             return
         curr = queue.current_track
         queue.tracks.insert(0, curr)
+        queue.manual_skip = True
+        queue.voice_client.stop()
+        embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         queue.voice_client.stop()
         embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", color=BRAND_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3476,7 +3493,7 @@ class Music(commands.Cog):
             return
         queue.voice_client.pause()
         queue.paused_at = time.time()
-        embed = discord.Embed(description=f"### {Emojis.PAUSE_BUTTON} Playback paused.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PAUSE_BUTTON} Playback paused.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3497,7 +3514,7 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
-        embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PLAY_BUTTON} Playback resumed.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3526,7 +3543,7 @@ class Music(commands.Cog):
                 queue.active_radio_station_info.get("name", "Next Station")
                 if queue.active_radio_station_info else "Next Station"
             )
-            embed = discord.Embed(description=f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**", color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.NEXT} Tuned into next radio station: **{st_name}**")
             await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3540,7 +3557,7 @@ class Music(commands.Cog):
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.NEXT} Skipped: **{skipped}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.NEXT} Skipped: **{skipped}**")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3557,7 +3574,7 @@ class Music(commands.Cog):
         queue.tracks.insert(0, prev)
         if queue.voice_client:
             queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3581,7 +3598,7 @@ class Music(commands.Cog):
                 pass
             queue.now_playing_message = None
         self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
-        embed = discord.Embed(description=f"### {Emojis.DELETE} Stopped playback and cleared the session.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.DELETE} Stopped playback and cleared the session.")
         await ctx.send(embed=embed, delete_after=10)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3598,7 +3615,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(ctx.guild.id)
-            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.DELETE} Left the voice channel and cleared active session."), color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.DELETE} Left the voice channel and cleared active session.")
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3611,7 +3628,7 @@ class Music(commands.Cog):
         if action.lower() == "clear":
             count = len(queue.tracks)
             queue.tracks.clear()
-            embed = discord.Embed(description=f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.", color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.")
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -3640,7 +3657,7 @@ class Music(commands.Cog):
             await self.send_error_embed(ctx, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
-        embed = discord.Embed(description=f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3658,7 +3675,7 @@ class Music(commands.Cog):
         else:
             m = mode.lower().strip()
             queue.repeat_mode = m if m in ("off", "track", "queue") else "track"
-        embed = discord.Embed(description=f"### {Emojis.REPEAT} Repeat mode set to: **{queue.repeat_mode.upper()}**", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.REPEAT} Repeat mode set to: **{queue.repeat_mode.upper()}**")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3667,7 +3684,7 @@ class Music(commands.Cog):
     async def cmd_volume(self, ctx: commands.Context, percent: Optional[int] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if percent is None:
-            embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Current volume: **{queue.volume}%**", color=BRAND_COLOR)
+            embed = make_success_embed(f"### {Emojis.SYNCBOT} Current volume: **{queue.volume}%**")
             await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3680,7 +3697,7 @@ class Music(commands.Cog):
                 src.volume = val / 100.0
             if hasattr(src, "original") and hasattr(src.original, "volume"):
                 src.original.volume = val / 100.0
-        embed = discord.Embed(description=f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3693,13 +3710,13 @@ class Music(commands.Cog):
             if m in ("on", "true", "enable", "1"):
                 queue.autoplay = True
                 AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**."), color=BRAND_COLOR)
+                embed = make_success_embed(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.")
                 await ctx.send(embed=embed, delete_after=5)
             elif m in ("off", "false", "disable", "0"):
                 queue.autoplay = False
                 queue.prefetched_autoplay_track = None
                 queue.prefetched_autoplay_meta = None
-                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.REFUSED} AI AutoPlay is now **DISABLED**."), color=0xED4245)
+                embed = make_error_embed(description="AI AutoPlay is now **DISABLED**.", is_warning=False)
                 await ctx.send(embed=embed, delete_after=5)
             else:
                 queue.autoplay = not queue.autoplay
@@ -3709,7 +3726,7 @@ class Music(commands.Cog):
                     queue.prefetched_autoplay_track = None
                     queue.prefetched_autoplay_meta = None
                 status = "ENABLED" if queue.autoplay else "DISABLED"
-                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AI AutoPlay is now **{status}**."), color=BRAND_COLOR)
+                embed = make_success_embed(f"### {Emojis.AI} AI AutoPlay is now **{status}**.")
                 await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
@@ -3732,7 +3749,7 @@ class Music(commands.Cog):
         if queue.is_247:
             queue.cancel_inactivity()
         status = "ENABLED" if queue.is_247 else "DISABLED"
-        embed = discord.Embed(description=f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.", color=BRAND_COLOR)
+        embed = make_success_embed(f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
