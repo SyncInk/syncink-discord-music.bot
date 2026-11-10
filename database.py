@@ -108,6 +108,26 @@ class DatabaseManager:
                     applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_users (
+                    discord_user_id INTEGER PRIMARY KEY,
+                    spotify_user_id TEXT,
+                    display_name TEXT,
+                    email TEXT,
+                    encrypted_refresh_token TEXT,
+                    scope TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS spotify_oauth_states (
+                    state TEXT PRIMARY KEY,
+                    discord_user_id INTEGER NOT NULL,
+                    code_verifier TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
             conn.commit()
             return conn
 

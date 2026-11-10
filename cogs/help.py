@@ -115,6 +115,7 @@ class Help(commands.Cog):
     def _get_help_data(self) -> tuple[list[tuple[str, str, str]], list[tuple[str, list[tuple[str, str]]]]]:
         categories_overview = [
             (Emojis.PLAY_BUTTON, "Playback & Streaming", "Play audio from YouTube, Spotify, and SoundCloud with instant playback controls."),
+            (Emojis.SPOTIFY, "Spotify Integration", "Link Spotify account via PKCE OAuth, stream personal playlists, and access /spotify mytop."),
             (Emojis.QUEUE, "Queue & Audio Controls", "Manage queue order, real-time player card, shuffle, volume, and repeat modes."),
             (Emojis.RADIO, "24/7 Radio & AI AutoPlay", "Stream global live radio stations by country flag and configure personalized AI AutoPlay."),
             (Emojis.SETTINGS, "System & Auto-Deployment", "Automated GitHub updating, self-restart, git status, and server invite.")
@@ -128,6 +129,14 @@ class Help(commands.Cog):
             ("/previous", "Play previously played track."),
             ("/replay", "Restart current track from the beginning."),
             ("/stop / /leave", "Stop playback, clear queue, and disconnect bot from voice.")
+        ]
+
+        spotify_cmds = [
+            ("/spotify connect", "Link your personal Spotify account via secure PKCE OAuth."),
+            ("/spotify status", "Check your Spotify connection status and linked profile."),
+            ("/spotify disconnect", "Unlink your Spotify account and revoke stored tokens."),
+            ("/spotify mytop", "Stream your top 10 most played tracks from Spotify."),
+            ("/spotify playlists", "Browse and stream playlists directly from your Spotify library.")
         ]
 
         queue_cmds = [
@@ -153,6 +162,7 @@ class Help(commands.Cog):
 
         category_details = [
             (f"{Emojis.PLAY_BUTTON} Playback & Streaming", playback_cmds),
+            (f"{Emojis.SPOTIFY} Spotify Integration", spotify_cmds),
             (f"{Emojis.QUEUE} Queue & Audio Controls", queue_cmds),
             (f"{Emojis.RADIO} 24/7 Radio & AI AutoPlay", radio_cmds),
             (f"{Emojis.SETTINGS} System & Auto-Deployment", system_cmds)

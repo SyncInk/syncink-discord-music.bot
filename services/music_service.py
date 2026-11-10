@@ -412,13 +412,46 @@ class MusicService:
         platform: str = "auto",
         limit: int = 1
     ) -> List[Track]:
-        """Extracts playable Tracks using yt-dlp with Spotify oEmbed fallback."""
+        """Extracts playable Tracks using yt-dlp with official Spotify API & oEmbed fallback."""
         query = query.strip()
         detected_platform = platform.lower()
         forced_thumbnail = None
 
-        if "spotify.com" in query.lower():
+        # Check for Spotify links / URIs
+        from services.spotify import SpotifyResolver, SpotifyClient
+        if SpotifyResolver.is_spotify_url_or_uri(query):
             detected_platform = "spotify"
+            if SpotifyClient.get_instance().is_configured:
+                try:
+                    res_type, normalized_tracks, container = await SpotifyResolver.resolve(query, limit=100)
+                    if normalized_tracks:
+                        tracks: List[Track] = []
+                        for nt in normalized_tracks:
+                            tracks.append(
+                                Track(
+                                    title=nt.title,
+                                    clean_title=clean_title(nt.title),
+                                    author=nt.artist,
+                                    duration=nt.duration_sec,
+                                    url=nt.original_url,
+                                    stream_url="",  # Lazy resolution right before playback in refresh_stream_url
+                                    thumbnail=nt.artwork,
+                                    platform="spotify",
+                                    requested_by=requester,
+                                    is_live=False,
+                                )
+                            )
+                        # If single track, resolve stream immediately for zero-lag start
+                        if len(tracks) == 1:
+                            try:
+                                await self.refresh_stream_url(tracks[0])
+                            except Exception as ex:
+                                log.warning(f"[Spotify Extract] Immediate stream resolution for '{tracks[0].title}': {ex}")
+                        return tracks
+                except Exception as se:
+                    log.warning(f"[Spotify Extract] Official Spotify API resolve error: {se}. Falling back to oEmbed...")
+
+            # Fallback to public oEmbed if Spotify developer client not configured or encountered error
             meta = await self.resolve_spotify(query)
             if meta and meta.get("search_query"):
                 query = meta["search_query"]
@@ -536,6 +569,41 @@ class MusicService:
         opts = dict(self.ydl_opts)
         opts["noplaylist"] = True
         opts["extract_flat"] = False
+
+        # Spotify tracks: resolve stream via authorized audio match using verified title and artist
+        if track.platform == "spotify" or "open.spotify.com" in track.url:
+            match_query = f"ytsearch1:{track.title} {track.author or ''}".strip()
+            def _extract_spotify_stream():
+                with yt_dlp.YoutubeDL(opts) as ydl:
+                    res = ydl.extract_info(match_query, download=False)
+                if res and res.get("entries"):
+                    return next((entry for entry in res["entries"] if entry), None)
+                return res
+
+            info = None
+            try:
+                info = await loop.run_in_executor(None, _extract_spotify_stream)
+            except Exception as e:
+                log.warning(f"[Refresh Stream] Spotify primary stream match failed for '{track.title}': {e}")
+                # Fallback to soundcloud search if YouTube match fails
+                try:
+                    sc_opts = dict(opts)
+                    sc_opts.pop('extractor_args', None)
+                    with yt_dlp.YoutubeDL(sc_opts) as ydl:
+                        sc_info = ydl.extract_info(f"scsearch1:{track.title} {track.author or ''}".strip(), download=False)
+                    if sc_info and sc_info.get("entries"):
+                        info = next((entry for entry in sc_info["entries"] if entry), None)
+                except Exception:
+                    pass
+
+            if not info or not info.get("url"):
+                raise RuntimeError(f"No authorized playback source could be matched for: {track.title} by {track.author}")
+
+            track.stream_url = info["url"]
+            track.is_live = bool(info.get("is_live", track.is_live))
+            if not track.thumbnail and info.get("thumbnail"):
+                track.thumbnail = info["thumbnail"]
+            return track.stream_url
 
         def _do_extract(extract_opts, target_url):
             with yt_dlp.YoutubeDL(extract_opts) as ydl:

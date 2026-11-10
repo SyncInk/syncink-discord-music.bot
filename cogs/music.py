@@ -2117,13 +2117,30 @@ class Music(commands.Cog):
                 msg = await interaction.response.send_message(view=view)
             queue.now_playing_message = msg
         else:
+            total_added = len(tracks)
             queue.tracks.extend(tracks)
             added_track = tracks[0]
-            view = TrackEnqueuedLayoutView(added_track, position=queue.size)
-            if interaction.response.is_done():
-                await interaction.followup.send(view=view)
+            if total_added > 1:
+                embed = discord.Embed(
+                    description=format_discord_emojis(
+                        f"### {Emojis.SPOTIFY if added_track.platform == 'spotify' else Emojis.QUEUE} Enqueued **{total_added}** tracks\n"
+                        f"{Emojis.S_ARROW} **First:** `{added_track.clean_title}`\n"
+                        f"{Emojis.S_ARROW} **Position in Queue:** `#{queue.size - total_added + 1}` to `#{queue.size}`"
+                    ),
+                    color=BRAND_COLOR
+                )
+                if added_track.thumbnail:
+                    embed.set_thumbnail(url=added_track.thumbnail)
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed)
+                else:
+                    await interaction.response.send_message(embed=embed)
             else:
-                await interaction.response.send_message(view=view)
+                view = TrackEnqueuedLayoutView(added_track, position=queue.size)
+                if interaction.response.is_done():
+                    await interaction.followup.send(view=view)
+                else:
+                    await interaction.response.send_message(view=view)
 
     async def play_track(self, queue: GuildMusicQueue, track: Track) -> bool:
         queue.playback_token += 1
@@ -2929,10 +2946,24 @@ class Music(commands.Cog):
             msg = await ctx.send(view=view)
             queue.now_playing_message = msg
         else:
+            total_added = len(tracks)
             queue.tracks.extend(tracks)
             added_track = tracks[0]
-            view = TrackEnqueuedLayoutView(added_track, position=queue.size)
-            await ctx.send(view=view)
+            if total_added > 1:
+                embed = discord.Embed(
+                    description=format_discord_emojis(
+                        f"### {Emojis.SPOTIFY if added_track.platform == 'spotify' else Emojis.QUEUE} Enqueued **{total_added}** tracks\n"
+                        f"{Emojis.S_ARROW} **First:** `{added_track.clean_title}`\n"
+                        f"{Emojis.S_ARROW} **Position in Queue:** `#{queue.size - total_added + 1}` to `#{queue.size}`"
+                    ),
+                    color=BRAND_COLOR
+                )
+                if added_track.thumbnail:
+                    embed.set_thumbnail(url=added_track.thumbnail)
+                await ctx.send(embed=embed)
+            else:
+                view = TrackEnqueuedLayoutView(added_track, position=queue.size)
+                await ctx.send(view=view)
 
     async def start_radio_for_ctx(self, ctx: commands.Context, station_id: str):
         vc = await self.ensure_voice_ctx(ctx)
