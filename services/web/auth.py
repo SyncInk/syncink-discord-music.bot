@@ -14,7 +14,7 @@ class DashboardAuthManager:
     def __init__(self):
         self.client_id = os.getenv("DISCORD_CLIENT_ID") or os.getenv("CLIENT_ID") or ""
         self.client_secret = os.getenv("DISCORD_CLIENT_SECRET") or os.getenv("CLIENT_SECRET") or ""
-        self.redirect_uri = os.getenv("DISCORD_REDIRECT_URI") or "https://syncink.site/api/auth/discord/callback"
+        self.redirect_uri = os.getenv("DISCORD_REDIRECT_URI") or "https://syncink.site/dashboard/radio/api/auth/discord/callback"
 
     @classmethod
     def get_instance(cls) -> 'DashboardAuthManager':
@@ -22,24 +22,25 @@ class DashboardAuthManager:
             cls._instance = DashboardAuthManager()
         return cls._instance
 
-    def get_login_url(self, state: Optional[str] = None) -> str:
+    def get_login_url(self, state: Optional[str] = None, redirect_uri: Optional[str] = None) -> str:
         if not state:
             state = secrets.token_urlsafe(24)
         scopes = "identify guilds"
+        r_uri = redirect_uri or self.redirect_uri
         return (
             f"https://discord.com/oauth2/authorize?client_id={self.client_id}"
-            f"&response_type=code&redirect_uri={aiohttp.helpers.quote(self.redirect_uri, safe='')}"
+            f"&response_type=code&redirect_uri={aiohttp.helpers.quote(r_uri, safe='')}"
             f"&scope={aiohttp.helpers.quote(scopes, safe='')}&state={state}&prompt=consent"
         )
 
-    async def exchange_code(self, code: str) -> Optional[Dict[str, Any]]:
+    async def exchange_code(self, code: str, redirect_uri: Optional[str] = None) -> Optional[Dict[str, Any]]:
         """Exchanges authorization code for access and refresh tokens."""
         data = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri or self.redirect_uri,
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 

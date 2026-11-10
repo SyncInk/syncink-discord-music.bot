@@ -33,26 +33,40 @@ class DashboardAPI:
     @classmethod
     async def handle_login(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         auth_mgr = DashboardAuthManager.get_instance()
-        login_url = auth_mgr.get_login_url()
+        req_redirect = None
+        if request.path.startswith("/dashboard/radio"):
+            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
+            host = request.headers.get("X-Forwarded-Host") or request.host
+            req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
+
+        login_url = auth_mgr.get_login_url(redirect_uri=req_redirect)
         raise aiohttp.web.HTTPFound(login_url)
 
     @classmethod
     async def handle_oauth_callback(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         code = request.query.get("code")
         error = request.query.get("error")
+        is_subpath = request.path.startswith("/dashboard/radio")
+        base_prefix = "/dashboard/radio" if is_subpath else ""
 
         if error or not code:
             log.warning(f"[Dashboard API] OAuth callback error: {error}")
-            raise aiohttp.web.HTTPFound("/?auth_error=" + (error or "missing_code"))
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=" + (error or "missing_code"))
 
         auth_mgr = DashboardAuthManager.get_instance()
-        token_data = await auth_mgr.exchange_code(code)
+        req_redirect = None
+        if is_subpath:
+            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
+            host = request.headers.get("X-Forwarded-Host") or request.host
+            req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
+
+        token_data = await auth_mgr.exchange_code(code, redirect_uri=req_redirect)
         if not token_data or "access_token" not in token_data:
-            raise aiohttp.web.HTTPFound("/?auth_error=token_exchange_failed")
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=token_exchange_failed")
 
         user_data = await auth_mgr.fetch_user(token_data["access_token"])
         if not user_data:
-            raise aiohttp.web.HTTPFound("/?auth_error=fetch_user_failed")
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=fetch_user_failed")
 
         session_id = await auth_mgr.create_session(user_data, token_data)
 
@@ -68,13 +82,14 @@ class DashboardAPI:
         except Exception:
             pass
 
-        response = aiohttp.web.HTTPFound("/")
+        response = aiohttp.web.HTTPFound(f"{base_prefix}/#overview")
         response.set_cookie(
             "syncink_session",
             session_id,
             max_age=30 * 86400,
             httponly=True,
             samesite="Lax",
+            path="/",
             secure=request.scheme == "https"
         )
         return response

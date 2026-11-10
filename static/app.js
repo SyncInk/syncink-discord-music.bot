@@ -4,6 +4,22 @@
 // Target Live-State Synchronization Latency: <1 second
 // ================================================================
 
+// Base path detection for mounting at syncink.site/dashboard/radio or localhost:8888/
+const BASE_PATH = (window.SYNCINK_BASE_PATH !== undefined)
+  ? window.SYNCINK_BASE_PATH
+  : (window.location.pathname.startsWith('/dashboard/radio') ? '/dashboard/radio' : '');
+
+// Transparently prefix API calls if running under /dashboard/radio
+const _nativeFetch = window.fetch;
+window.fetch = function(resource, init) {
+  if (typeof resource === 'string' && resource.startsWith('/api/')) {
+    resource = `${BASE_PATH}${resource}`;
+  }
+  return _nativeFetch(resource, init);
+};
+
+const switchView = navigateTo;
+
 const state = {
   currentView: 'overview',
   currentUser: null,
@@ -170,7 +186,11 @@ async function checkAuthStatus() {
       }
     } else {
       state.currentUser = null;
-      document.getElementById('login-btn').classList.remove('hidden');
+      const loginBtn = document.getElementById('login-btn');
+      if (loginBtn) {
+        loginBtn.classList.remove('hidden');
+        loginBtn.href = `${BASE_PATH}/api/auth/discord/login`;
+      }
       const pill = document.getElementById('user-profile-pill');
       pill.classList.add('hidden');
       pill.classList.remove('flex');
@@ -209,7 +229,7 @@ async function logout() {
 // ------------------- REAL-TIME WEBSOCKET GATEWAY (<1s LATENCY) -------------------
 function initWebSocket() {
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-  const wsUrl = `${protocol}//${window.location.host}/ws`;
+  const wsUrl = `${protocol}//${window.location.host}${BASE_PATH}/ws`;
 
   try {
     state.ws = new WebSocket(wsUrl);

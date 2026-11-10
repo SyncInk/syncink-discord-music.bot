@@ -6,6 +6,17 @@
   <title>SyncInk Radio • Unified Web Dashboard & Audia AI</title>
   <link rel="icon" href="https://files.catbox.moe/74l9su.png" type="image/png">
   
+  <!-- Dynamic Base Path for syncink.site/dashboard/radio mounting -->
+  <script>
+    (function() {
+      const isSubpath = window.location.pathname.startsWith('/dashboard/radio');
+      const baseEl = document.createElement('base');
+      baseEl.href = isSubpath ? '/dashboard/radio/' : '/';
+      document.head.prepend(baseEl);
+      window.SYNCINK_BASE_PATH = isSubpath ? '/dashboard/radio' : '';
+    })();
+  </script>
+  
   <!-- Inter & Geist Typography -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -36,7 +47,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Cyber Violet Stylesheet -->
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="static/style.css">
 </head>
 <body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none font-sans">
 
@@ -1054,6 +1065,6 @@
   <div id="toast-container"></div>
 
   <!-- Main Client Application Logic -->
-  <script src="/static/app.js"></script>
+  <script src="static/app.js"></script>
 </body>
 </html>

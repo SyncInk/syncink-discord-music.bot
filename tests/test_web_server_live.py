@@ -70,6 +70,49 @@ class TestLiveWebServer(AioHTTPTestCase):
         self.assertEqual(pong.get("event"), "pong")
         await ws.close()
 
+    async def test_dashboard_radio_subpath_mounting(self):
+        # 1. Subpath redirect from /dashboard/radio to /dashboard/radio/
+        resp_redir = await self.client.request("GET", "/dashboard/radio", allow_redirects=False)
+        self.assertEqual(resp_redir.status, 302)
+        self.assertEqual(resp_redir.headers.get("Location"), "/dashboard/radio/")
+
+        # 2. Subpath index HTML
+        resp_sub = await self.client.request("GET", "/dashboard/radio/")
+        self.assertEqual(resp_sub.status, 200)
+        text = await resp_sub.text()
+        self.assertIn("SyncInk Radio", text)
+        self.assertIn("SYNCINK_BASE_PATH", text)
+
+        # 3. Subpath static files
+        resp_css = await self.client.request("GET", "/dashboard/radio/static/style.css")
+        self.assertEqual(resp_css.status, 200)
+        self.assertIn("#101014", await resp_css.text())
+
+        resp_js = await self.client.request("GET", "/dashboard/radio/static/app.js")
+        self.assertEqual(resp_js.status, 200)
+
+        # 4. Subpath APIs
+        resp_health = await self.client.request("GET", "/dashboard/radio/health")
+        self.assertEqual(resp_health.status, 200)
+        health_data = await resp_health.json()
+        self.assertEqual(health_data.get("status"), "ok")
+
+        resp_user = await self.client.request("GET", "/dashboard/radio/api/auth/me")
+        self.assertEqual(resp_user.status, 200)
+
+        resp_radio = await self.client.request("GET", "/dashboard/radio/api/radio/stations?limit=3")
+        self.assertEqual(resp_radio.status, 200)
+
+        # 5. Subpath WebSocket
+        ws_sub = await self.client.ws_connect("/dashboard/radio/ws")
+        sub_welcome = await ws_sub.receive_json()
+        self.assertEqual(sub_welcome.get("event"), "connected")
+
+        await ws_sub.send_json({"type": "ping"})
+        sub_pong = await ws_sub.receive_json()
+        self.assertEqual(sub_pong.get("event"), "pong")
+        await ws_sub.close()
+
 
 if __name__ == "__main__":
     unittest.main()

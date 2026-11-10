@@ -34,76 +34,95 @@ class UnifiedWebServer:
         self.app["bot"] = bot
 
     def _setup_routes(self):
+        def _route(method: str, path: str, handler: Any):
+            m = method.upper()
+            if m == "GET":
+                self.app.router.add_get(path, handler)
+                self.app.router.add_get(f"/dashboard/radio{path}", handler)
+            elif m == "POST":
+                self.app.router.add_post(path, handler)
+                self.app.router.add_post(f"/dashboard/radio{path}", handler)
+            elif m == "DELETE":
+                self.app.router.add_delete(path, handler)
+                self.app.router.add_delete(f"/dashboard/radio{path}", handler)
+            else:
+                self.app.router.add_route(m, path, handler)
+                self.app.router.add_route(m, f"/dashboard/radio{path}", handler)
+
         # 1. Real-Time WebSocket Gateway
-        self.app.router.add_get("/ws", DashboardWebSocketManager.get_instance().handle_ws)
+        _route("GET", "/ws", DashboardWebSocketManager.get_instance().handle_ws)
 
         # 2. Discord OAuth2 & User Preferences Endpoints
-        self.app.router.add_get("/api/auth/discord/login", DashboardAPI.handle_login)
-        self.app.router.add_get("/api/auth/discord/callback", DashboardAPI.handle_oauth_callback)
-        self.app.router.add_get("/api/auth/me", DashboardAPI.handle_me)
-        self.app.router.add_get("/api/user/me", DashboardAPI.handle_me)
-        self.app.router.add_post("/api/auth/logout", DashboardAPI.handle_logout)
-        self.app.router.add_post("/api/auth/demo", DashboardAPI.handle_demo_auth)
-        self.app.router.add_get("/api/user/preferences", DashboardAPI.handle_get_preferences)
-        self.app.router.add_post("/api/user/preferences", DashboardAPI.handle_update_preferences)
+        _route("GET", "/api/auth/discord/login", DashboardAPI.handle_login)
+        _route("GET", "/api/auth/discord/callback", DashboardAPI.handle_oauth_callback)
+        _route("GET", "/api/auth/me", DashboardAPI.handle_me)
+        _route("GET", "/api/user/me", DashboardAPI.handle_me)
+        _route("POST", "/api/auth/logout", DashboardAPI.handle_logout)
+        _route("POST", "/api/auth/demo", DashboardAPI.handle_demo_auth)
+        _route("GET", "/api/user/preferences", DashboardAPI.handle_get_preferences)
+        _route("POST", "/api/user/preferences", DashboardAPI.handle_update_preferences)
 
         # 3. Servers & Playback Control API
-        self.app.router.add_get("/api/servers", DashboardAPI.handle_get_servers)
-        self.app.router.add_get("/api/servers/{guild_id}", DashboardAPI.handle_get_server_detail)
-        self.app.router.add_post("/api/servers/{guild_id}/control", DashboardAPI.handle_server_control)
-        self.app.router.add_get("/api/servers/{guild_id}/settings", DashboardAPI.handle_get_server_settings)
-        self.app.router.add_post("/api/servers/{guild_id}/settings", DashboardAPI.handle_update_server_settings)
+        _route("GET", "/api/servers", DashboardAPI.handle_get_servers)
+        _route("GET", "/api/servers/{guild_id}", DashboardAPI.handle_get_server_detail)
+        _route("POST", "/api/servers/{guild_id}/control", DashboardAPI.handle_server_control)
+        _route("GET", "/api/servers/{guild_id}/settings", DashboardAPI.handle_get_server_settings)
+        _route("POST", "/api/servers/{guild_id}/settings", DashboardAPI.handle_update_server_settings)
 
         # 4. Radio Directory API
-        self.app.router.add_get("/api/radio/countries", DashboardAPI.handle_get_radio_countries)
-        self.app.router.add_get("/api/radio/stations", DashboardAPI.handle_get_radio_stations)
-        self.app.router.add_get("/api/radio/popular", DashboardAPI.handle_get_popular_radio)
-        self.app.router.add_get("/api/radio/trending", DashboardAPI.handle_get_trending_radio)
-        self.app.router.add_get("/api/radio/genres", DashboardAPI.handle_get_radio_genres)
-        self.app.router.add_post("/api/radio/tune", DashboardAPI.handle_tune_radio)
+        _route("GET", "/api/radio/countries", DashboardAPI.handle_get_radio_countries)
+        _route("GET", "/api/radio/stations", DashboardAPI.handle_get_radio_stations)
+        _route("GET", "/api/radio/popular", DashboardAPI.handle_get_popular_radio)
+        _route("GET", "/api/radio/trending", DashboardAPI.handle_get_trending_radio)
+        _route("GET", "/api/radio/genres", DashboardAPI.handle_get_radio_genres)
+        _route("POST", "/api/radio/tune", DashboardAPI.handle_tune_radio)
 
         # 5. Audia AI (AI DJ) API
-        self.app.router.add_get("/api/audia/profile", DashboardAPI.handle_get_audia_profile)
-        self.app.router.add_get("/api/audia/recommendations", DashboardAPI.handle_get_audia_recommendations)
-        self.app.router.add_post("/api/audia/settings", DashboardAPI.handle_update_audia_settings)
-        self.app.router.add_post("/api/audia/feedback", DashboardAPI.handle_audia_feedback)
+        _route("GET", "/api/audia/profile", DashboardAPI.handle_get_audia_profile)
+        _route("GET", "/api/audia/recommendations", DashboardAPI.handle_get_audia_recommendations)
+        _route("POST", "/api/audia/settings", DashboardAPI.handle_update_audia_settings)
+        _route("POST", "/api/audia/feedback", DashboardAPI.handle_audia_feedback)
 
         # 6. Library, Playlists & Analytics API
-        self.app.router.add_get("/api/library/favorites", DashboardAPI.handle_get_favorites)
-        self.app.router.add_post("/api/library/favorites", DashboardAPI.handle_add_favorite)
-        self.app.router.add_delete("/api/library/favorites/{id}", DashboardAPI.handle_remove_favorite)
-        self.app.router.add_get("/api/playlists", DashboardAPI.handle_get_playlists)
-        self.app.router.add_post("/api/playlists", DashboardAPI.handle_create_playlist)
-        self.app.router.add_delete("/api/playlists/{id}", DashboardAPI.handle_delete_playlist)
-        self.app.router.add_get("/api/playlists/{id}/tracks", DashboardAPI.handle_get_playlist_tracks)
-        self.app.router.add_post("/api/playlists/{id}/tracks", DashboardAPI.handle_add_playlist_track)
-        self.app.router.add_delete("/api/playlists/{id}/tracks/{track_id}", DashboardAPI.handle_remove_playlist_track)
-        self.app.router.add_get("/api/history", DashboardAPI.handle_get_history)
-        self.app.router.add_delete("/api/history/{id}", DashboardAPI.handle_delete_history_item)
-        self.app.router.add_post("/api/history/clear", DashboardAPI.handle_clear_history)
-        self.app.router.add_get("/api/analytics", DashboardAPI.handle_get_analytics)
-        self.app.router.add_get("/api/admin/status", DashboardAPI.handle_admin_status)
+        _route("GET", "/api/library/favorites", DashboardAPI.handle_get_favorites)
+        _route("POST", "/api/library/favorites", DashboardAPI.handle_add_favorite)
+        _route("DELETE", "/api/library/favorites/{id}", DashboardAPI.handle_remove_favorite)
+        _route("GET", "/api/playlists", DashboardAPI.handle_get_playlists)
+        _route("POST", "/api/playlists", DashboardAPI.handle_create_playlist)
+        _route("DELETE", "/api/playlists/{id}", DashboardAPI.handle_delete_playlist)
+        _route("GET", "/api/playlists/{id}/tracks", DashboardAPI.handle_get_playlist_tracks)
+        _route("POST", "/api/playlists/{id}/tracks", DashboardAPI.handle_add_playlist_track)
+        _route("DELETE", "/api/playlists/{id}/tracks/{track_id}", DashboardAPI.handle_remove_playlist_track)
+        _route("GET", "/api/history", DashboardAPI.handle_get_history)
+        _route("DELETE", "/api/history/{id}", DashboardAPI.handle_delete_history_item)
+        _route("POST", "/api/history/clear", DashboardAPI.handle_clear_history)
+        _route("GET", "/api/analytics", DashboardAPI.handle_get_analytics)
+        _route("GET", "/api/admin/status", DashboardAPI.handle_admin_status)
 
         # 7. Spotify Web API Legacy Endpoints (Kept 100% backward compatible)
-        self.app.router.add_get("/callback", self.handle_spotify_callback)
-        self.app.router.add_get("/health", self.handle_health)
-        self.app.router.add_get("/api/spotify/status", self.handle_spotify_status)
+        _route("GET", "/callback", self.handle_spotify_callback)
+        _route("GET", "/health", self.handle_health)
+        _route("GET", "/api/spotify/status", self.handle_spotify_status)
 
-        # 8. Static Assets & SPA Router
+        # 8. Static Assets (Both root and mounted subpath)
         static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
         os.makedirs(static_dir, exist_ok=True)
         self.app.router.add_static("/static", static_dir, name="static")
+        self.app.router.add_static("/dashboard/radio/static", static_dir, name="static_subpath")
 
-        # Catch-all route to serve Dashboard Single Page App
-        self.app.router.add_get("/", self.handle_index)
-        self.app.router.add_get("/overview", self.handle_index)
-        self.app.router.add_get("/radio", self.handle_index)
-        self.app.router.add_get("/audia", self.handle_index)
-        self.app.router.add_get("/library", self.handle_index)
-        self.app.router.add_get("/history", self.handle_index)
-        self.app.router.add_get("/analytics", self.handle_index)
-        self.app.router.add_get("/servers", self.handle_index)
-        self.app.router.add_get("/admin", self.handle_index)
+        # 9. SPA Routing: Supports both / and /dashboard/radio/
+        self.app.router.add_get("/dashboard/radio", self.handle_dashboard_redirect)
+        self.app.router.add_get("/dashboard/radio/", self.handle_index)
+
+        spa_routes = ["/", "/overview", "/radio", "/audia", "/library", "/history", "/analytics", "/servers", "/admin"]
+        for r in spa_routes:
+            self.app.router.add_get(r, self.handle_index)
+            if r != "/":
+                self.app.router.add_get(f"/dashboard/radio{r}", self.handle_index)
+                self.app.router.add_get(f"/dashboard/radio{r}/", self.handle_index)
+
+    async def handle_dashboard_redirect(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        raise aiohttp.web.HTTPFound("/dashboard/radio/")
 
     async def handle_index(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
