@@ -362,9 +362,12 @@ def format_discord_emojis(text: str) -> str:
         if emoji_id in VERIFIED_BOT_EMOJI_IDS:
             return match.group(0)
 
-        # If we have a verified replacement for this emoji under a new ID, use that
+        # If we have a verified replacement for this emoji under an owned ID, use that
         if name_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
-            return VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
+            cand = VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
+            c_match = re.search(r':(\d+)>', cand)
+            if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+                return cand
 
         # Otherwise fallback to clean Unicode to avoid Discord stripping it to text
         return UNICODE_FALLBACKS.get(name_lower, "⚠️")
@@ -376,9 +379,12 @@ def format_discord_emojis(text: str) -> str:
         name = match.group(1)
         name_lower = name.lower().replace("-", "_").replace(" ", "")
 
-        # Check verified custom emojis first
+        # Check verified custom emojis first (only if ID is actively verified)
         if name_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
-            return VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
+            cand = VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
+            c_match = re.search(r':(\d+)>', cand)
+            if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+                return cand
 
         # Check dynamic EMOJI_NAME_MAP
         if name_lower in EMOJI_NAME_MAP:
@@ -428,8 +434,12 @@ def format_discord_emojis(text: str) -> str:
         if colon_name in text:
             name_key = colon_name.strip(":").lower().replace("-", "_")
             verified_tag = VERIFIED_BOT_EMOJIS_BY_NAME.get(name_key)
-            replacement = verified_tag if verified_tag else fallback_symbol
-            text = text.replace(colon_name, replacement)
+            if verified_tag:
+                c_match = re.search(r':(\d+)>', verified_tag)
+                if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+                    text = text.replace(colon_name, verified_tag)
+                    continue
+            text = text.replace(colon_name, fallback_symbol)
 
     # 7. Final strip of backticks around emojis
     text = re.sub(r'[`\x60]+\s*(<a?:[a-zA-Z0-9_~-]+:\d+>)\s*[`\x60]+', r'\1', text)

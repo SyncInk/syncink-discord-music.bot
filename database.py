@@ -128,6 +128,51 @@ class DatabaseManager:
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_sessions (
+                    session_id TEXT PRIMARY KEY,
+                    discord_user_id INTEGER NOT NULL,
+                    username TEXT,
+                    discriminator TEXT,
+                    avatar TEXT,
+                    access_token TEXT,
+                    refresh_token TEXT,
+                    expires_at TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_favorites (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_user_id INTEGER NOT NULL,
+                    item_type TEXT NOT NULL,
+                    item_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    subtitle TEXT,
+                    image_url TEXT,
+                    url TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(discord_user_id, item_type, item_id)
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS listening_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    guild_id INTEGER,
+                    discord_user_id INTEGER,
+                    track_title TEXT NOT NULL,
+                    track_author TEXT,
+                    track_url TEXT,
+                    duration INTEGER DEFAULT 0,
+                    platform TEXT DEFAULT 'youtube',
+                    thumbnail_url TEXT,
+                    played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(discord_user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_played_at ON listening_history(played_at);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_guild ON listening_history(guild_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(discord_user_id);")
             conn.commit()
             return conn
 

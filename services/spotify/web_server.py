@@ -256,14 +256,9 @@ class SpotifyWebServer:
 _server_instance: Optional[SpotifyWebServer] = None
 
 async def start_spotify_web_server():
-    global _server_instance
-    if _server_instance is None:
-        port = int(os.getenv("SPOTIFY_CALLBACK_PORT") or os.getenv("PORT") or 8888)
-        _server_instance = SpotifyWebServer(port=port)
-        await _server_instance.start()
+    from services.web.server import start_web_server
+    await start_web_server()
 
 async def stop_spotify_web_server():
-    global _server_instance
-    if _server_instance:
-        await _server_instance.stop()
-        _server_instance = None
+    from services.web.server import stop_web_server
+    await stop_web_server()

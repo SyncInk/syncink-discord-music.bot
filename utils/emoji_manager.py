@@ -52,6 +52,7 @@ class EmojiManager:
         "tidal": ["tidal.png"],
         "syncinkmusic": ["syncinkmusic.png", "syncink-music.png"],
         "settings": ["settings.gif"],
+        "syncrobot": ["syncink_main_logo.png", "SyncInk_Logo.png", "connectionping.gif"],
         "connectionping": ["connectionping.gif"],
         "CPU": ["CPU.png"],
         "developer": ["developer.png"],
@@ -281,17 +282,10 @@ class EmojiManager:
             except Exception as sess_err:
                 log.warning(f"[EmojiManager] Upload session error: {sess_err}")
 
-        # 4. Integrate guild emojis
-        for guild in getattr(bot, "guilds", []):
-            for gemoji in guild.emojis:
-                norm = gemoji.name.lower().replace("-", "_").replace(" ", "")
-                if norm not in app_emoji_dict:
-                    app_emoji_dict[norm] = {
-                        "id": gemoji.id,
-                        "name": gemoji.name,
-                        "animated": gemoji.animated,
-                        "tag": str(gemoji)
-                    }
+        # 4. Integrate guild emojis ONLY if this application has NO application emojis at all,
+        # otherwise do NOT poll guild emojis because Discord strips unowned guild emojis to :name: text across servers.
+        # True Application Emojis uploaded above work globally across all servers.
+        pass
 
         # 5. Integrate pre-configured known application emojis (user-specified)
         for norm, d in cls.DEFAULT_KNOWN_EMOJIS.items():

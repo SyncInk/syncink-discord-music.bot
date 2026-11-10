@@ -1342,18 +1342,15 @@ class AutoPlayFeedbackView(discord.ui.View):
     @discord.ui.button(label="Tune DJ", emoji="⚙️", style=discord.ButtonStyle.secondary, custom_id="ap_btn_tune")
     async def on_tune(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = AutoPlayControlCenterView(self.music_cog, interaction.user, self.queue)
-        try:
-            await interaction.response.send_message(view=view, ephemeral=True)
-        except Exception:
-            embed = view.build_embed()
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        embed = view.build_embed()
+        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
-class AutoPlayControlCenterView(discord.ui.LayoutView):
+class AutoPlayControlCenterView(discord.ui.View):
     """
-    Discord Components V2 Interactive Control Center for AI AutoPlay:
-    Uses native discord.ui.Separator (visible=True), Container, and clean Discord V2 layout.
-    Allows user to tune genre, mood, language, discovery style, block artists, and toggle.
+    Standard Discord UI View Interactive Control Center for AI AutoPlay:
+    Uses branded Discord Embed for clear, reliable presentation across all clients and servers,
+    with interactive dropdown select menus and controls for mood, language, and discovery style.
     """
     def __init__(self, music_cog: 'Music', user: Union[discord.Member, discord.User], queue: GuildMusicQueue):
         super().__init__(timeout=180.0)
@@ -1402,48 +1399,8 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
     def build_components(self):
         self.clear_items()
         prof = AutoPlayService.get_instance().get_user_profile(self.user.id)
-        status_str = f"**ENABLED** {Emojis.CHECK_YES}" if self.queue.autoplay else f"**DISABLED** {Emojis.REFUSED}"
 
-        ctx = AutoPlayService.get_instance().build_recommendation_context(self.queue, fallback_user=self.user)
-        mode_str = ctx.get("mode", "Personal")
-
-        clean_artists = [a for a, _ in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True) if a and not any(l in a.lower() for l in ["t-series", "sony music", "zee music", "tips", "yrf", "saregama"])]
-        fav_artists = [f"`{a}`" for a in clean_artists[:3]]
-        fav_str = ", ".join(fav_artists) if fav_artists else "*None yet (plays will auto-learn)*"
-
-        disc_map = {
-            "balanced": f"Balanced {Emojis.SCALE}",
-            "familiar": f"Familiar {Emojis.SYNCINK_MUSIC}",
-            "explore": "Explore ✨"
-        }
-        disc_str = disc_map.get(prof.discovery_mode, "Balanced")
-        mood_genre_str = f"Genre: `{prof.manual_genre or 'Auto-Detect'}` • Mood: `{prof.manual_mood or 'Dynamic'}`"
-        lang_str = f"`{prof.manual_language or 'All Languages / Dynamic'}`"
-
-        # 1. Native Discord V2 Header & Status Container with Native Separators
-        header_text = discord.ui.TextDisplay(
-            format_discord_emojis(
-                f"### {Emojis.AI} SyncInk AI DJ • Auto Play Control Center\n"
-                "Your personal AI music companion continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends."
-            )
-        )
-        sep1 = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
-        status_display = discord.ui.TextDisplay(
-            format_discord_emojis(
-                f"**Status:** {status_str} • **Listening Mode:** `{mode_str}`\n"
-                f"**Discovery Style:** {disc_str}\n"
-                f"**Style Focus:** {mood_genre_str}\n"
-                f"**Language Focus:** {lang_str}\n"
-                f"**Top Learned Artists:** {fav_str}"
-            )
-        )
-        sep2 = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
-        footer_hint = discord.ui.TextDisplay("-# Tune your personalized listening experience using the interactive controls below:")
-
-        cnt = discord.ui.Container(header_text, sep1, status_display, sep2, footer_hint, accent_color=BRAND_COLOR)
-        self.add_item(cnt)
-
-        # 2. Select Menu: Mood & Genre
+        # 1. Select Menu: Mood & Genre
         mood_options = [
             discord.SelectOption(
                 label="Romantic & Soulful",
@@ -1614,11 +1571,9 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
         self.build_components()
-        try:
-            await interaction.response.edit_message(view=self)
-        except Exception:
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} {msg}", color=BRAND_COLOR)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.APPROVED} {msg}"), color=BRAND_COLOR)
+        embed_msg.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_lang_select(self, interaction: discord.Interaction):
@@ -1638,11 +1593,9 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
         self.build_components()
-        try:
-            await interaction.response.edit_message(view=self)
-        except Exception:
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} {msg}", color=BRAND_COLOR)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.APPROVED} {msg}"), color=BRAND_COLOR)
+        embed_msg.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_disc_select(self, interaction: discord.Interaction):
@@ -1654,11 +1607,9 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
         self.build_components()
-        try:
-            await interaction.response.edit_message(view=self)
-        except Exception:
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        embed_msg = discord.Embed(description=f"### {Emojis.APPROVED} Discovery mode updated to **{val.title()}**.", color=BRAND_COLOR)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.APPROVED} Discovery mode updated to **{val.title()}**."), color=BRAND_COLOR)
+        embed_msg.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_toggle(self, interaction: discord.Interaction):
@@ -1670,11 +1621,9 @@ class AutoPlayControlCenterView(discord.ui.LayoutView):
             self.queue.prefetched_autoplay_track = None
             self.queue.prefetched_autoplay_meta = None
         self.build_components()
-        try:
-            await interaction.response.edit_message(view=self)
-        except Exception:
-            await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
         embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AutoPlay is now **{status}**."), color=BRAND_COLOR)
+        embed_msg.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_block_artist(self, interaction: discord.Interaction):
@@ -2221,6 +2170,25 @@ class Music(commands.Cog):
                         await asyncio.sleep(0.01)
                 queue.voice_client.play(audio_source, after=_after_playback)
                 queue.cancel_inactivity()
+
+                # Broadcast to real-time Web Dashboard
+                try:
+                    from services.web.websocket import DashboardWebSocketManager
+                    asyncio.create_task(DashboardWebSocketManager.get_instance().broadcast_playback_update(queue.guild_id, self.bot))
+                except Exception:
+                    pass
+
+                # Log play to dashboard analytics & history
+                try:
+                    user_id = track.requested_by.id if track.requested_by and hasattr(track.requested_by, "id") else 0
+                    query = """
+                        INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
+                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                    """
+                    asyncio.create_task(db.execute(query, queue.guild_id, user_id, track.clean_title, track.author, track.url, track.duration, track.platform, track.thumbnail))
+                except Exception:
+                    pass
+
                 if not track.is_radio:
                     norm_key = normalize_title(track.clean_title)
                     queue.session_played_history.append(norm_key)
@@ -3339,11 +3307,8 @@ class Music(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
             view = AutoPlayControlCenterView(self, interaction.user, queue)
-            try:
-                await interaction.response.send_message(view=view, ephemeral=True)
-            except Exception:
-                embed = view.build_embed()
-                await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            embed = view.build_embed()
+            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
 
     @app_commands.command(name="247", description="Keep bot in voice channel 24/7.")
     @app_commands.describe(mode="Enable or disable 24/7 mode")
@@ -3759,11 +3724,8 @@ class Music(commands.Cog):
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
         else:
             view = AutoPlayControlCenterView(self, ctx.author, queue)
-            try:
-                await ctx.send(view=view)
-            except Exception:
-                embed = view.build_embed()
-                await ctx.send(embed=embed, view=view)
+            embed = view.build_embed()
+            await ctx.send(embed=embed, view=view)
 
     @commands.command(name="247", aliases=["alwayson"], description="Keep bot in voice channel 24/7.")
     async def cmd_247(self, ctx: commands.Context, mode: Optional[str] = None):

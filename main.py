@@ -54,12 +54,12 @@ class SyncInkRadioBot(commands.Bot):
             log.critical(f"Failed to connect to database: {e}")
             sys.exit(1)
 
-        # Start embedded Spotify OAuth Callback Web Server
+        # Start embedded Unified Dashboard and OAuth Web Server
         try:
-            from services.spotify import start_spotify_web_server
-            await start_spotify_web_server()
+            from services.web import start_web_server
+            await start_web_server(bot=self)
         except Exception as e:
-            log.warning(f"Could not start Spotify OAuth web server: {e}")
+            log.warning(f"Could not start Unified Dashboard web server: {e}")
 
         # Load Cogs dynamically from cogs/
         cogs_dir = os.path.join(os.path.dirname(__file__), "cogs")
@@ -117,8 +117,8 @@ class SyncInkRadioBot(commands.Bot):
         log.info("Shutting down bot gracefully...")
         task_manager.cancel_all()
         try:
-            from services.spotify import stop_spotify_web_server
-            await stop_spotify_web_server()
+            from services.web import stop_web_server
+            await stop_web_server()
         except Exception:
             pass
         await db.close()

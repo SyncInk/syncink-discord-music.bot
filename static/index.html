@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SyncInk Radio • Unified Web Dashboard & Audia AI</title>
+  <link rel="icon" href="https://files.catbox.moe/74l9su.png" type="image/png">
+  
+  <!-- Inter & Geist Typography -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              primary: '#8055D9',
+              secondary: '#B9A2F2',
+              bg: '#101014',
+              surface: '#191820',
+              elevated: '#211f2c',
+              border: 'rgba(128, 85, 217, 0.2)'
+            }
+          }
+        }
+      }
+    }
+  </script>
+  
+  <!-- Lucide Icons CDN -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- Custom Cyber Violet Stylesheet -->
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none">
+
+  <!-- ==================== DESKTOP SIDEBAR ==================== -->
+  <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-[#14131a] border-r border-brand-border/40 p-5 shrink-0 z-30">
+    <!-- Brand Logo & Header -->
+    <div class="flex items-center gap-3 px-2 mb-8 cursor-pointer" onclick="navigateTo('overview')">
+      <div class="relative">
+        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-10 h-10 rounded-xl shadow-lg shadow-brand-primary/20">
+        <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#14131a] rounded-full"></span>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#B9A2F2] bg-clip-text text-transparent">SyncInk Radio</h1>
+        <p class="text-xs text-[#9E9EAD] font-medium tracking-wide">Audia AI Engine</p>
+      </div>
+    </div>
+
+    <!-- Navigation Links -->
+    <nav class="flex-1 space-y-1.5 overflow-y-auto pr-1">
+      <a href="#overview" onclick="navigateTo('overview')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-white bg-brand-primary/20 border border-brand-primary/30" data-view="overview">
+        <i data-lucide="layout-dashboard" class="w-5 h-5 text-brand-secondary"></i>
+        <span>Home Overview</span>
+      </a>
+      <a href="#radio" onclick="navigateTo('radio')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="radio">
+        <i data-lucide="radio" class="w-5 h-5 text-purple-400"></i>
+        <span>Radio & Discover</span>
+        <span class="ml-auto text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">30K+</span>
+      </a>
+      <a href="#audia" onclick="navigateTo('audia')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="audia">
+        <i data-lucide="sparkles" class="w-5 h-5 text-amber-400"></i>
+        <span>Audia AI Studio</span>
+        <span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-primary/30 text-brand-secondary">AI DJ</span>
+      </a>
+      <a href="#library" onclick="navigateTo('library')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="library">
+        <i data-lucide="library" class="w-5 h-5 text-indigo-400"></i>
+        <span>My Library</span>
+      </a>
+      <a href="#history" onclick="navigateTo('history')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="history">
+        <i data-lucide="history" class="w-5 h-5 text-sky-400"></i>
+        <span>Listening History</span>
+      </a>
+      <a href="#analytics" onclick="navigateTo('analytics')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="analytics">
+        <i data-lucide="bar-chart-3" class="w-5 h-5 text-rose-400"></i>
+        <span>Analytics</span>
+      </a>
+      <a href="#servers" onclick="navigateTo('servers')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="servers">
+        <i data-lucide="server" class="w-5 h-5 text-emerald-400"></i>
+        <span>My Servers</span>
+      </a>
+
+      <div class="pt-4 pb-2">
+        <div class="h-px bg-brand-border/30 w-full mb-3"></div>
+        <p class="px-3 text-[11px] font-bold uppercase tracking-wider text-[#6B6A78]">Global Control</p>
+      </div>
+
+      <a href="#admin" onclick="navigateTo('admin')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="admin">
+        <i data-lucide="shield-check" class="w-5 h-5 text-brand-secondary"></i>
+        <span>System Admin</span>
+      </a>
+    </nav>
+
+    <!-- Sidebar Footer / Web Gateway Status -->
+    <div class="mt-auto pt-4 border-t border-brand-border/30 flex items-center justify-between text-xs text-[#9E9EAD]">
+      <div class="flex items-center gap-2">
+        <span id="gateway-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+        <span id="gateway-status" class="font-medium">Gateway 0ms</span>
+      </div>
+      <span class="text-[11px] text-[#6B6A78]">v2.5.0</span>
+    </div>
+  </aside>
+
+  <!-- ==================== MAIN CONTENT WRAPPER ==================== -->
+  <div class="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#101014]">
+
+    <!-- Top Navigation Bar -->
+    <header class="h-16 border-b border-brand-border/30 bg-[#14131a]/80 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between shrink-0 z-20">
+      <div class="flex items-center gap-4">
+        <!-- Mobile Drawer Toggle -->
+        <button id="btn-mobile-menu" class="md:hidden p-2 rounded-lg text-[#9E9EAD] hover:text-white hover:bg-brand-surface" onclick="toggleMobileMenu()">
+          <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+
+        <!-- Active Server Dropdown Selector -->
+        <div class="relative">
+          <button id="server-selector-btn" class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-sm font-medium transition-all" onclick="toggleServerDropdown()">
+            <img id="active-server-icon" src="https://files.catbox.moe/74l9su.png" alt="Server" class="w-6 h-6 rounded-lg object-cover">
+            <span id="active-server-name" class="max-w-[140px] sm:max-w-[200px] truncate">Select Server</span>
+            <i data-lucide="chevron-down" class="w-4 h-4 text-[#9E9EAD]"></i>
+          </button>
+
+          <!-- Dropdown Menu -->
+          <div id="server-dropdown" class="hidden absolute top-full left-0 mt-2 w-72 bg-[#191820] border border-brand-border/60 rounded-2xl shadow-2xl p-2 z-50">
+            <div class="p-2 border-b border-brand-border/30 mb-1 flex items-center justify-between">
+              <span class="text-xs font-semibold text-[#9E9EAD]">Connected Servers</span>
+              <a href="https://discord.com/oauth2/authorize?client_id=1512402120039534603&permissions=8&scope=bot%20applications.commands" target="_blank" class="text-xs text-brand-secondary hover:underline flex items-center gap-1">
+                <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Bot
+              </a>
+            </div>
+            <div id="server-dropdown-list" class="max-h-60 overflow-y-auto space-y-1">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Header Actions (Invite Bot + Discord User Login) -->
+      <div class="flex items-center gap-3">
+        <!-- Invite Bot CTA -->
+        <a href="https://discord.com/oauth2/authorize?client_id=1512402120039534603&permissions=8&scope=bot%20applications.commands" target="_blank" class="hidden sm:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/10 border border-brand-primary/30 hover:bg-brand-primary/20 transition-all">
+          <i data-lucide="plus-circle" class="w-4 h-4"></i> Invite SyncInk
+        </a>
+
+        <!-- Discord User Pill / Login Button -->
+        <div id="auth-container">
+          <a href="/api/auth/discord/login" id="login-btn" class="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-brand-primary to-purple-600 hover:shadow-lg hover:shadow-brand-primary/30 transition-all">
+            <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
+          </a>
+          <div id="user-profile-pill" class="hidden items-center gap-3 bg-brand-surface border border-brand-border/40 px-3 py-1.5 rounded-xl">
+            <img id="user-avatar" src="" alt="Avatar" class="w-7 h-7 rounded-full border border-brand-primary/50">
+            <div class="text-left hidden sm:block">
+              <p id="user-username" class="text-xs font-bold leading-tight"></p>
+              <p id="user-tag" class="text-[10px] text-[#9E9EAD]"></p>
+            </div>
+            <button onclick="logout()" title="Logout" class="text-[#9E9EAD] hover:text-rose-400 p-1">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Scrollable Viewport (Views) -->
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-36">
+
+      <!-- ==================== VIEW 1: HOME OVERVIEW ==================== -->
+      <section id="view-overview" class="view-panel space-y-6 max-w-7xl mx-auto">
+        <!-- Hero Banner with Cyber Violet Glow -->
+        <div class="relative overflow-hidden rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1d1630] via-[#161224] to-[#101014] shadow-2xl">
+          <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-brand-primary/20 blur-3xl pointer-events-none"></div>
+          <div class="relative z-10 max-w-2xl">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/20 border border-brand-primary/40 text-brand-secondary text-xs font-bold mb-4">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Audia AI DJ 2.5 Active
+            </div>
+            <h2 class="text-2xl sm:text-4xl font-extrabold tracking-tight mb-3">Your Ultimate Discord Radio & High-Fidelity Music Engine</h2>
+            <p class="text-[#9E9EAD] text-sm sm:text-base leading-relaxed mb-6">Explore 30,000+ live radio stations from every country, tune in with zero latency, and let Audia AI continuously learn your musical taste for gapless autoplay.</p>
+            
+            <!-- Quick Search Bar -->
+            <div class="flex items-center gap-2 max-w-md bg-brand-surface/90 border border-brand-primary/40 rounded-2xl p-1.5 focus-within:border-brand-secondary shadow-xl">
+              <i data-lucide="search" class="w-5 h-5 text-[#9E9EAD] ml-3"></i>
+              <input type="text" id="overview-quick-play-input" placeholder="Search track, artist, or YouTube/Spotify URL..." class="bg-transparent border-none outline-none text-sm text-white px-2 py-1.5 flex-1 placeholder-[#6B6A78]">
+              <button onclick="triggerQuickPlay()" class="px-4 py-2 rounded-xl text-xs font-bold bg-brand-primary text-white hover:bg-purple-600 transition-all flex items-center gap-1.5 shrink-0">
+                <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Play
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Live Status Metric Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between text-[#9E9EAD] text-xs font-medium mb-2">
+              <span>Connected Guilds</span>
+              <i data-lucide="server" class="w-4 h-4 text-emerald-400"></i>
+            </div>
+            <p id="stat-guilds" class="text-2xl sm:text-3xl font-extrabold text-white">--</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">Active Discord servers</p>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between text-[#9E9EAD] text-xs font-medium mb-2">
+              <span>Voice Listeners</span>
+              <i data-lucide="users" class="w-4 h-4 text-brand-secondary"></i>
+            </div>
+            <p id="stat-listeners" class="text-2xl sm:text-3xl font-extrabold text-white">--</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">Currently in voice channels</p>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between text-[#9E9EAD] text-xs font-medium mb-2">
+              <span>Active Radio Stations</span>
+              <i data-lucide="radio" class="w-4 h-4 text-purple-400"></i>
+            </div>
+            <p id="stat-radio" class="text-2xl sm:text-3xl font-extrabold text-white">--</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">24/7 continuous live audio</p>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl">
+            <div class="flex items-center justify-between text-[#9E9EAD] text-xs font-medium mb-2">
+              <span>Voice Latency</span>
+              <i data-lucide="activity" class="w-4 h-4 text-rose-400"></i>
+            </div>
+            <p id="stat-latency" class="text-2xl sm:text-3xl font-extrabold text-white">-- ms</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">Ultra low Discord voice jitter</p>
+          </div>
+        </div>
+
+        <!-- Featured Radio Presets Carousel / Grid -->
+        <div>
+          <div class="flex items-center justify-between mb-4">
+            <div>
+              <h3 class="text-lg font-bold">24/7 Featured Radio Streams</h3>
+              <p class="text-xs text-[#9E9EAD]">Instant one-click tune into hand-curated high-fidelity streams</p>
+            </div>
+            <button onclick="navigateTo('radio')" class="text-xs text-brand-secondary hover:underline flex items-center gap-1 font-medium">
+              View all 30,000+ stations <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
+            <!-- Preset Cards -->
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('lofi')">
+              <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="coffee" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">Lo-Fi Beats</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Study & Chill</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('bollywood')">
+              <div class="w-12 h-12 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="heart" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">Bollywood Hits</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Romantic & Pop</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('punjabi')">
+              <div class="w-12 h-12 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="flame" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">Punjabi Pop</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Urban & Bass</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('synthwave')">
+              <div class="w-12 h-12 rounded-2xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center text-violet-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="zap" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">Synthwave</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Retro 80s Cyber</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('kpop')">
+              <div class="w-12 h-12 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="sparkles" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">K-Pop Hits</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Korean Idol Beats</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+
+            <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('classical')">
+              <div class="w-12 h-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400 mb-3 group-hover:scale-110 transition-transform">
+                <i data-lucide="music" class="w-6 h-6"></i>
+              </div>
+              <h4 class="font-bold text-sm">Classical Piano</h4>
+              <p class="text-[11px] text-[#9E9EAD] mt-0.5">Peaceful & Deep</p>
+              <button class="mt-3 w-full py-1.5 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white transition-all flex items-center justify-center gap-1">
+                <i data-lucide="radio" class="w-3 h-3"></i> Tune In
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: RADIO & DISCOVER ==================== -->
+      <section id="view-radio" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
+              <i data-lucide="radio" class="w-7 h-7 text-brand-secondary"></i> Global Radio Directory
+            </h2>
+            <p class="text-xs text-[#9E9EAD]">Browse, search, and tune directly into 30,000+ verified live stations across the globe.</p>
+          </div>
+
+          <!-- Radio Search Input -->
+          <div class="flex items-center gap-2 bg-brand-surface border border-brand-border/60 rounded-xl px-3 py-2 w-full sm:w-80">
+            <i data-lucide="search" class="w-4 h-4 text-[#9E9EAD]"></i>
+            <input type="text" id="radio-search-input" oninput="debounceRadioSearch()" placeholder="Search stations or genres..." class="bg-transparent border-none outline-none text-xs text-white flex-1 placeholder-[#6B6A78]">
+          </div>
+        </div>
+
+        <!-- Country Filter Tabs -->
+        <div class="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none" id="radio-countries-bar">
+          <!-- Dynamically populated with countries and flags -->
+        </div>
+
+        <!-- Radio Station Cards Grid -->
+        <div id="radio-stations-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 3: AUDIA AI STUDIO ==================== -->
+      <section id="view-audia" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div class="glass-panel p-6 sm:p-8 rounded-3xl border border-brand-primary/40 relative overflow-hidden bg-gradient-to-r from-[#1f1636] to-[#14121d]">
+          <div class="max-w-2xl">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/20 border border-brand-primary/40 text-brand-secondary text-xs font-bold mb-3">
+              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Audia AI • Powered by SyncInk
+            </div>
+            <h2 class="text-2xl sm:text-3xl font-extrabold mb-2">Personal Taste Profile & Smart Autoplay</h2>
+            <p class="text-sm text-[#9E9EAD] leading-relaxed">Audia continuously analyzes real playback completions, user skips, repeat habits, and liked artists to construct a personal recommendation matrix.</p>
+          </div>
+        </div>
+
+        <!-- Audia Configuration Controls -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="glass-panel p-5 rounded-2xl space-y-3">
+            <label class="text-xs font-bold text-[#9E9EAD] uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="sliders" class="w-4 h-4 text-brand-secondary"></i> Discovery Mode
+            </label>
+            <select id="audia-discovery-mode" onchange="updateAudiaSettings()" class="w-full bg-[#14131a] border border-brand-border/60 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-brand-primary">
+              <option value="balanced">Balanced (Recommended)</option>
+              <option value="familiar">Familiar Favorites (High Confidence)</option>
+              <option value="explore">Fresh Discoveries (Exciting New Gems)</option>
+            </select>
+            <p class="text-[11px] text-[#6B6A78]">Controls how aggressively Audia explores new artists outside your history.</p>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl space-y-3">
+            <label class="text-xs font-bold text-[#9E9EAD] uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="music-2" class="w-4 h-4 text-purple-400"></i> Preferred Genre & Mood
+            </label>
+            <select id="audia-genre-mood" onchange="updateAudiaSettings()" class="w-full bg-[#14131a] border border-brand-border/60 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-brand-primary">
+              <option value="">Dynamic (Auto-Learned)</option>
+              <option value="Romantic|Bollywood Romantic">Romantic & Bollywood Melodies</option>
+              <option value="Relaxing|Lo-Fi Beats & Chillhop">Lo-Fi Beats & Chillhop</option>
+              <option value="Energetic|Pop & R&B Hits">High BPM Pop & Dance</option>
+              <option value="Energetic|Punjabi Pop & Urban">Punjabi Pop & Urban</option>
+              <option value="Energetic|Hip-Hop & Rap">Hip-Hop & Trap</option>
+              <option value="Chill|Hindi Indie & Acoustic">Indie & Acoustic Folk</option>
+            </select>
+            <p class="text-[11px] text-[#6B6A78]">Pin a dominant sonic direction or allow full dynamic adaptation.</p>
+          </div>
+
+          <div class="glass-panel p-5 rounded-2xl space-y-3">
+            <label class="text-xs font-bold text-[#9E9EAD] uppercase tracking-wider flex items-center gap-2">
+              <i data-lucide="globe" class="w-4 h-4 text-emerald-400"></i> Language Focus
+            </label>
+            <select id="audia-language" onchange="updateAudiaSettings()" class="w-full bg-[#14131a] border border-brand-border/60 rounded-xl px-3 py-2.5 text-sm text-white outline-none focus:border-brand-primary">
+              <option value="">All Languages (Auto-Detect)</option>
+              <option value="Hindi">Hindi</option>
+              <option value="Hindi + English">Hindi + English (Bilingual)</option>
+              <option value="English">English / Global</option>
+              <option value="Punjabi">Punjabi</option>
+              <option value="Korean">Korean / K-Pop</option>
+              <option value="Japanese">Japanese / Anime</option>
+              <option value="Spanish">Spanish / Latin</option>
+            </select>
+            <p class="text-[11px] text-[#6B6A78]">Filter recommendations to matching lyrical languages.</p>
+          </div>
+        </div>
+
+        <!-- Top Learned Artists & Affinities -->
+        <div class="glass-panel p-6 rounded-3xl">
+          <h3 class="text-base font-bold mb-1 flex items-center gap-2">
+            <i data-lucide="award" class="w-5 h-5 text-amber-400"></i> Learned Top Artists & Weights
+          </h3>
+          <p class="text-xs text-[#9E9EAD] mb-4">Affinities automatically increase upon full track listens and decrease on instant skips.</p>
+          <div id="audia-artists-list" class="flex flex-wrap gap-2.5">
+            <!-- Dynamically populated -->
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 4: MY LIBRARY ==================== -->
+      <section id="view-library" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div>
+          <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
+            <i data-lucide="library" class="w-7 h-7 text-indigo-400"></i> My Music Library
+          </h2>
+          <p class="text-xs text-[#9E9EAD]">Bookmarked radio stations, favorited tracks, and saved albums.</p>
+        </div>
+
+        <div id="library-favorites-list" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5: LISTENING HISTORY ==================== -->
+      <section id="view-history" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div>
+          <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
+            <i data-lucide="history" class="w-7 h-7 text-sky-400"></i> Listening History
+          </h2>
+          <p class="text-xs text-[#9E9EAD]">Chronological record of completed tracks, radio streams, and session durations.</p>
+        </div>
+
+        <div class="glass-panel rounded-2xl overflow-hidden border border-brand-border/30">
+          <table class="w-full text-left text-xs">
+            <thead class="bg-[#14131a] text-[#9E9EAD] uppercase font-semibold border-b border-brand-border/40">
+              <tr>
+                <th class="px-4 py-3">Track / Station</th>
+                <th class="px-4 py-3 hidden sm:table-cell">Artist / Creator</th>
+                <th class="px-4 py-3 hidden md:table-cell">Platform</th>
+                <th class="px-4 py-3">Duration</th>
+                <th class="px-4 py-3 text-right">Played At</th>
+              </tr>
+            </thead>
+            <tbody id="history-table-body" class="divide-y divide-brand-border/20">
+              <!-- Dynamically populated -->
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: ANALYTICS ==================== -->
+      <section id="view-analytics" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div>
+          <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
+            <i data-lucide="bar-chart-3" class="w-7 h-7 text-rose-400"></i> Listening Analytics
+          </h2>
+          <p class="text-xs text-[#9E9EAD]">Deep metrics and behavioral patterns across your Discord listening sessions.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="glass-panel p-6 rounded-2xl">
+            <p class="text-xs text-[#9E9EAD] font-medium">Total Stream Time</p>
+            <p id="analytics-total-hours" class="text-3xl font-extrabold text-brand-secondary mt-1">-- hrs</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">Total audio played through SyncInk</p>
+          </div>
+          <div class="glass-panel p-6 rounded-2xl">
+            <p class="text-xs text-[#9E9EAD] font-medium">Completed Tracks</p>
+            <p id="analytics-total-tracks" class="text-3xl font-extrabold text-white mt-1">--</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">Non-skipped full listens</p>
+          </div>
+          <div class="glass-panel p-6 rounded-2xl">
+            <p class="text-xs text-[#9E9EAD] font-medium">Top Streaming Platform</p>
+            <p class="text-3xl font-extrabold text-emerald-400 mt-1">YouTube / Radio</p>
+            <p class="text-[11px] text-[#6B6A78] mt-1">High-fidelity 320kbps streams</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div class="glass-panel p-6 rounded-3xl">
+            <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+              <i data-lucide="mic-2" class="w-5 h-5 text-brand-secondary"></i> Most Streamed Artists
+            </h3>
+            <div id="analytics-top-artists" class="space-y-3">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+
+          <div class="glass-panel p-6 rounded-3xl">
+            <h3 class="text-base font-bold mb-4 flex items-center gap-2">
+              <i data-lucide="disc" class="w-5 h-5 text-purple-400"></i> Top Streamed Tracks
+            </h3>
+            <div id="analytics-top-tracks" class="space-y-3">
+              <!-- Dynamically populated -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 7: MY SERVERS & SETTINGS ==================== -->
+      <section id="view-servers" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div>
+          <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
+            <i data-lucide="server" class="w-7 h-7 text-emerald-400"></i> My Discord Servers & Settings
+          </h2>
+          <p class="text-xs text-[#9E9EAD]">Manage bot settings, configure DJ roles, and set dedicated music channels.</p>
+        </div>
+
+        <!-- Servers Grid -->
+        <div id="servers-full-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          <!-- Dynamically populated -->
+        </div>
+
+        <!-- Server Settings Modal / Section -->
+        <div id="server-settings-card" class="glass-panel p-6 sm:p-8 rounded-3xl border border-brand-primary/40 space-y-6 hidden">
+          <div class="flex items-center justify-between pb-4 border-b border-brand-border/30">
+            <div>
+              <h3 id="settings-server-name" class="text-lg font-bold">Server Settings</h3>
+              <p class="text-xs text-[#9E9EAD]">Configure server-wide music permissions and defaults.</p>
+            </div>
+            <button onclick="closeServerSettings()" class="text-[#9E9EAD] hover:text-white">
+              <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div>
+              <label class="block text-xs font-bold text-[#9E9EAD] uppercase mb-2">Dedicated Music Text Channel</label>
+              <select id="setting-music-channel" class="w-full bg-[#14131a] border border-brand-border/60 rounded-xl px-3 py-2 text-sm text-white outline-none">
+                <!-- Dynamically populated -->
+              </select>
+              <p class="text-[11px] text-[#6B6A78] mt-1">Restrict music commands to a single dedicated chat channel.</p>
+            </div>
+
+            <div>
+              <label class="block text-xs font-bold text-[#9E9EAD] uppercase mb-2">DJ Role</label>
+              <select id="setting-dj-role" class="w-full bg-[#14131a] border border-brand-border/60 rounded-xl px-3 py-2 text-sm text-white outline-none">
+                <!-- Dynamically populated -->
+              </select>
+              <p class="text-[11px] text-[#6B6A78] mt-1">Allow members with this role to skip, stop, and configure audio.</p>
+            </div>
+          </div>
+
+          <div class="pt-2 flex justify-end">
+            <button onclick="saveServerSettings()" class="px-5 py-2.5 rounded-xl text-xs font-bold bg-brand-primary text-white hover:bg-purple-600 transition-all flex items-center gap-2">
+              <i data-lucide="save" class="w-4 h-4"></i> Save Changes
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 8: SYSTEM ADMIN ==================== -->
+      <section id="view-admin" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+        <div class="glass-panel p-6 rounded-3xl border border-brand-primary/40">
+          <h2 class="text-2xl font-extrabold flex items-center gap-2.5 mb-2">
+            <i data-lucide="shield-check" class="w-7 h-7 text-brand-secondary"></i> System Administration & Diagnostics
+          </h2>
+          <p class="text-xs text-[#9E9EAD]">Live runtime status of the Discord gateway, WebSocket clients, and audio engine.</p>
+        </div>
+
+        <div id="admin-details-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+          <!-- Dynamically populated -->
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ==================== PERSISTENT BOTTOM MUSIC PLAYER BAR ==================== -->
+    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 h-24 bg-[#14131a]/95 backdrop-blur-xl border-t border-brand-border/50 px-4 sm:px-8 flex items-center justify-between z-40 shadow-2xl">
+      <!-- Left Track Info -->
+      <div class="flex items-center gap-3.5 w-1/4 min-w-[160px] sm:min-w-[220px]">
+        <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" class="w-12 h-12 rounded-xl object-cover border border-brand-border/40 shrink-0 shadow-md">
+        <div class="min-w-0">
+          <h4 id="player-track-title" class="text-xs sm:text-sm font-bold truncate text-white">Nothing is playing</h4>
+          <p id="player-track-artist" class="text-[11px] sm:text-xs text-[#9E9EAD] truncate">Select a server or start with /play</p>
+        </div>
+        <button id="player-btn-like" onclick="toggleLikeCurrentTrack()" class="hidden sm:block text-[#9E9EAD] hover:text-rose-400 p-1 shrink-0">
+          <i data-lucide="heart" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Center Player Controls & Live Timeline -->
+      <div class="flex flex-col items-center justify-center flex-1 max-w-xl px-2 sm:px-4">
+        <!-- Control Buttons -->
+        <div class="flex items-center gap-3 sm:gap-5 mb-1.5">
+          <button onclick="controlPlayer('shuffle')" class="text-[#9E9EAD] hover:text-white p-1" title="Shuffle">
+            <i data-lucide="shuffle" class="w-4 h-4"></i>
+          </button>
+          <button onclick="controlPlayer('previous')" class="text-[#9E9EAD] hover:text-white p-1" title="Previous">
+            <i data-lucide="skip-back" class="w-4 h-4"></i>
+          </button>
+          <button id="player-btn-playpause" onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-brand-primary text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-brand-primary/40" title="Play/Pause">
+            <i data-lucide="play" id="icon-playpause" class="w-5 h-5 fill-current"></i>
+          </button>
+          <button onclick="controlPlayer('skip')" class="text-[#9E9EAD] hover:text-white p-1" title="Skip">
+            <i data-lucide="skip-forward" class="w-4 h-4"></i>
+          </button>
+          <button id="player-btn-loop" onclick="cycleLoopMode()" class="text-[#9E9EAD] hover:text-white p-1" title="Repeat Mode">
+            <i data-lucide="repeat" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Synchronized Progress Bar & Times -->
+        <div class="w-full flex items-center gap-2.5 text-[11px] text-[#9E9EAD] font-mono">
+          <span id="player-current-time">00:00</span>
+          <div class="relative flex-1 h-1.5 bg-brand-surface rounded-full overflow-hidden cursor-pointer" onclick="handleSeek(event)">
+            <div id="player-progress-bar" class="h-full bg-gradient-to-r from-brand-primary to-brand-secondary rounded-full w-0 transition-all duration-300"></div>
+          </div>
+          <span id="player-total-time">00:00</span>
+        </div>
+      </div>
+
+      <!-- Right Actions (Volume & Queue Drawer Button) -->
+      <div class="flex items-center justify-end gap-3 w-1/4 min-w-[120px]">
+        <!-- Volume Control -->
+        <div class="hidden sm:flex items-center gap-2">
+          <button onclick="toggleMute()" class="text-[#9E9EAD] hover:text-white">
+            <i data-lucide="volume-2" id="icon-volume" class="w-4 h-4"></i>
+          </button>
+          <input type="range" id="player-volume-slider" min="1" max="150" value="100" oninput="changeVolume(this.value)" class="w-20 h-1.5">
+        </div>
+
+        <!-- Queue Drawer Toggle -->
+        <button onclick="toggleQueueDrawer()" class="px-2.5 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs font-semibold text-white flex items-center gap-1.5">
+          <i data-lucide="list-music" class="w-4 h-4 text-brand-secondary"></i>
+          <span id="player-queue-badge" class="hidden sm:inline">Queue</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- ==================== QUEUE SLIDE-OVER DRAWER ==================== -->
+    <div id="queue-drawer" class="fixed top-0 right-0 bottom-24 w-80 sm:w-96 bg-[#16151f] border-l border-brand-border/50 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+      <div class="p-4 border-b border-brand-border/40 flex items-center justify-between">
+        <h3 class="font-bold text-sm flex items-center gap-2">
+          <i data-lucide="list-music" class="w-4 h-4 text-brand-secondary"></i> Upcoming Tracks
+        </h3>
+        <button onclick="toggleQueueDrawer()" class="text-[#9E9EAD] hover:text-white">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+      <div id="queue-drawer-list" class="flex-1 overflow-y-auto p-3 space-y-2">
+        <!-- Dynamically populated -->
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container"></div>
+
+  <!-- Main Client Application Logic -->
+  <script src="/static/app.js"></script>
+</body>
+</html>
