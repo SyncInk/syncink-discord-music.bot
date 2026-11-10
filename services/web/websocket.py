@@ -70,6 +70,114 @@ class DashboardWebSocketManager:
 
     def serialize_guild_playback(self, guild_id: int, bot: Any) -> Dict[str, Any]:
         """Serializes current guild playback state for web clients."""
+        guild = bot.get_guild(guild_id) if bot else None
+
+        # Demo Guild 1: SyncInk Cyber Lounge
+        if str(guild_id) == "110000000000000001" and not guild:
+            return {
+                "guild_id": "110000000000000001",
+                "server_name": "SyncInk Cyber Lounge",
+                "server_icon": "https://files.catbox.moe/74l9su.png",
+                "voice_channel": "Lofi Chill & Beats",
+                "channel_id": "90000000000000001",
+                "is_connected": True,
+                "is_playing": True,
+                "is_paused": False,
+                "volume": 85,
+                "repeat_mode": "off",
+                "autoplay": True,
+                "is_247": True,
+                "position": 45.0,
+                "duration": 210,
+                "current_track": {
+                    "title": "Midnight City Vibes",
+                    "clean_title": "Midnight City Vibes",
+                    "author": "Lofi Fruit & Chill",
+                    "thumbnail": "https://images.unsplash.com/photo-1518609878373-06d740f60d8b?w=400",
+                    "duration": 210,
+                    "formatted_duration": "03:30",
+                    "platform": "youtube",
+                    "is_radio": False,
+                    "is_live": False,
+                    "requested_by": "SyncInk Listener"
+                },
+                "queue": [
+                    {
+                        "title": "Coffee Shop Rain",
+                        "author": "Chillhop Music",
+                        "duration": 185,
+                        "formatted_duration": "03:05",
+                        "platform": "youtube",
+                        "thumbnail": "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400"
+                    },
+                    {
+                        "title": "Sunset Horizon",
+                        "author": "Synthwave Collective",
+                        "duration": 240,
+                        "formatted_duration": "04:00",
+                        "platform": "youtube",
+                        "thumbnail": "https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=400"
+                    }
+                ],
+                "active_radio": None,
+                "active_radio_info": None,
+                "autoplay_meta": {
+                    "reason": "Recommended because your recent history shows high affinity for Chillhop and Lo-Fi beats.",
+                    "genre": "Lo-Fi Beats",
+                    "confidence": 0.96
+                },
+                "prefetched_track": {
+                    "title": "Coffee Shop Rain",
+                    "author": "Chillhop Music",
+                    "thumbnail": "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400"
+                },
+                "listeners": 5,
+                "server_time": time.time()
+            }
+
+        # Demo Guild 2: Vibrant Anime Cafe
+        if str(guild_id) == "110000000000000002" and not guild:
+            return {
+                "guild_id": "110000000000000002",
+                "server_name": "Vibrant Anime Cafe",
+                "server_icon": "https://files.catbox.moe/74l9su.png",
+                "voice_channel": "J-Rock Radio 24/7",
+                "channel_id": "90000000000000002",
+                "is_connected": True,
+                "is_playing": True,
+                "is_paused": False,
+                "volume": 75,
+                "repeat_mode": "off",
+                "autoplay": True,
+                "is_247": True,
+                "position": 0.0,
+                "duration": 0,
+                "current_track": {
+                    "title": "Anime J-Pop FM Live",
+                    "clean_title": "Anime J-Pop FM Live",
+                    "author": "Tokyo Live Radio",
+                    "thumbnail": "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=400",
+                    "duration": 0,
+                    "formatted_duration": "LIVE",
+                    "platform": "radio",
+                    "is_radio": True,
+                    "is_live": True,
+                    "requested_by": "Audia AI"
+                },
+                "queue": [],
+                "active_radio": "Anime J-Pop FM Live",
+                "active_radio_info": {
+                    "name": "Anime J-Pop FM Live",
+                    "country": "Japan",
+                    "tags": "j-pop, anime, rock",
+                    "bitrate": 192
+                },
+                "autoplay_meta": None,
+                "prefetched_track": None,
+                "listeners": 12,
+                "server_time": time.time()
+            }
+
         service = MusicService.get_instance()
         queue = service.get_queue(guild_id)
         current = queue.current_track

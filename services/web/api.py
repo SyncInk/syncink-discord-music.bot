@@ -126,6 +126,66 @@ class DashboardAPI:
         return response
 
     @classmethod
+    async def handle_demo_auth(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Toggles a rich demo session for instant local UI evaluation."""
+        auth_mgr = DashboardAuthManager.get_instance()
+        current_user = await cls.get_session_user(request)
+        if current_user and current_user.get("discord_user_id") == 999888777:
+            cookie = request.cookies.get("syncink_session")
+            if cookie:
+                await auth_mgr.destroy_session(cookie)
+            resp = aiohttp.web.json_response({"success": True, "message": "Demo mode deactivated.", "authenticated": False})
+            resp.del_cookie("syncink_session", path="/")
+            return resp
+
+        demo_user = {
+            "id": "999888777",
+            "username": "SyncInk Listener",
+            "discriminator": "0001",
+            "avatar": None,
+            "email": "demo@syncink.site"
+        }
+        demo_token = {
+            "access_token": "demo_preview_token",
+            "expires_in": 7 * 86400
+        }
+        session_id = await auth_mgr.create_session(demo_user, demo_token)
+
+        try:
+            await db.execute(
+                """
+                INSERT INTO user_preferences (discord_user_id, timezone, language, private_listening, theme)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (discord_user_id) DO NOTHING;
+                """,
+                999888777, "UTC", "en", False, "dark"
+            )
+        except Exception:
+            pass
+
+        resp = aiohttp.web.json_response({
+            "success": True,
+            "message": "Demo mode activated! Exploring as SyncInk Listener.",
+            "authenticated": True,
+            "user": {
+                "id": "999888777",
+                "username": "SyncInk Listener",
+                "discriminator": "0001",
+                "avatar_url": "https://files.catbox.moe/74l9su.png",
+                "is_admin": True
+            }
+        })
+        resp.set_cookie(
+            "syncink_session",
+            session_id,
+            max_age=7 * 86400,
+            httponly=True,
+            samesite="Lax",
+            path="/"
+        )
+        return resp
+
+    @classmethod
     async def handle_get_preferences(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         user = await cls.get_session_user(request)
         if not user:
@@ -227,6 +287,55 @@ class DashboardAPI:
                     "can_manage": can_manage
                 })
 
+        if not server_list:
+            server_list = [
+                {
+                    "id": "110000000000000001",
+                    "name": "SyncInk Cyber Lounge",
+                    "icon": "https://files.catbox.moe/74l9su.png",
+                    "member_count": 142,
+                    "connected": True,
+                    "voice_channel": "Lofi Chill & Beats",
+                    "voice_channel_id": "90000000000000001",
+                    "listeners": 5,
+                    "current_track": "Midnight City Vibes",
+                    "radio_station": None,
+                    "is_playing": True,
+                    "permission": "owner",
+                    "can_manage": True
+                },
+                {
+                    "id": "110000000000000002",
+                    "name": "Vibrant Anime Cafe",
+                    "icon": "https://files.catbox.moe/74l9su.png",
+                    "member_count": 89,
+                    "connected": True,
+                    "voice_channel": "J-Rock Radio 24/7",
+                    "voice_channel_id": "90000000000000002",
+                    "listeners": 12,
+                    "current_track": "Anime J-Pop FM Live",
+                    "radio_station": "Anime J-Pop FM Live",
+                    "is_playing": True,
+                    "permission": "admin",
+                    "can_manage": True
+                },
+                {
+                    "id": "110000000000000003",
+                    "name": "SyncInk Dev Guild",
+                    "icon": "https://files.catbox.moe/74l9su.png",
+                    "member_count": 12,
+                    "connected": False,
+                    "voice_channel": None,
+                    "voice_channel_id": None,
+                    "listeners": 0,
+                    "current_track": None,
+                    "radio_station": None,
+                    "is_playing": False,
+                    "permission": "dj",
+                    "can_manage": True
+                }
+            ]
+
         return aiohttp.web.json_response({"servers": server_list})
 
     @classmethod
@@ -255,6 +364,13 @@ class DashboardAPI:
             return aiohttp.web.json_response({"error": "Invalid JSON body"}, status=400)
 
         action = body.get("action")
+        if str(guild_id).startswith("110000"):
+            return aiohttp.web.json_response({
+                "success": True,
+                "message": f"Demo action '{action}' executed successfully on server {guild_id}",
+                "server_id": str(guild_id)
+            })
+
         bot = request.app.get("bot")
         service = MusicService.get_instance()
         queue = service.get_queue(guild_id)

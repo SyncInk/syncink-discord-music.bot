@@ -43,6 +43,7 @@ class UnifiedWebServer:
         self.app.router.add_get("/api/auth/me", DashboardAPI.handle_me)
         self.app.router.add_get("/api/user/me", DashboardAPI.handle_me)
         self.app.router.add_post("/api/auth/logout", DashboardAPI.handle_logout)
+        self.app.router.add_post("/api/auth/demo", DashboardAPI.handle_demo_auth)
         self.app.router.add_get("/api/user/preferences", DashboardAPI.handle_get_preferences)
         self.app.router.add_post("/api/user/preferences", DashboardAPI.handle_update_preferences)
 

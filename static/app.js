@@ -139,6 +139,8 @@ async function checkAuthStatus() {
   try {
     const res = await fetch('/api/auth/me');
     const data = await res.json();
+    const demoLabel = document.getElementById('demo-mode-label');
+
     if (data.authenticated && data.user) {
       state.currentUser = data.user;
       document.getElementById('login-btn').classList.add('hidden');
@@ -148,6 +150,10 @@ async function checkAuthStatus() {
       document.getElementById('user-avatar').src = data.user.avatar_url;
       document.getElementById('user-username').innerText = data.user.username;
       document.getElementById('user-tag').innerText = data.user.discriminator !== '0' ? `#${data.user.discriminator}` : '';
+
+      if (demoLabel) {
+        demoLabel.innerText = data.user.id === '999888777' ? 'Exit Demo' : 'Demo Mode';
+      }
 
       // Personalized greeting
       const greetingEl = document.getElementById('overview-greeting');
@@ -162,9 +168,31 @@ async function checkAuthStatus() {
         const mobileAdmin = document.getElementById('mobile-nav-admin');
         if (mobileAdmin) mobileAdmin.classList.remove('hidden');
       }
+    } else {
+      state.currentUser = null;
+      document.getElementById('login-btn').classList.remove('hidden');
+      const pill = document.getElementById('user-profile-pill');
+      pill.classList.add('hidden');
+      pill.classList.remove('flex');
+      if (demoLabel) demoLabel.innerText = 'Demo Mode';
     }
   } catch (e) {
     console.warn('Auth check error:', e);
+  }
+}
+
+async function toggleDemoMode() {
+  try {
+    const res = await fetch('/api/auth/demo', { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      showToast(data.message || 'Demo mode updated', 'success');
+      await checkAuthStatus();
+      await loadServers();
+      switchView('overview');
+    }
+  } catch (err) {
+    showToast('Failed to toggle demo mode', 'error');
   }
 }
 
