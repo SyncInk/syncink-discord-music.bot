@@ -351,6 +351,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.build_components()
         await interaction.response.edit_message(view=self)
+        self.music_cog.notify_dashboard(self.queue.guild_id)
         embed_status = discord.Embed(description=f"### {msg}", color=BRAND_COLOR)
         await interaction.followup.send(embed=embed_status, ephemeral=True)
 
@@ -365,6 +366,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         self.queue.tracks.insert(0, prev_track)
         if self.queue.voice_client:
             self.queue.voice_client.stop()
+        self.music_cog.notify_dashboard(self.queue.guild_id)
         embed_prev = discord.Embed(
             description=f"### {Emojis.PREVIOUS} Jumped back to previous track: **{prev_track.clean_title}**",
             color=BRAND_COLOR
@@ -386,6 +388,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         if is_radio:
             await interaction.response.defer(ephemeral=True)
             success = await self.music_cog.skip_to_next_radio_station(self.queue, user=interaction.user)
+            self.music_cog.notify_dashboard(self.queue.guild_id)
             st_name = (
                 self.queue.active_radio_station_info.get("name", "Next Station")
                 if self.queue.active_radio_station_info else "Next Station"
@@ -402,6 +405,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         skipped_name = self.queue.current_track.clean_title
         self.queue.manual_skip = True
         vc.stop()
+        self.music_cog.notify_dashboard(self.queue.guild_id)
         embed_skip = discord.Embed(
             description=f"### {Emojis.NEXT} Skipped: **{skipped_name}**",
             color=BRAND_COLOR
@@ -424,6 +428,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
                 pass
             self.queue.now_playing_message = None
         self.music_cog.start_inactivity_countdown(self.queue, delay=30, reason="empty_queue")
+        self.music_cog.notify_dashboard(self.queue.guild_id)
         embed = discord.Embed(
             description=f"{Emojis.DELETE} Playback stopped and queue cleared.",
             color=BRAND_COLOR
@@ -1661,6 +1666,14 @@ class Music(commands.Cog):
         self.bot = bot
         self.service = MusicService.get_instance()
 
+    def notify_dashboard(self, guild_id: int):
+        """Dispatches immediate real-time playback update to connected web dashboard clients."""
+        try:
+            from services.web.websocket import notify_guild_playback_changed
+            notify_guild_playback_changed(guild_id, self.bot)
+        except Exception:
+            pass
+
     def _music_allowed_guild_id(self) -> Optional[int]:
         """Keep music commands in configured guild if specified; otherwise open across servers."""
         raw_guild_id = os.getenv("MUSIC_ALLOWED_GUILD_ID")
@@ -1955,6 +1968,8 @@ class Music(commands.Cog):
                 queue.cancel_inactivity()
             else:
                 self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+
+        self.notify_dashboard(member.guild.id)
 
     async def ensure_voice(self, interaction: discord.Interaction) -> Optional[discord.VoiceClient]:
         member = interaction.user
@@ -3102,6 +3117,7 @@ class Music(commands.Cog):
             return
         queue.voice_client.pause()
         queue.paused_at = time.time()
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.PAUSE_BUTTON} Playback paused.\nResume anytime with `/resume`.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
@@ -3121,6 +3137,7 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.PLAY_BUTTON} Playback resumed.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
         if queue.now_playing_message:
@@ -3146,6 +3163,7 @@ class Music(commands.Cog):
         if is_radio:
             await interaction.response.defer(ephemeral=True)
             success = await self.skip_to_next_radio_station(queue, user=interaction.user)
+            self.notify_dashboard(interaction.guild_id)
             st_name = (
                 queue.active_radio_station_info.get("name", "Next Station")
                 if queue.active_radio_station_info else "Next Station"
@@ -3162,6 +3180,7 @@ class Music(commands.Cog):
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.NEXT} Skipped: **{skipped}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3177,6 +3196,7 @@ class Music(commands.Cog):
         queue.tracks.insert(0, prev)
         if queue.voice_client:
             queue.voice_client.stop()
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying previous track: **{prev.clean_title}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3199,6 +3219,7 @@ class Music(commands.Cog):
                 pass
             queue.now_playing_message = None
         self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.DELETE} Stopped playback and cleared the session.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3214,6 +3235,7 @@ class Music(commands.Cog):
                 queue.now_playing_message = None
             await queue.voice_client.disconnect(force=True)
             self.service.remove_queue(interaction.guild_id)
+            self.notify_dashboard(interaction.guild_id)
             embed = make_success_embed(f"### {Emojis.DELETE} Left the voice channel and cleared active session.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
@@ -3226,6 +3248,7 @@ class Music(commands.Cog):
         if action == "clear":
             count = len(queue.tracks)
             queue.tracks.clear()
+            self.notify_dashboard(interaction.guild_id)
             embed = make_success_embed(f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
@@ -3249,6 +3272,7 @@ class Music(commands.Cog):
             await self.send_error_embed(interaction, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3257,6 +3281,7 @@ class Music(commands.Cog):
     async def slash_loop(self, interaction: discord.Interaction, mode: Literal["off", "track", "queue"]):
         queue = self.service.get_queue(interaction.guild_id)
         queue.repeat_mode = mode
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3282,6 +3307,7 @@ class Music(commands.Cog):
                     except Exception:
                         pass
                 curr = getattr(curr, "original", None) or getattr(curr, "_source", None) or getattr(curr, "source", None)
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.VOLUME} Volume adjusted to **{val}%**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
@@ -3292,6 +3318,7 @@ class Music(commands.Cog):
         if mode == "on":
             queue.autoplay = True
             AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
+            self.notify_dashboard(interaction.guild_id)
             embed = make_success_embed(
                 f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes."
             )
@@ -3300,6 +3327,7 @@ class Music(commands.Cog):
             queue.autoplay = False
             queue.prefetched_autoplay_track = None
             queue.prefetched_autoplay_meta = None
+            self.notify_dashboard(interaction.guild_id)
             embed = make_error_embed(
                 description="AI AutoPlay is now **DISABLED**.",
                 is_warning=False
@@ -3317,6 +3345,7 @@ class Music(commands.Cog):
         queue.is_247 = (mode == "on")
         if queue.is_247:
             queue.cancel_inactivity()
+        self.notify_dashboard(interaction.guild_id)
         status = "ENABLED" if queue.is_247 else "DISABLED"
         embed = make_success_embed(f"### {Emojis.SYNCINK_MUSIC} 24/7 Voice Channel Mode is now **{status}**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)

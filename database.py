@@ -169,10 +169,69 @@ class DatabaseManager:
                     played_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_preferences (
+                    discord_user_id INTEGER PRIMARY KEY,
+                    timezone TEXT DEFAULT 'UTC',
+                    language TEXT DEFAULT 'en',
+                    private_listening INTEGER DEFAULT 0,
+                    theme TEXT DEFAULT 'dark',
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_playlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_user_id INTEGER NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+            """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_playlist_tracks (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    playlist_id INTEGER NOT NULL,
+                    title TEXT NOT NULL,
+                    author TEXT,
+                    url TEXT NOT NULL,
+                    duration INTEGER DEFAULT 0,
+                    thumbnail TEXT,
+                    platform TEXT DEFAULT 'youtube',
+                    position INTEGER DEFAULT 0,
+                    added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY(playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE
+                );
+            """)
+
+            # Ensure all columns exist on guild_settings
+            cursor.execute("PRAGMA table_info(guild_settings);")
+            existing_cols = {col[1] for col in cursor.fetchall()}
+            desired_cols = {
+                "default_voice_channel_id": "INTEGER",
+                "max_volume": "INTEGER DEFAULT 100",
+                "autoplay_enabled": "INTEGER DEFAULT 1",
+                "is_247": "INTEGER DEFAULT 0",
+                "announcements_enabled": "INTEGER DEFAULT 1",
+                "playback_notifications": "INTEGER DEFAULT 1",
+                "server_language": "TEXT DEFAULT 'en'",
+                "preferred_radio_country": "TEXT DEFAULT 'India'",
+                "audia_genre": "TEXT",
+                "audia_mood": "TEXT"
+            }
+            for col_name, col_type in desired_cols.items():
+                if col_name not in existing_cols:
+                    try:
+                        cursor.execute(f"ALTER TABLE guild_settings ADD COLUMN {col_name} {col_type};")
+                    except Exception:
+                        pass
+
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_user ON listening_history(discord_user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_played_at ON listening_history(played_at);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_history_guild ON listening_history(guild_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(discord_user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_playlists_user ON user_playlists(discord_user_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_playlist_tracks ON user_playlist_tracks(playlist_id);")
             conn.commit()
             return conn
 

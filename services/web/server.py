@@ -37,11 +37,14 @@ class UnifiedWebServer:
         # 1. Real-Time WebSocket Gateway
         self.app.router.add_get("/ws", DashboardWebSocketManager.get_instance().handle_ws)
 
-        # 2. Discord OAuth2 Endpoints
+        # 2. Discord OAuth2 & User Preferences Endpoints
         self.app.router.add_get("/api/auth/discord/login", DashboardAPI.handle_login)
         self.app.router.add_get("/api/auth/discord/callback", DashboardAPI.handle_oauth_callback)
         self.app.router.add_get("/api/auth/me", DashboardAPI.handle_me)
+        self.app.router.add_get("/api/user/me", DashboardAPI.handle_me)
         self.app.router.add_post("/api/auth/logout", DashboardAPI.handle_logout)
+        self.app.router.add_get("/api/user/preferences", DashboardAPI.handle_get_preferences)
+        self.app.router.add_post("/api/user/preferences", DashboardAPI.handle_update_preferences)
 
         # 3. Servers & Playback Control API
         self.app.router.add_get("/api/servers", DashboardAPI.handle_get_servers)
@@ -53,18 +56,30 @@ class UnifiedWebServer:
         # 4. Radio Directory API
         self.app.router.add_get("/api/radio/countries", DashboardAPI.handle_get_radio_countries)
         self.app.router.add_get("/api/radio/stations", DashboardAPI.handle_get_radio_stations)
+        self.app.router.add_get("/api/radio/popular", DashboardAPI.handle_get_popular_radio)
+        self.app.router.add_get("/api/radio/trending", DashboardAPI.handle_get_trending_radio)
+        self.app.router.add_get("/api/radio/genres", DashboardAPI.handle_get_radio_genres)
         self.app.router.add_post("/api/radio/tune", DashboardAPI.handle_tune_radio)
 
         # 5. Audia AI (AI DJ) API
         self.app.router.add_get("/api/audia/profile", DashboardAPI.handle_get_audia_profile)
+        self.app.router.add_get("/api/audia/recommendations", DashboardAPI.handle_get_audia_recommendations)
         self.app.router.add_post("/api/audia/settings", DashboardAPI.handle_update_audia_settings)
         self.app.router.add_post("/api/audia/feedback", DashboardAPI.handle_audia_feedback)
 
-        # 6. Library & Analytics API
+        # 6. Library, Playlists & Analytics API
         self.app.router.add_get("/api/library/favorites", DashboardAPI.handle_get_favorites)
         self.app.router.add_post("/api/library/favorites", DashboardAPI.handle_add_favorite)
         self.app.router.add_delete("/api/library/favorites/{id}", DashboardAPI.handle_remove_favorite)
+        self.app.router.add_get("/api/playlists", DashboardAPI.handle_get_playlists)
+        self.app.router.add_post("/api/playlists", DashboardAPI.handle_create_playlist)
+        self.app.router.add_delete("/api/playlists/{id}", DashboardAPI.handle_delete_playlist)
+        self.app.router.add_get("/api/playlists/{id}/tracks", DashboardAPI.handle_get_playlist_tracks)
+        self.app.router.add_post("/api/playlists/{id}/tracks", DashboardAPI.handle_add_playlist_track)
+        self.app.router.add_delete("/api/playlists/{id}/tracks/{track_id}", DashboardAPI.handle_remove_playlist_track)
         self.app.router.add_get("/api/history", DashboardAPI.handle_get_history)
+        self.app.router.add_delete("/api/history/{id}", DashboardAPI.handle_delete_history_item)
+        self.app.router.add_post("/api/history/clear", DashboardAPI.handle_clear_history)
         self.app.router.add_get("/api/analytics", DashboardAPI.handle_get_analytics)
         self.app.router.add_get("/api/admin/status", DashboardAPI.handle_admin_status)
 

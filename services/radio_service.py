@@ -331,3 +331,34 @@ class RadioService:
             if q_lower in s.get("name", "").lower()
         ]
         return local_matches[:limit]
+
+    def get_popular_stations(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch highest voted stations globally."""
+        endpoint = f"/json/stations/topvote/{limit}"
+        data = self._request_api(endpoint)
+        return self._parse_and_clean_stations(data, "Global")
+
+    def get_trending_stations(self, limit: int = 50) -> List[Dict[str, Any]]:
+        """Fetch highest trending / clicked stations globally."""
+        endpoint = f"/json/stations/topclick/{limit}"
+        data = self._request_api(endpoint)
+        return self._parse_and_clean_stations(data, "Global")
+
+    def get_top_tags(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """Fetch popular musical genres/tags with station counts."""
+        endpoint = f"/json/tags?order=stationcount&reverse=true&limit={limit}"
+        data = self._request_api(endpoint)
+        if data and isinstance(data, list):
+            return [{"name": t.get("name"), "stationcount": t.get("stationcount", 0)} for t in data if t.get("name")]
+        return [
+            {"name": "lofi", "stationcount": 1200},
+            {"name": "pop", "stationcount": 4800},
+            {"name": "rock", "stationcount": 3900},
+            {"name": "chill", "stationcount": 1500},
+            {"name": "classical", "stationcount": 1100},
+            {"name": "jazz", "stationcount": 1600},
+            {"name": "bollywood", "stationcount": 450},
+            {"name": "electronic", "stationcount": 2200},
+            {"name": "ambient", "stationcount": 890},
+            {"name": "hiphop", "stationcount": 1400}
+        ]

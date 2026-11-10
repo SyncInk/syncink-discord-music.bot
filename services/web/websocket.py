@@ -1,5 +1,6 @@
 import asyncio
 import json
+import time
 import aiohttp.web
 from typing import Set, Dict, Optional, Any
 from utils.logger import log
@@ -34,7 +35,7 @@ class DashboardWebSocketManager:
                 "event": "connected",
                 "message": "Connected to SyncInk Radio Live Gateway",
                 "version": "2.5.0",
-                "server_time": asyncio.get_event_loop().time()
+                "server_time": time.time()
             })
 
             async for msg in ws:
@@ -54,7 +55,7 @@ class DashboardWebSocketManager:
                                     pass
 
                         elif msg_type == "ping":
-                            await ws.send_json({"event": "pong", "time": asyncio.get_event_loop().time()})
+                            await ws.send_json({"event": "pong", "time": time.time()})
 
                     except json.JSONDecodeError:
                         pass
@@ -73,12 +74,8 @@ class DashboardWebSocketManager:
         queue = service.get_queue(guild_id)
         current = queue.current_track
 
-        vc = None
-        if bot:
-            guild = bot.get_guild(guild_id)
-            vc = (guild.voice_client if guild else None) or queue.voice_client
-        else:
-            vc = queue.voice_client
+        guild = bot.get_guild(guild_id) if bot else None
+        vc = (guild.voice_client if guild else None) or queue.voice_client
 
         is_connected = bool(vc and vc.is_connected())
         is_playing = bool(is_connected and vc and vc.is_playing())
@@ -99,7 +96,7 @@ class DashboardWebSocketManager:
                 "requested_by": str(current.requested_by) if current.requested_by else None,
             }
 
-        position = queue.get_playback_time() if is_playing or is_paused else 0.0
+        position = queue.get_playback_time() if (is_playing or is_paused) else 0.0
 
         upcoming = []
         for t in queue.tracks[:25]:
@@ -108,6 +105,7 @@ class DashboardWebSocketManager:
                 "author": t.author,
                 "url": t.url,
                 "thumbnail": t.thumbnail,
+                "duration": t.duration,
                 "formatted_duration": t.formatted_duration,
                 "platform": t.platform,
                 "is_radio": t.is_radio
@@ -120,13 +118,34 @@ class DashboardWebSocketManager:
             radio_name = queue.active_radio_station
 
         listeners_count = 0
+        channel_name = None
+        channel_id = None
         if vc and vc.channel:
             listeners_count = len([m for m in vc.channel.members if not m.bot])
+            channel_name = vc.channel.name
+            channel_id = str(vc.channel.id)
+
+        server_name = guild.name if guild else f"Guild #{guild_id}"
+        server_icon = str(guild.icon.url) if (guild and guild.icon) else "https://files.catbox.moe/74l9su.png"
+
+        # AutoPlay / Audia AI Metadata
+        autoplay_meta = getattr(queue, "last_autoplay_meta", None)
+        prefetched = getattr(queue, "prefetched_autoplay_track", None)
+        prefetched_data = None
+        if prefetched:
+            prefetched_data = {
+                "title": prefetched.clean_title,
+                "author": prefetched.author,
+                "thumbnail": prefetched.thumbnail
+            }
 
         return {
             "guild_id": str(guild_id),
+            "server_name": server_name,
+            "server_icon": server_icon,
             "connected": is_connected,
-            "channel_name": vc.channel.name if vc and vc.channel else None,
+            "channel_name": channel_name,
+            "channel_id": channel_id,
             "listeners": listeners_count,
             "is_playing": is_playing,
             "is_paused": is_paused,
@@ -138,8 +157,12 @@ class DashboardWebSocketManager:
             "autoplay": queue.autoplay,
             "is_247": queue.is_247,
             "radio_station": radio_name,
+            "active_radio_info": queue.active_radio_station_info,
             "queue": upcoming,
             "queue_size": len(queue.tracks),
+            "autoplay_meta": autoplay_meta,
+            "prefetched_track": prefetched_data,
+            "server_time": time.time()
         }
 
     async def send_guild_snapshot(self, ws: aiohttp.web.WebSocketResponse, guild_id: int, bot: Any):
@@ -154,7 +177,7 @@ class DashboardWebSocketManager:
             pass
 
     async def broadcast_playback_update(self, guild_id: int, bot: Any):
-        """Broadcasts playback state updates to all subscribed web clients."""
+        """Broadcasts playback state updates to all subscribed web clients in <1 second."""
         if not self._active_sockets:
             return
 
@@ -173,3 +196,21 @@ class DashboardWebSocketManager:
 
         if tasks:
             await asyncio.gather(*tasks, return_exceptions=True)
+
+def notify_guild_playback_changed(guild_id: int, bot: Any):
+    """Safe, non-blocking dispatcher to push live updates to the web dashboard."""
+    try:
+        mgr = DashboardWebSocketManager.get_instance()
+        loop = None
+        if bot and hasattr(bot, "loop") and bot.loop and bot.loop.is_running():
+            loop = bot.loop
+        else:
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+        if loop and loop.is_running():
+            loop.create_task(mgr.broadcast_playback_update(guild_id, bot))
+    except Exception as e:
+        log.debug(f"[Dashboard WS Notify] {e}")
+

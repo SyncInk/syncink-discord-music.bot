@@ -131,3 +131,47 @@ class DashboardAuthManager:
         """Removes a session from database."""
         if session_id:
             await db.execute("DELETE FROM user_sessions WHERE session_id = $1", session_id)
+
+    @staticmethod
+    def is_system_admin(user_id: int, bot: Any = None) -> bool:
+        """Determines if a user has global SyncInk System Administrator permissions."""
+        if not user_id:
+            return False
+        owner_id_env = os.getenv("BOT_OWNER_ID")
+        if owner_id_env:
+            try:
+                for oid in owner_id_env.split(","):
+                    if oid.strip() and int(oid.strip()) == user_id:
+                        return True
+            except ValueError:
+                pass
+
+        admin_ids_env = os.getenv("ADMIN_USER_IDS")
+        if admin_ids_env:
+            try:
+                for aid in admin_ids_env.split(","):
+                    if aid.strip() and int(aid.strip()) == user_id:
+                        return True
+            except ValueError:
+                pass
+
+        if bot and hasattr(bot, "owner_id") and bot.owner_id == user_id:
+            return True
+        if bot and hasattr(bot, "owner_ids") and bot.owner_ids and user_id in bot.owner_ids:
+            return True
+        return False
+
+    @staticmethod
+    def can_manage_guild(user_id: int, guild: Any) -> bool:
+        """Server-side check verifying if user has management permissions on a guild."""
+        if not user_id or not guild:
+            return False
+        if guild.owner_id == user_id:
+            return True
+        member = guild.get_member(user_id)
+        if member:
+            if member.guild_permissions.administrator:
+                return True
+            if member.guild_permissions.manage_guild:
+                return True
+        return False

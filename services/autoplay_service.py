@@ -1355,3 +1355,46 @@ class AutoPlayService:
                 log.debug(f"[AutoPlay Prefetch Error] {e}")
 
         guild_queue.prefetch_task = asyncio.create_task(_do_prefetch())
+
+    async def get_recommendations_for_user(self, user_id: int, limit: int = 6) -> List[Dict[str, Any]]:
+        """Generates hyper-personalized recommendations with explanation strings for the Dashboard."""
+        prof = self.get_user_profile(user_id)
+        top_artists = [a for a, s in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True)[:5]]
+        top_genres = [g for g, s in sorted(prof.genre_affinity.items(), key=lambda x: x[1], reverse=True)[:3]]
+
+        ctx_info = {
+            "seed_title": "Listener Favorites",
+            "seed_artist": top_artists[0] if top_artists else "Diverse Artist",
+            "seed_genre": prof.manual_genre or (top_genres[0] if top_genres else "Pop & Indie"),
+            "seed_language": prof.manual_language or "Hindi + English",
+            "seed_mood": prof.manual_mood or "Chill & Energetic",
+            "mode": "Taste Profile Match",
+            "top_artists": top_artists,
+            "top_genres": top_genres,
+            "discovery_mode": prof.discovery_mode,
+            "recent_tracks": [t.get("title", "") for t in prof.liked_tracks[-6:] if isinstance(t, dict) and t.get("title")],
+            "blocked_artists": prof.blocked_artists,
+        }
+
+        candidates = []
+        if self.gemini_key or self.openai_key:
+            try:
+                candidates = await self._fetch_ai_recommendations(ctx_info)
+            except Exception:
+                candidates = []
+
+        if not candidates:
+            candidates = self._get_heuristic_candidates(ctx_info)
+
+        results = []
+        for c in candidates[:limit]:
+            results.append({
+                "title": c.get("title"),
+                "artist": c.get("artist"),
+                "genre": c.get("genre", "Pop"),
+                "language": c.get("language", "Global"),
+                "mood": c.get("mood", "Vibrant"),
+                "reason": c.get("reason") or f"Recommended based on your affinity for {c.get('genre', 'diverse genres')} and similar artists.",
+                "confidence": c.get("confidence", 0.92)
+            })
+        return results
