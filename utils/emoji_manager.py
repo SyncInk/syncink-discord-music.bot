@@ -20,18 +20,8 @@ class EmojiManager:
     Guarantees cross-server compatibility and completely eliminates raw broken :name: text.
     """
 
-    # User-verified custom emojis
-    DEFAULT_KNOWN_EMOJIS = {
-        "sync_alert": {"id": 1513822294831534220, "name": "sync_alert", "animated": True, "tag": "<a:sync_alert:1513822294831534220>"},
-        "sync_check_yes": {"id": 1518997998128988160, "name": "sync_check_yes", "animated": True, "tag": "<a:sync_check_yes:1518997998128988160>"},
-        "refused": {"id": 1558019488408932423, "name": "refused", "animated": True, "tag": "<a:refused:1558019488408932423>"},
-        "approved": {"id": 1558019502019575918, "name": "approved", "animated": True, "tag": "<a:approved:1558019502019575918>"},
-        "syncinkai": {"id": 1568405549572165703, "name": "SyncInkAI", "animated": False, "tag": "<:SyncInkAI:1568405549572165703>"},
-        "s_arrow": {"id": 1568408148463718490, "name": "s_arrow", "animated": False, "tag": "<:s_arrow:1568408148463718490>"},
-        "syncrobot": {"id": 1538932141273120828, "name": "syncrobot", "animated": False, "tag": "<:syncrobot:1538932141273120828>"},
-        "like": {"id": 1559660676853797005, "name": "like", "animated": False, "tag": "<:like:1559660676853797005>"},
-        "dislike": {"id": 1559660727373930657, "name": "dislike", "animated": False, "tag": "<:dislike:1559660727373930657>"},
-    }
+    # User-verified custom emojis (populated dynamically from actual API discovery only)
+    DEFAULT_KNOWN_EMOJIS = {}
 
     # Essential application emojis and their candidate filenames in assets/emojis
     EMOJI_ASSET_FILES = {

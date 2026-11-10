@@ -1728,13 +1728,19 @@ class Music(commands.Cog):
         role_id = get_music_booster_role_id()
         if not role_id:
             return True
+        # If the configured booster role is not in this guild, do not restrict members on this guild
+        if not guild.get_role(role_id):
+            return True
         has_booster = any(r.id == role_id for r in user.roles)
         is_admin_or_owner = user.id == guild.owner_id or getattr(user.guild_permissions, "administrator", False)
         return has_booster or is_admin_or_owner
 
-    def _is_allowed_channel(self, channel_id: int) -> bool:
+    def _is_allowed_channel(self, channel_id: int, guild: Optional[discord.Guild] = None) -> bool:
         chan_id = get_music_command_channel_id()
         if not chan_id:
+            return True
+        # If the channel is configured for a specific server and not present in this guild, allow it
+        if guild and not guild.get_channel(chan_id):
             return True
         return channel_id == chan_id
 
@@ -1744,25 +1750,27 @@ class Music(commands.Cog):
         if allowed_guild and (not ctx.guild or ctx.guild.id != allowed_guild):
             return False
 
-        # 2. Channel check (if configured)
-        if not self._is_allowed_channel(ctx.channel.id):
+        # 2. Channel check (if configured and exists on this server)
+        if not self._is_allowed_channel(ctx.channel.id, ctx.guild):
             chan_id = get_music_command_channel_id()
             embed = discord.Embed(
-                description=f"### {Emojis.WARNING} Music commands can only be used in <#{chan_id}>!",
+                description=format_discord_emojis(f"### {Emojis.WARNING} Music commands can only be used in <#{chan_id}>!"),
                 color=0xED4245
             )
+            embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
             return False
 
-        # 3. Booster role restriction (if configured)
+        # 3. Booster role restriction (if configured and exists on this server)
         if not self._is_booster_or_admin(ctx.author, ctx.guild):
             role_id = get_music_booster_role_id()
             embed = discord.Embed(
-                description=f"### {Emojis.WARNING} Music & Radio commands are exclusive for <@&{role_id}>!",
+                description=format_discord_emojis(f"### {Emojis.WARNING} Music & Radio commands are exclusive for <@&{role_id}>!"),
                 color=0xED4245
             )
+            embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
@@ -1774,7 +1782,8 @@ class Music(commands.Cog):
         # 0. Require guild context
         if not interaction.guild:
             if not interaction.response.is_done():
-                embed = discord.Embed(description=f"### {Emojis.WARNING} Music commands can only be used in a Discord server.", color=0xED4245)
+                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} Music commands can only be used in a Discord server."), color=0xED4245)
+                embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
 
@@ -1782,30 +1791,33 @@ class Music(commands.Cog):
         allowed_guild = self._music_allowed_guild_id()
         if allowed_guild and interaction.guild_id != allowed_guild:
             if not interaction.response.is_done():
-                embed = discord.Embed(description=f"### {Emojis.WARNING} Music commands are disabled on this server.", color=0xED4245)
+                embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} Music commands are disabled on this server."), color=0xED4245)
+                embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             return False
 
-        # 2. Channel check (only if explicitly configured)
-        if not self._is_allowed_channel(interaction.channel_id):
+        # 2. Channel check (only if explicitly configured and exists on this server)
+        if not self._is_allowed_channel(interaction.channel_id, interaction.guild):
             chan_id = get_music_command_channel_id()
             embed = discord.Embed(
-                description=f"### {Emojis.WARNING} Music commands can only be used in <#{chan_id}>!",
+                description=format_discord_emojis(f"### {Emojis.WARNING} Music commands can only be used in <#{chan_id}>!"),
                 color=0xED4245
             )
+            embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             else:
                 await interaction.followup.send(embed=embed, ephemeral=True)
             return False
 
-        # 3. Booster role restriction (only if explicitly configured)
+        # 3. Booster role restriction (only if explicitly configured and exists on this server)
         if not self._is_booster_or_admin(interaction.user, interaction.guild):
             role_id = get_music_booster_role_id()
             embed = discord.Embed(
-                description=f"### {Emojis.WARNING} Music & Radio commands are exclusive for <@&{role_id}>!",
+                description=format_discord_emojis(f"### {Emojis.WARNING} Music & Radio commands are exclusive for <@&{role_id}>!"),
                 color=0xED4245
             )
+            embed.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
             if not interaction.response.is_done():
                 await interaction.response.send_message(embed=embed, ephemeral=True)
             else:
@@ -2289,30 +2301,30 @@ class Music(commands.Cog):
 
         # Queue is empty - Handle Radio vs Normal Autoplay
         if was_radio:
-            if was_manual_skip:
-                requester = last_track.requested_by if last_track else None
-                switched = await self.skip_to_next_radio_station(queue, user=requester)
-                if switched:
-                    return
-
-                queue.active_radio_station = None
-                queue.active_radio_station_info = None
-                queue.active_country_stations = None
-                queue.current_track = None
-                if queue.now_playing_message:
-                    try:
-                        await queue.now_playing_message.delete()
-                    except Exception:
-                        pass
-                    queue.now_playing_message = None
-                if queue.text_channel:
-                    embed_finished = discord.Embed(
-                        description=format_discord_emojis(f"### {Emojis.TIME} Reached the end of the queue. Please queue some track(s) again!"),
-                        color=BRAND_COLOR
-                    )
-                    await queue.text_channel.send(embed=embed_finished)
-                self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+            requester = last_track.requested_by if last_track else None
+            switched = await self.skip_to_next_radio_station(queue, user=requester)
+            if switched:
                 return
+
+            queue.active_radio_station = None
+            queue.active_radio_station_info = None
+            queue.active_country_stations = None
+            queue.current_track = None
+            if queue.now_playing_message:
+                try:
+                    await queue.now_playing_message.delete()
+                except Exception:
+                    pass
+                queue.now_playing_message = None
+            if queue.text_channel:
+                embed_finished = discord.Embed(
+                    description=format_discord_emojis(f"### {Emojis.TIME} Reached the end of the queue. Please queue some track(s) again!"),
+                    color=BRAND_COLOR
+                )
+                embed_finished.set_footer(text="SyncInk Radio Platform", icon_url=BRAND_LOGO_URL)
+                await queue.text_channel.send(embed=embed_finished)
+            self.start_inactivity_countdown(queue, delay=30, reason="empty_queue")
+            return
 
             # Check 24/7 predefined radio presets (lofi, synthwave, etc.)
             if queue.active_radio_station and queue.active_radio_station in RADIO_STATIONS:
@@ -2590,24 +2602,24 @@ class Music(commands.Cog):
             if not target_channel and queue.voice_client and queue.voice_client.guild:
                 target_channel = queue.voice_client.guild.system_channel
 
-            if target_channel:
-                flag = get_country_flag(country_name)
-                track = make_radio_track(next_station, country_name, requester, flag=flag)
-                queue.active_radio_station = country_name
-                queue.active_radio_station_info = next_station
-                queue.active_country_stations = stations
-                queue.tracks.clear()
-                try:
-                    stream_started = await self.play_track(queue, track)
-                    if stream_started:
-                        # Update now playing view
-                        view = MusicPlayerLayoutView(self, queue)
-                        if queue.now_playing_message:
-                            try:
-                                await queue.now_playing_message.edit(view=view)
-                            except Exception:
-                                pass
-                        # Send station tuned embed
+            flag = get_country_flag(country_name)
+            track = make_radio_track(next_station, country_name, requester, flag=flag)
+            queue.active_radio_station = country_name
+            queue.active_radio_station_info = next_station
+            queue.active_country_stations = stations
+            queue.tracks.clear()
+            try:
+                stream_started = await self.play_track(queue, track)
+                if stream_started:
+                    # Update now playing view
+                    view = MusicPlayerLayoutView(self, queue)
+                    if queue.now_playing_message:
+                        try:
+                            await queue.now_playing_message.edit(view=view)
+                        except Exception:
+                            pass
+                    # Send station tuned embed if text channel is accessible
+                    if target_channel:
                         info_embed = discord.Embed(
                             description=format_discord_emojis(f"### {Emojis.RADIO} Tuned into {next_station['name']} ({flag} {country_name})\n{Emojis.S_ARROW} *Use dropdown below or Next button to switch station anytime:*"),
                             color=BRAND_COLOR
@@ -2621,10 +2633,10 @@ class Music(commands.Cog):
                                 queue.radio_menu_message = msg
                         except Exception:
                             pass
-                        return True
-                except Exception as e:
-                    log.warning(f"[Radio Next Error] Failed to tune station {next_station.get('name')}: {e}")
-                    continue
+                    return True
+            except Exception as e:
+                log.warning(f"[Radio Next Error] Failed to tune station {next_station.get('name')}: {e}")
+                continue
 
         return False
 
@@ -3280,19 +3292,29 @@ class Music(commands.Cog):
         embed = make_success_embed(f"### {Emojis.REPEAT} Repeat mode set to: **{mode.upper()}**")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="volume", description="Set audio gain volume (1% to 200%).")
-    @app_commands.describe(percent="Volume percentage")
-    async def slash_volume(self, interaction: discord.Interaction, percent: int):
-        val = max(1, min(200, percent))
+    @app_commands.command(name="volume", description="View or set audio gain volume (1% to 200%).")
+    @app_commands.describe(percent="Volume percentage (omit to check current volume)")
+    async def slash_volume(self, interaction: discord.Interaction, percent: Optional[int] = None):
         queue = self.service.get_queue(interaction.guild_id)
+        if percent is None:
+            embed = make_success_embed(f"### {Emojis.VOLUME} Current playback volume is **{queue.volume}%**.")
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+
+        val = max(1, min(200, percent))
         queue.volume = val
-        if queue.voice_client and queue.voice_client.source:
-            src = queue.voice_client.source
-            if hasattr(src, "volume"):
-                src.volume = val / 100.0
-            if hasattr(src, "original") and hasattr(src.original, "volume"):
-                src.original.volume = val / 100.0
-        embed = make_success_embed(f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.")
+        vc = interaction.guild.voice_client or queue.voice_client
+        if vc:
+            queue.voice_client = vc
+            curr = vc.source
+            while curr:
+                if hasattr(curr, "volume"):
+                    try:
+                        curr.volume = val / 100.0
+                    except Exception:
+                        pass
+                curr = getattr(curr, "original", None) or getattr(curr, "_source", None) or getattr(curr, "source", None)
+        embed = make_success_embed(f"### {Emojis.VOLUME} Volume adjusted to **{val}%**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
@@ -3680,27 +3702,32 @@ class Music(commands.Cog):
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
 
-    @commands.command(name="volume", aliases=["vol"], description="Set audio gain volume (1% to 200%).")
+    @commands.command(name="volume", aliases=["vol"], description="View or set audio gain volume (1% to 200%).")
     async def cmd_volume(self, ctx: commands.Context, percent: Optional[int] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if percent is None:
-            embed = make_success_embed(f"### {Emojis.SYNCBOT} Current volume: **{queue.volume}%**")
-            await ctx.send(embed=embed, delete_after=5)
+            embed = make_success_embed(f"### {Emojis.VOLUME} Current playback volume: **{queue.volume}%**")
+            await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
-                asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
+                asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
             return
         val = max(1, min(200, percent))
         queue.volume = val
-        if queue.voice_client and queue.voice_client.source:
-            src = queue.voice_client.source
-            if hasattr(src, "volume"):
-                src.volume = val / 100.0
-            if hasattr(src, "original") and hasattr(src.original, "volume"):
-                src.original.volume = val / 100.0
-        embed = make_success_embed(f"### {Emojis.SYNCBOT} Volume adjusted to **{val}%**.")
-        await ctx.send(embed=embed, delete_after=5)
+        vc = ctx.guild.voice_client or queue.voice_client
+        if vc:
+            queue.voice_client = vc
+            curr = vc.source
+            while curr:
+                if hasattr(curr, "volume"):
+                    try:
+                        curr.volume = val / 100.0
+                    except Exception:
+                        pass
+                curr = getattr(curr, "original", None) or getattr(curr, "_source", None) or getattr(curr, "source", None)
+        embed = make_success_embed(f"### {Emojis.VOLUME} Volume adjusted to **{val}%**.")
+        await ctx.send(embed=embed, delete_after=10)
         if ctx.message:
-            asyncio.create_task(_delayed_delete_msg(ctx.message, 5))
+            asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
 
     @commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
     async def cmd_autoplay(self, ctx: commands.Context, mode: Optional[str] = None):
