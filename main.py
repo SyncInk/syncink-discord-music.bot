@@ -106,7 +106,7 @@ class SyncInkRadioBot(commands.Bot):
         try:
             activity = discord.Activity(
                 type=discord.ActivityType.listening,
-                name="/play | SyncInk Radio & AI DJ"
+                name="/play | SyncInk Radio • Audia AI"
             )
             await self.change_presence(status=discord.Status.online, activity=activity)
         except Exception as e:

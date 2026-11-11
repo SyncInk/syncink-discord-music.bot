@@ -1386,8 +1386,8 @@ class AutoPlayControlCenterView(discord.ui.View):
         lang_str = f"`{prof.manual_language or 'All Languages / Dynamic'}`"
 
         desc = (
-            f"### {Emojis.AI} SyncInk AI DJ • Auto Play Control Center\n"
-            f"Your personal AI music companion continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends.\n\n"
+            f"### {Emojis.AI} Audia AI • Auto Play Control Center\n"
+            f"Your personal intelligent music companion powered by **Audia AI by SyncInk** continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends.\n\n"
             f"{Emojis.S_ARROW} **Status:** {status_str}\n"
             f"{Emojis.S_ARROW} **Listening Mode:** `{mode_str}`\n"
             f"{Emojis.S_ARROW} **Discovery Style:** {disc_str}\n"
@@ -1398,7 +1398,7 @@ class AutoPlayControlCenterView(discord.ui.View):
         )
 
         embed = discord.Embed(description=format_discord_emojis(desc), color=BRAND_COLOR)
-        embed.set_footer(text="SyncInk AI Music Engine", icon_url=BRAND_LOGO_URL)
+        embed.set_footer(text="Audia AI by SyncInk • Intelligent Music Engine", icon_url=BRAND_LOGO_URL)
         return embed
 
     def build_components(self):
@@ -1565,7 +1565,7 @@ class AutoPlayControlCenterView(discord.ui.View):
         if val == "reset":
             prof.manual_mood = None
             prof.manual_genre = None
-            msg = "Reset Mood & Genre. AI DJ will dynamically adapt."
+            msg = "Reset Mood & Genre. Audia AI will dynamically adapt."
         else:
             mood, genre = val.split("|", 1)
             prof.manual_mood = mood
@@ -3311,8 +3311,20 @@ class Music(commands.Cog):
         embed = make_success_embed(f"### {Emojis.VOLUME} Volume adjusted to **{val}%**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
-    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive AI DJ settings)")
+    @app_commands.command(name="audia", description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
+    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
+    async def slash_audia(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+        """Audia AI intelligent music assistant."""
+        return await self.slash_autoplay(interaction, mode)
+
+    @app_commands.command(name="dj", description="Legacy alias for Audia AI AutoPlay.")
+    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
+    async def slash_dj(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+        """Legacy /dj alias for Audia AI."""
+        return await self.slash_autoplay(interaction, mode)
+
+    @app_commands.command(name="autoplay", description="Audia AI — Continuous song recommendation and AutoPlay.")
+    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
     async def slash_autoplay(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
         queue = self.service.get_queue(interaction.guild_id)
         if mode == "on":
@@ -3320,7 +3332,7 @@ class Music(commands.Cog):
             AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
             self.notify_dashboard(interaction.guild_id)
             embed = make_success_embed(
-                f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.\nSyncInk AI DJ will seamlessly recommend matching tracks as your queue finishes."
+                f"### {Emojis.AI} Audia AI AutoPlay is now **ENABLED**.\nAudia AI by SyncInk will seamlessly recommend matching tracks as your queue finishes."
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
         elif mode == "off":
@@ -3329,7 +3341,7 @@ class Music(commands.Cog):
             queue.prefetched_autoplay_meta = None
             self.notify_dashboard(interaction.guild_id)
             embed = make_error_embed(
-                description="AI AutoPlay is now **DISABLED**.",
+                description="Audia AI AutoPlay is now **DISABLED**.",
                 is_warning=False
             )
             await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -3723,7 +3735,7 @@ class Music(commands.Cog):
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
 
-    @commands.command(name="autoplay", description="AI-powered personal DJ & continuous song recommendation.")
+    @commands.command(name="audia", aliases=["dj", "autoplay"], description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
     async def cmd_autoplay(self, ctx: commands.Context, mode: Optional[str] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if mode:
@@ -3731,13 +3743,13 @@ class Music(commands.Cog):
             if m in ("on", "true", "enable", "1"):
                 queue.autoplay = True
                 AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-                embed = make_success_embed(f"### {Emojis.AI} AI AutoPlay is now **ENABLED**.")
+                embed = make_success_embed(f"### {Emojis.AI} Audia AI AutoPlay is now **ENABLED**.")
                 await ctx.send(embed=embed, delete_after=5)
             elif m in ("off", "false", "disable", "0"):
                 queue.autoplay = False
                 queue.prefetched_autoplay_track = None
                 queue.prefetched_autoplay_meta = None
-                embed = make_error_embed(description="AI AutoPlay is now **DISABLED**.", is_warning=False)
+                embed = make_error_embed(description="Audia AI AutoPlay is now **DISABLED**.", is_warning=False)
                 await ctx.send(embed=embed, delete_after=5)
             else:
                 queue.autoplay = not queue.autoplay
@@ -3746,6 +3758,9 @@ class Music(commands.Cog):
                 else:
                     queue.prefetched_autoplay_track = None
                     queue.prefetched_autoplay_meta = None
+                status = "ENABLED" if queue.autoplay else "DISABLED"
+                embed = make_success_embed(f"### {Emojis.AI} Audia AI AutoPlay is now **{status}**.")
+                await ctx.send(embed=embed, delete_after=5)
                 status = "ENABLED" if queue.autoplay else "DISABLED"
                 embed = make_success_embed(f"### {Emojis.AI} AI AutoPlay is now **{status}**.")
                 await ctx.send(embed=embed, delete_after=5)

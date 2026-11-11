@@ -461,7 +461,7 @@ function renderQueueDrawer() {
     apDiv.innerHTML = `
       <div class="flex items-center gap-2 mb-1.5">
         <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
-        <span class="text-[10px] font-bold text-amber-300 uppercase tracking-wider">AI DJ AutoPlay Up Next</span>
+        <span class="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Audia AI AutoPlay Up Next</span>
       </div>
       <p class="font-bold text-xs text-white truncate">${pref ? escapeHtml(pref.title) : 'Smart Selection'}</p>
       <p class="text-[11px] text-[#9E9EAD] truncate">${pref ? escapeHtml(pref.author) : 'Diverse Match'}</p>

@@ -1027,7 +1027,7 @@ class AutoPlayService:
         payload = {
             "model": "gpt-4o-mini",
             "messages": [
-                {"role": "system", "content": "You are an intelligent AI DJ. Respond strictly with raw JSON."},
+                {"role": "system", "content": "You are Audia AI, SyncInk's intelligent music assistant. Respond strictly with raw JSON."},
                 {"role": "user", "content": prompt}
             ],
             "temperature": 0.7,
@@ -1305,7 +1305,7 @@ class AutoPlayService:
                             "genre": cand.get("genre", ctx.get("seed_genre", "Pop")),
                             "language": cand.get("language", ctx.get("seed_language", "English")),
                             "mood": cand.get("mood", ctx.get("seed_mood", "Chill")),
-                            "reason": cand.get("reason", f"Selected by SyncInk AI DJ to match your taste."),
+                            "reason": cand.get("reason", f"Selected by Audia AI to match your taste."),
                             "mode": ctx.get("mode", "Personal"),
                         }
                         return chosen_track, meta

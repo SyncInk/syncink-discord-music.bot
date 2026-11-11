@@ -150,7 +150,7 @@ class Help(commands.Cog):
         radio_cmds = [
             ("/radio [country] [station]", "Browse and stream 24/7 world live radio stations by country flag/name."),
             ("/lofi", "Instantly start 24/7 high-fidelity Lo-Fi beats streaming."),
-            ("/autoplay", "Configure intelligent AI AutoPlay recommendations, genres, moods, and languages.")
+            ("/audia [on/off]", "Audia AI intelligent music assistant, mood/genre focus, and AutoPlay (Aliases: /dj, /autoplay).")
         ]
 
         system_cmds = [
@@ -192,7 +192,7 @@ class Help(commands.Cog):
 
         emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
         labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ", "Auto GitHub updates, restart, git status"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Auto GitHub updates, restart, git status"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
@@ -225,7 +225,7 @@ class Help(commands.Cog):
 
         emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
         labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and AI DJ", "Auto GitHub updates, restart, git status"]
+        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Auto GitHub updates, restart, git status"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))

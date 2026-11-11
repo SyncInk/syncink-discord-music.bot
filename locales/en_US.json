@@ -1,6 +1,6 @@
 {
     "welcome_message_title": "Welcome to SyncInk Radio!",
-    "welcome_message_desc": "Hello {user}! Enjoy 24/7 high-fidelity music, global radio streams, and intelligent AI DJ AutoPlay.",
+    "welcome_message_desc": "Hello {user}! Enjoy 24/7 high-fidelity music, global radio streams, and intelligent Audia AI AutoPlay.",
     "error_no_permission": "You do not have permission to perform this action.",
     "error_generic": "An unexpected error occurred. The developers have been notified."
 }
