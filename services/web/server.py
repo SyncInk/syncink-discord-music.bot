@@ -77,7 +77,7 @@ class UnifiedWebServer:
         _route("GET", "/api/radio/genres", DashboardAPI.handle_get_radio_genres)
         _route("POST", "/api/radio/tune", DashboardAPI.handle_tune_radio)
 
-        # 5. Audia AI (AI DJ) API
+        # 5. Audia AI Engine API
         _route("GET", "/api/audia/profile", DashboardAPI.handle_get_audia_profile)
         _route("GET", "/api/audia/recommendations", DashboardAPI.handle_get_audia_recommendations)
         _route("POST", "/api/audia/settings", DashboardAPI.handle_update_audia_settings)

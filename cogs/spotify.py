@@ -124,7 +124,7 @@ class Spotify(commands.Cog):
                     "Click the button below to authorize SyncInk Radio via official Spotify PKCE OAuth.\n\n"
                     f"{Emojis.S_ARROW} **Features Unlocked:**\n"
                     "• Stream your personal and private playlists\n"
-                    "• AI DJ learns from your top played artists and genres\n"
+                    "• Audia AI learns from your top played artists and genres\n"
                     "• Instant /spotify mytop track access\n\n"
                     "-# Tokens are securely encrypted with authenticated cryptography and never exposed."
                 ),

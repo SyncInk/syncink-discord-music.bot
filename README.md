@@ -1,6 +1,6 @@
 # SyncInk Radio Bot 🎵📻
 
-High-fidelity Discord Radio, Music Playback, and AI DJ AutoPlay engine for the **SyncInk Ecosystem**.
+High-fidelity Discord Radio, Music Playback, and Audia AI AutoPlay engine for the **SyncInk Ecosystem**.
 
 Built with `discord.py`, native Opus hardware encoding, zero-buffer socket reconnections, and Discord Components V2 UI.
 
@@ -13,7 +13,7 @@ Built with `discord.py`, native Opus hardware encoding, zero-buffer socket recon
 * **Interactive Components V2 Player Card**: Real-time progress bar, dynamic thumbnail accessories, and 2-row button controls using authentic custom server emojis:
   * **Row 1**: `Previous`, `Pause/Resume`, `Next`, `Repeat`, `Stop`
   * **Row 2**: `Queue`, `Shuffle`, `Radio`
-* **AI DJ & AutoPlay**: Intelligent multi-tiered recommendations (Gemini, OpenAI, Heuristic Clusters), hard language isolation, mood & genre preferences, and manual play taste learning.
+* **Audia AI & AutoPlay**: Intelligent multi-tiered recommendations (Gemini, OpenAI, Heuristic Clusters), hard language isolation, mood & genre preferences, and manual play taste learning.
 * **Interactive Search**: `/search <query>` with multi-option interactive picker.
 * **Dual Database Persistence**: Automatic local SQLite storage (`./data/syncink_radio.db`) or optional cloud PostgreSQL.
 

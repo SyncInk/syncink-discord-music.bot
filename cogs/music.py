@@ -401,7 +401,8 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             return
 
         played_sec = self.queue.get_playback_time()
-        AutoPlayService.get_instance().record_track_skip(interaction.user.id, self.queue.current_track, played_sec)
+        dur = self.queue.current_track.duration if self.queue.current_track else None
+        AutoPlayService.get_instance().record_track_skip(interaction.user.id, self.queue.current_track, played_sec, dur)
         skipped_name = self.queue.current_track.clean_title
         self.queue.manual_skip = True
         vc.stop()
@@ -436,6 +437,8 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def on_queue(self, interaction: discord.Interaction):
+        if self.queue.autoplay and not getattr(self.queue, "prefetched_autoplay_track", None):
+            AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
         embed = self.music_cog.build_queue_embed(self.queue)
         view = QueueLayoutView(self.music_cog, self.queue, interaction.user.id)
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
@@ -458,7 +461,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             ),
             color=BRAND_COLOR
         )
-        embed.set_footer(text="SyncInk AI AutoPlay DJ", icon_url=BRAND_LOGO_URL)
+        embed.set_footer(text="Audia AI • SyncInk Radio", icon_url=BRAND_LOGO_URL)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def on_ap_dislike(self, interaction: discord.Interaction):
@@ -486,7 +489,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             ),
             color=BRAND_COLOR
         )
-        embed.set_footer(text="SyncInk AI AutoPlay DJ", icon_url=BRAND_LOGO_URL)
+        embed.set_footer(text="Audia AI • SyncInk Radio", icon_url=BRAND_LOGO_URL)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 MusicPlayerView = MusicPlayerLayoutView
@@ -1251,7 +1254,7 @@ class AutoPlayBlockArtistModal(discord.ui.Modal, title="Block or Unblock Artist"
 class AutoPlayFeedbackView(discord.ui.View):
     """
     Real-time interactive feedback row attached to AutoPlay recommendations:
-    [👍 Like] [👎 Dislike] [🎶 More Like This] [✨ Discover] [⚙️ Tune DJ]
+    [👍 Like] [👎 Dislike] [🎶 More Like This] [✨ Discover] [⚙️ Tune Audia]
     """
     def __init__(self, music_cog: 'Music', queue: GuildMusicQueue, track: Track):
         super().__init__(timeout=300.0)
@@ -1344,7 +1347,7 @@ class AutoPlayFeedbackView(discord.ui.View):
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @discord.ui.button(label="Tune DJ", emoji="⚙️", style=discord.ButtonStyle.secondary, custom_id="ap_btn_tune")
+    @discord.ui.button(label="Tune Audia", emoji=EmojiPartials.SETTINGS, style=discord.ButtonStyle.secondary, custom_id="ap_btn_tune")
     async def on_tune(self, interaction: discord.Interaction, button: discord.ui.Button):
         view = AutoPlayControlCenterView(self.music_cog, interaction.user, self.queue)
         embed = view.build_embed()
@@ -1386,7 +1389,7 @@ class AutoPlayControlCenterView(discord.ui.View):
         lang_str = f"`{prof.manual_language or 'All Languages / Dynamic'}`"
 
         desc = (
-            f"### {Emojis.AI} Audia AI • Auto Play Control Center\n"
+            f"### {Emojis.AUDIA_AI} Audia AI • Auto Play Control Center\n"
             f"Your personal intelligent music companion powered by **Audia AI by SyncInk** continuously learns your musical preferences and keeps high-fidelity audio playing seamlessly when the queue ends.\n\n"
             f"{Emojis.S_ARROW} **Status:** {status_str}\n"
             f"{Emojis.S_ARROW} **Listening Mode:** `{mode_str}`\n"
@@ -1645,18 +1648,30 @@ class AutoPlayControlCenterView(discord.ui.View):
         gen_text = "\n".join(top_gen) if top_gen else "*No genre history yet.*"
         block_text = ", ".join(blocked) if blocked else "*None.*"
 
+        memorized_count = len(prof.memorized_tracks)
+        top_memorized = [
+            f"• **{item['title']}** — *{item['artist']}* (`{item.get('play_count', 1)}` plays)"
+            for item in sorted(prof.memorized_tracks, key=lambda x: x.get("play_count", 1), reverse=True)[:4]
+        ]
+        mem_text = "\n".join(top_memorized) if top_memorized else "*Songs will automatically be memorized as you play.*"
+
+        hours = round(prof.total_listen_seconds / 3600.0, 1)
+
         p_embed = discord.Embed(
             description=(
-                f"### 📊 Your Personal Music Taste Profile\n"
-                f"**Total Songs Listened:** `{prof.total_listened}`\n"
-                f"**Liked Tracks:** `{len(prof.liked_tracks)}`  •  **Disliked Tracks:** `{len(prof.disliked_tracks)}`\n\n"
+                f"### {Emojis.AUDIA_AI} Audia AI • Personal Music Intelligence Profile\n"
+                f"**Total Songs Listened:** `{prof.total_listened}`  •  **Full Listens:** `{prof.completed_listens}` (`{hours}h` total)\n"
+                f"**Memorized Tracks:** `{memorized_count}`  •  **Liked:** `{len(prof.liked_tracks)}`  •  **Disliked:** `{len(prof.disliked_tracks)}`\n"
+                f"**Skips Tracked:** `{len(prof.skipped_tracks)}`  •  **Queue Deletions:** `{len(prof.deleted_tracks)}`\n\n"
+                f"**Top Memorized Songs:**\n{mem_text}\n\n"
                 f"**Top Learned Artists:**\n{art_text}\n\n"
                 f"**Top Learned Genres:**\n{gen_text}\n\n"
                 f"**Blocked Artists:**\n{block_text}\n\n"
-                f"_-# Your profile is 100% private and continuously improves with every listen._"
+                f"-# Every member has their own independent Audia AI profile, completely private to you."
             ),
             color=BRAND_COLOR
         )
+        p_embed.set_footer(text="Audia AI by SyncInk • Intelligent Music Engine", icon_url=BRAND_LOGO_URL)
         await interaction.response.send_message(embed=p_embed, ephemeral=True)
 
 class Music(commands.Cog):
@@ -2066,6 +2081,38 @@ class Music(commands.Cog):
         else:
             lines.append(f"* {Emojis.QUEUE} No upcoming tracks in queue.")
 
+        # Display upcoming track from Audia AI when AutoPlay is enabled
+        if queue.autoplay:
+            lines.append("")
+            lines.append(f"### {Emojis.AUDIA_AI} Audia AI • Up Next (AutoPlay)")
+            prefetched = getattr(queue, "prefetched_autoplay_track", None)
+            meta = getattr(queue, "prefetched_autoplay_meta", None) or {}
+
+            if prefetched:
+                lines.append(f"* [{prefetched.clean_title}]({prefetched.url})")
+                lines.append(f"  └ {Emojis.TIME} `{prefetched.formatted_duration}`  •  *{prefetched.author}*")
+                genre = meta.get("genre") or "Curated Style"
+                mood = meta.get("mood") or "Dynamic"
+                reason = meta.get("reason") or "Matched to listener taste profile."
+                lines.append(f"  └ ✨ **Category:** `{genre}` ({mood})")
+                lines.append(f"  └ 💡 **Curation:** *{reason}*\n")
+            elif meta and meta.get("title"):
+                title = meta.get("title")
+                artist = meta.get("artist") or "Various Artists"
+                genre = meta.get("genre") or "Curated Style"
+                mood = meta.get("mood") or "Dynamic"
+                reason = meta.get("reason") or "Matched to listener taste profile."
+                lines.append(f"* **{title}** — *{artist}*")
+                lines.append(f"  └ ✨ **Category:** `{genre}` ({mood})")
+                lines.append(f"  └ 💡 **Curation:** *{reason}*\n")
+            else:
+                req = current.requested_by if current and getattr(current, "requested_by", None) else None
+                prof = AutoPlayService.get_instance().get_user_profile(req.id if req else 0)
+                focus_genre = prof.manual_genre or "Smart Auto-Detect"
+                focus_lang = prof.manual_language or "Adaptive"
+                lines.append(f"* 🎧 *Audia AI is actively curating the next selection based on your taste profile...*")
+                lines.append(f"  └ ✨ **Focus:** `{focus_genre}` • `{focus_lang}`\n")
+
         embed.description = "\n".join(lines).strip()
         return embed
 
@@ -2254,6 +2301,15 @@ class Music(commands.Cog):
             or (queue.active_radio_station if queue.active_radio_station else "Live Radio")
         )
         stream_duration = time.time() - queue.start_time if queue.start_time > 0 else 0.0
+
+        # Record track completion in Audia AI memory if listened through naturally without manual skip
+        if last_track and not was_radio and not was_manual_skip and stream_duration >= 25.0:
+            req_id = getattr(getattr(last_track, "requested_by", None), "id", None)
+            if req_id:
+                try:
+                    AutoPlayService.get_instance().record_track_completion(req_id, last_track, stream_duration)
+                except Exception as e:
+                    log.debug(f"[Audia AI Completion Tracking] {e}")
 
         if queue.repeat_mode == "track" and queue.current_track and not was_radio and not was_manual_skip:
             next_track = queue.current_track
@@ -3176,7 +3232,8 @@ class Music(commands.Cog):
         for _ in range(min(to_drop, len(queue.tracks))):
             queue.tracks.pop(0)
         played_sec = queue.get_playback_time()
-        AutoPlayService.get_instance().record_track_skip(interaction.user.id, queue.current_track, played_sec)
+        dur = queue.current_track.duration if queue.current_track else None
+        AutoPlayService.get_instance().record_track_skip(interaction.user.id, queue.current_track, played_sec, dur)
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
@@ -3247,14 +3304,50 @@ class Music(commands.Cog):
         queue = self.service.get_queue(interaction.guild_id)
         if action == "clear":
             count = len(queue.tracks)
+            for t in queue.tracks:
+                try:
+                    AutoPlayService.get_instance().record_track_delete(interaction.user.id, t, reason="queue_clear")
+                except Exception:
+                    pass
             queue.tracks.clear()
             self.notify_dashboard(interaction.guild_id)
             embed = make_success_embed(f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.")
             await interaction.response.send_message(embed=embed, ephemeral=True)
         else:
+            if queue.autoplay and not getattr(queue, "prefetched_autoplay_track", None):
+                AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
             embed = self.build_queue_embed(queue)
             view = QueueLayoutView(self, queue, interaction.user.id)
             await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @app_commands.command(name="remove", description="Remove a specific song from the upcoming queue.")
+    @app_commands.describe(position="The position number of the song to remove (from /queue)")
+    async def slash_remove(self, interaction: discord.Interaction, position: int):
+        queue = self.service.get_queue(interaction.guild_id)
+        if not queue.tracks:
+            await self.send_error_embed(interaction, description="The upcoming queue is currently empty.", is_warning=True)
+            return
+
+        if position < 1 or position > len(queue.tracks):
+            await self.send_error_embed(
+                interaction,
+                description=f"Invalid position **#{position}**. Please provide a number between 1 and {len(queue.tracks)}.",
+                is_warning=True
+            )
+            return
+
+        removed = queue.tracks.pop(position - 1)
+        try:
+            AutoPlayService.get_instance().record_track_delete(interaction.user.id, removed, reason="manual_remove")
+        except Exception as e:
+            log.debug(f"[Audia AI Delete Tracking] {e}")
+
+        self.notify_dashboard(interaction.guild_id)
+        embed = make_success_embed(
+            f"### {Emojis.DELETE} Removed **[{removed.clean_title}]({removed.url})** from queue.\n"
+            f"-# Audia AI has noted your preference and adjusted future recommendations."
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="np", description="Display the interactive now playing music card.")
     async def slash_np(self, interaction: discord.Interaction):
@@ -3581,7 +3674,8 @@ class Music(commands.Cog):
         for _ in range(min(to_drop, len(queue.tracks))):
             queue.tracks.pop(0)
         played_sec = queue.get_playback_time()
-        AutoPlayService.get_instance().record_track_skip(ctx.author.id, queue.current_track, played_sec)
+        dur = queue.current_track.duration if queue.current_track else None
+        AutoPlayService.get_instance().record_track_skip(ctx.author.id, queue.current_track, played_sec, dur)
         skipped = queue.current_track.clean_title
         queue.manual_skip = True
         queue.voice_client.stop()
@@ -3655,17 +3749,41 @@ class Music(commands.Cog):
         queue = self.service.get_queue(ctx.guild.id)
         if action.lower() == "clear":
             count = len(queue.tracks)
+            for t in queue.tracks:
+                try:
+                    AutoPlayService.get_instance().record_track_delete(ctx.author.id, t, reason="queue_clear")
+                except Exception:
+                    pass
             queue.tracks.clear()
             embed = make_success_embed(f"### {Emojis.APPROVED} Cleared **{count}** track(s) from the upcoming queue.")
             await ctx.send(embed=embed, delete_after=10)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
         else:
+            if queue.autoplay and not getattr(queue, "prefetched_autoplay_track", None):
+                AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
             embed = self.build_queue_embed(queue)
             view = QueueLayoutView(self, queue, ctx.author.id)
             await ctx.send(embed=embed, view=view, delete_after=30)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 30))
+
+    @commands.command(name="remove", aliases=["rm"], description="Remove a specific track from queue by position.")
+    async def cmd_remove(self, ctx: commands.Context, position: int):
+        queue = self.service.get_queue(ctx.guild.id)
+        if not queue.tracks:
+            await ctx.send(f"### {Emojis.WARNING} The upcoming queue is currently empty.", delete_after=5)
+            return
+        if position < 1 or position > len(queue.tracks):
+            await ctx.send(f"### {Emojis.WARNING} Invalid position. Choose a number between 1 and {len(queue.tracks)}.", delete_after=5)
+            return
+        removed = queue.tracks.pop(position - 1)
+        try:
+            AutoPlayService.get_instance().record_track_delete(ctx.author.id, removed, reason="manual_remove")
+        except Exception:
+            pass
+        self.notify_dashboard(ctx.guild.id)
+        await ctx.send(f"### {Emojis.DELETE} Removed **{removed.clean_title}** from upcoming queue.", delete_after=10)
 
     @commands.command(name="np", aliases=["nowplaying"], description="Display interactive now playing music card.")
     async def cmd_np(self, ctx: commands.Context):

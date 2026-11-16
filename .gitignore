@@ -16,7 +16,9 @@ ffmpeg.exe
 *.sqlite
 *.sqlite3
 data/*.db
+data/*.db-*
 data/*.sqlite
+data/autoplay_preferences.json
 .DS_Store
 .idea/
 .vscode/

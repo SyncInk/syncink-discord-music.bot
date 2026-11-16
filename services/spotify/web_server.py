@@ -97,7 +97,7 @@ CALLBACK_HTML_SUCCESS = """<!DOCTYPE html>
       </svg>
     </div>
     <h1>Spotify <span class="highlight">Connected</span></h1>
-    <p>Your Spotify account is now linked to SyncInk Radio. You can now control personal playlists and access tailored AI DJ recommendations.</p>
+    <p>Your Spotify account is now linked to SyncInk Radio. You can now control personal playlists and access tailored Audia AI recommendations.</p>
     <div class="user-pill">Connected as: {display_name}</div>
     <button class="btn" onclick="window.close();">Return to Discord</button>
     <div class="footer">SyncInk Radio Platform • Protected with PKCE & Token Encryption</div>

@@ -771,7 +771,7 @@ class DashboardAPI:
 
         return aiohttp.web.json_response({"success": True, "station": station_name})
 
-    # ------------------ 4. Audia AI (AI DJ) ------------------
+    # ------------------ 4. Audia AI Engine ------------------
 
     @classmethod
     async def handle_get_audia_profile(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:

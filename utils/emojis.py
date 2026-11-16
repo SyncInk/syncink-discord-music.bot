@@ -3,11 +3,39 @@ import re
 from typing import Set, Dict
 
 # Set of emoji IDs verified to belong to this bot's application or accessible guilds
-# Populated dynamically by EmojiManager upon startup. Default empty to prevent sending unowned external emoji tags.
-VERIFIED_BOT_EMOJI_IDS: Set[int] = set()
+# Pre-seeded with verified Audia AI and preference emojis; updated dynamically by EmojiManager upon startup.
+VERIFIED_BOT_EMOJI_IDS: Set[int] = {
+    1571879222908031078,  # Audia_AI
+    1568327108533551144,  # PunjabiPop
+    1568327227983007864,  # LofiCoffee
+    1568327830981583039,  # Kpop
+    1568327695639650464,  # Indieacoustic
+    1568327544279662663,  # HipHop
+    1568327456434430093,  # EnergetichighBPM
+    1568327771501895762,  # EDM
+    1568327378504130600,  # Romanticsoulful
+    1568357873224781835,  # refresh
+    1568355166913167430,  # scale
+    1558918836303044688,  # syncinkmusic
+}
 
 # Map of normalized emoji names -> verified custom Discord emoji tags (<:name:id> or <a:name:id>)
-VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {}
+VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {
+    "audia_ai": "<:Audia_AI:1571879222908031078>",
+    "audia": "<:Audia_AI:1571879222908031078>",
+    "audiaai": "<:Audia_AI:1571879222908031078>",
+    "punjabipop": "<:PunjabiPop:1568327108533551144>",
+    "loficoffee": "<:LofiCoffee:1568327227983007864>",
+    "kpop": "<:Kpop:1568327830981583039>",
+    "indieacoustic": "<:Indieacoustic:1568327695639650464>",
+    "hiphop": "<:HipHop:1568327544279662663>",
+    "energetichighbpm": "<:EnergetichighBPM:1568327456434430093>",
+    "edm": "<:EDM:1568327771501895762>",
+    "romanticsoulful": "<:Romanticsoulful:1568327378504130600>",
+    "refresh": "<:refresh:1568357873224781835>",
+    "scale": "<:scale:1568355166913167430>",
+    "syncinkmusic": "<:syncinkmusic:1558918836303044688>",
+}
 
 # Universal, high-compatibility visual Unicode fallbacks
 UNICODE_FALLBACKS: Dict[str, str] = {
@@ -25,6 +53,9 @@ UNICODE_FALLBACKS: Dict[str, str] = {
     "approved": "✅",
     "refused": "❌",
     "cancelled": "❌",
+    "audia_ai": "🎧",
+    "audia": "🎧",
+    "audiaai": "🎧",
     "syncinkai": "🤖",
     "syncink_ai": "🤖",
     "ai": "🤖",
@@ -135,7 +166,8 @@ class Emojis:
     PENDING = "⏳"
 
     # AI & Core Identity
-    AI = "🤖"
+    AUDIA_AI = "<:Audia_AI:1571879222908031078>"
+    AI = "<:Audia_AI:1571879222908031078>"
     CHATGPT = "🤖"
     SYNCBOT = "🤖"
     BOT = "🤖"
@@ -171,17 +203,17 @@ class Emojis:
     DEEZER = "🎵"
     TIDAL = "🌊"
     SOUNDCLOUD = "🟠"
-    SYNCINK_MUSIC = "🎵"
+    SYNCINK_MUSIC = "<:syncinkmusic:1558918836303044688>"
 
     # Music Genres & Moods
-    PUNJABI_POP = "🔥"
-    LOFI_COFFEE = "☕"
-    KPOP = "✨"
-    INDIE_ACOUSTIC = "🎸"
-    HIP_HOP = "🎤"
-    ENERGETIC_HIGH_BPM = "⚡"
-    EDM = "🎧"
-    ROMANTIC_SOULFUL = "💖"
+    PUNJABI_POP = "<:PunjabiPop:1568327108533551144>"
+    LOFI_COFFEE = "<:LofiCoffee:1568327227983007864>"
+    KPOP = "<:Kpop:1568327830981583039>"
+    INDIE_ACOUSTIC = "<:Indieacoustic:1568327695639650464>"
+    HIP_HOP = "<:HipHop:1568327544279662663>"
+    ENERGETIC_HIGH_BPM = "<:EnergetichighBPM:1568327456434430093>"
+    EDM = "<:EDM:1568327771501895762>"
+    ROMANTIC_SOULFUL = "<:Romanticsoulful:1568327378504130600>"
 
     # Roles & Server
     ROLE_OWNER = "👑"
@@ -233,7 +265,8 @@ class EmojiPartials:
     PENDING = discord.PartialEmoji(name="⏳")
 
     # AI & Navigation
-    AI = discord.PartialEmoji(name="🤖")
+    AUDIA_AI = discord.PartialEmoji(name="Audia_AI", id=1571879222908031078, animated=False)
+    AI = discord.PartialEmoji(name="Audia_AI", id=1571879222908031078, animated=False)
     CHATGPT = discord.PartialEmoji(name="🤖")
     SYNCBOT = discord.PartialEmoji(name="🤖")
     BOT = discord.PartialEmoji(name="🤖")
@@ -258,8 +291,8 @@ class EmojiPartials:
     LIKE = discord.PartialEmoji(name="👍")
     DISLIKE = discord.PartialEmoji(name="👎")
     PLAYING = discord.PartialEmoji(name="🎶")
-    SCALE = discord.PartialEmoji(name="⚖️")
-    REFRESH = discord.PartialEmoji(name="🔄")
+    SCALE = discord.PartialEmoji(name="scale", id=1568355166913167430, animated=False)
+    REFRESH = discord.PartialEmoji(name="refresh", id=1568357873224781835, animated=False)
 
     # Platforms
     SPOTIFY = discord.PartialEmoji(name="🟢")
@@ -268,17 +301,17 @@ class EmojiPartials:
     DEEZER = discord.PartialEmoji(name="🎵")
     TIDAL = discord.PartialEmoji(name="🌊")
     SOUNDCLOUD = discord.PartialEmoji(name="🟠")
-    SYNCINK_MUSIC = discord.PartialEmoji(name="🎵")
+    SYNCINK_MUSIC = discord.PartialEmoji(name="syncinkmusic", id=1558918836303044688, animated=False)
 
     # Genres & Moods
-    PUNJABI_POP = discord.PartialEmoji(name="🔥")
-    LOFI_COFFEE = discord.PartialEmoji(name="☕")
-    KPOP = discord.PartialEmoji(name="✨")
-    INDIE_ACOUSTIC = discord.PartialEmoji(name="🎸")
-    HIP_HOP = discord.PartialEmoji(name="🎤")
-    ENERGETIC_HIGH_BPM = discord.PartialEmoji(name="⚡")
-    EDM = discord.PartialEmoji(name="🎧")
-    ROMANTIC_SOULFUL = discord.PartialEmoji(name="💖")
+    PUNJABI_POP = discord.PartialEmoji(name="PunjabiPop", id=1568327108533551144, animated=False)
+    LOFI_COFFEE = discord.PartialEmoji(name="LofiCoffee", id=1568327227983007864, animated=False)
+    KPOP = discord.PartialEmoji(name="Kpop", id=1568327830981583039, animated=False)
+    INDIE_ACOUSTIC = discord.PartialEmoji(name="Indieacoustic", id=1568327695639650464, animated=False)
+    HIP_HOP = discord.PartialEmoji(name="HipHop", id=1568327544279662663, animated=False)
+    ENERGETIC_HIGH_BPM = discord.PartialEmoji(name="EnergetichighBPM", id=1568327456434430093, animated=False)
+    EDM = discord.PartialEmoji(name="EDM", id=1568327771501895762, animated=False)
+    ROMANTIC_SOULFUL = discord.PartialEmoji(name="Romanticsoulful", id=1568327378504130600, animated=False)
 
     # Roles
     ROLE_OWNER = discord.PartialEmoji(name="👑")
