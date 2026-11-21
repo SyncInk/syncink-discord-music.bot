@@ -505,6 +505,10 @@ function toggleQueueDrawer() {
 
 // ------------------- PLAYER CONTROLS & COMMANDS -------------------
 async function sendControlAction(action, payload = {}) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to control playback!', 'warning');
+    return;
+  }
   if (!state.activeGuildId) {
     showToast('Please select a Discord server first in the top bar!', 'warning');
     return;
@@ -516,6 +520,15 @@ async function sendControlAction(action, payload = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({ action }, payload))
     });
+    if (res.status === 401) {
+      showToast('Authentication required. Please log in with Discord.', 'warning');
+      return;
+    }
+    if (res.status === 403) {
+      const errData = await res.json().catch(() => ({}));
+      showToast(errData.error || 'You do not have permission to control playback on this server.', 'error');
+      return;
+    }
     const data = await res.json();
     if (data.success && data.state) {
       updatePlaybackState(data.state);
@@ -527,6 +540,10 @@ async function sendControlAction(action, payload = {}) {
 }
 
 function togglePlayPause() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to control playback!', 'warning');
+    return;
+  }
   if (state.playback.is_playing && !state.playback.is_paused) {
     sendControlAction('pause');
   } else if (state.playback.is_paused) {
@@ -538,14 +555,26 @@ function togglePlayPause() {
 }
 
 function controlPlayer(action) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to control playback!', 'warning');
+    return;
+  }
   sendControlAction(action);
 }
 
 function removeQueueTrack(index) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to modify queue!', 'warning');
+    return;
+  }
   sendControlAction('remove_track', { index });
 }
 
 function handleSeek(e) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to seek tracks!', 'warning');
+    return;
+  }
   if (state.playback.duration <= 0) return;
   const bar = e.currentTarget;
   const rect = bar.getBoundingClientRect();
@@ -557,6 +586,10 @@ function handleSeek(e) {
 }
 
 function changeVolume(val) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to adjust volume!', 'warning');
+    return;
+  }
   clearTimeout(state.debounceTimer);
   state.debounceTimer = setTimeout(() => {
     sendControlAction('volume', { volume: parseInt(val) });
@@ -564,6 +597,10 @@ function changeVolume(val) {
 }
 
 function toggleMute() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to adjust volume!', 'warning');
+    return;
+  }
   const volumeSlider = document.getElementById('player-volume-slider');
   const iconVolume = document.getElementById('icon-volume');
   if (state.playback.volume > 0) {
@@ -581,6 +618,10 @@ function toggleMute() {
 }
 
 function cycleLoopMode() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to set repeat mode!', 'warning');
+    return;
+  }
   const modes = ['off', 'track', 'queue'];
   const next = modes[(modes.indexOf(state.playback.repeat_mode) + 1) % modes.length];
   sendControlAction('loop', { mode: next });
@@ -588,6 +629,10 @@ function cycleLoopMode() {
 }
 
 function triggerQuickPlay() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to play music in a server!', 'warning');
+    return;
+  }
   const input = document.getElementById('overview-quick-play-input');
   const query = input.value.trim();
   if (!query) return;
@@ -597,11 +642,19 @@ function triggerQuickPlay() {
 }
 
 function tunePresetRadio(stationId) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to stream radio in a server!', 'warning');
+    return;
+  }
   sendControlAction('play', { query: `radio:${stationId}` });
   showToast(`Tuning into ${stationId.toUpperCase()} Radio...`, 'info');
 }
 
 function toggleServerAutoplay() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to toggle autoplay!', 'warning');
+    return;
+  }
   sendControlAction('autoplay', { enabled: !state.playback.autoplay });
 }
 
@@ -642,16 +695,52 @@ async function toggleLikeCurrentTrack() {
 
 // ------------------- SERVER SELECTOR & SERVERS VIEW -------------------
 async function loadServers() {
+  const activeName = document.getElementById('active-server-name');
+  const activeIcon = document.getElementById('active-server-icon');
+  const dropdownList = document.getElementById('server-dropdown-list');
+
+  if (!state.currentUser) {
+    state.servers = [];
+    state.activeGuildId = null;
+    if (activeName) activeName.innerText = 'Login with Discord';
+    if (activeIcon) activeIcon.src = 'https://files.catbox.moe/74l9su.png';
+    if (dropdownList) {
+      dropdownList.innerHTML = `
+        <div class="p-4 text-center text-xs text-[#9E9EAD]">
+          <i data-lucide="shield-lock" class="w-8 h-8 mx-auto mb-2 text-brand-secondary"></i>
+          <p class="font-bold text-white mb-1">Login Required</p>
+          <p class="mb-3 text-[11px] leading-relaxed">Sign in with your Discord account to see and manage your servers.</p>
+          <a href="${BASE_PATH}/api/auth/discord/login" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-gradient-to-r from-brand-primary to-purple-600 hover:shadow-lg transition-all cursor-pointer">
+            <i data-lucide="log-in" class="w-3.5 h-3.5"></i> Login with Discord
+          </a>
+        </div>
+      `;
+      initIcons();
+    }
+    const statGuilds = document.getElementById('stat-guilds');
+    if (statGuilds) statGuilds.innerText = '0';
+    const statListeners = document.getElementById('stat-listeners');
+    if (statListeners) statListeners.innerText = '0';
+    const statRadio = document.getElementById('stat-radio');
+    if (statRadio) statRadio.innerText = '0';
+    return;
+  }
+
   try {
     const res = await fetch('/api/servers');
+    if (res.status === 401) {
+      state.servers = [];
+      state.activeGuildId = null;
+      if (activeName) activeName.innerText = 'Login with Discord';
+      return;
+    }
     const data = await res.json();
     state.servers = data.servers || [];
 
-    const dropdownList = document.getElementById('server-dropdown-list');
     if (dropdownList) dropdownList.innerHTML = '';
 
     if (state.servers.length > 0) {
-      if (!state.activeGuildId) {
+      if (!state.activeGuildId || !state.servers.find(s => s.id === state.activeGuildId)) {
         state.activeGuildId = state.servers[0].id;
       }
 
@@ -670,8 +759,19 @@ async function loadServers() {
       const active = state.servers.find(s => s.id === state.activeGuildId) || state.servers[0];
       selectServer(active.id, false);
     } else {
-      const activeName = document.getElementById('active-server-name');
-      if (activeName) activeName.innerText = 'No Servers';
+      state.activeGuildId = null;
+      if (activeName) activeName.innerText = 'No Shared Servers';
+      if (dropdownList) {
+        dropdownList.innerHTML = `
+          <div class="p-3 text-center text-xs text-[#9E9EAD]">
+            <p class="mb-2">No servers found where both you and SyncInk Radio are present.</p>
+            <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-primary hover:bg-purple-600 transition-all">
+              <i data-lucide="plus-circle" class="w-3.5 h-3.5"></i> Invite Bot
+            </a>
+          </div>
+        `;
+        initIcons();
+      }
     }
 
     // Update Overview Stats
@@ -715,6 +815,48 @@ function loadServersView() {
   if (!container) return;
   container.innerHTML = '';
 
+  if (!state.currentUser) {
+    container.innerHTML = `
+      <div class="col-span-full glass-panel p-8 sm:p-12 rounded-3xl text-center border border-brand-primary/30 max-w-xl mx-auto my-8 space-y-4 shadow-2xl">
+        <div class="w-16 h-16 rounded-2xl bg-brand-primary/20 border border-brand-primary/40 flex items-center justify-center mx-auto text-brand-secondary">
+          <i data-lucide="shield-lock" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-xl sm:text-2xl font-bold text-white">Discord Login Required</h3>
+        <p class="text-xs sm:text-sm text-[#9E9EAD] leading-relaxed">
+          Please log in with your Discord account to see and manage the servers where you have music permissions.
+        </p>
+        <div class="pt-3">
+          <a href="${BASE_PATH}/api/auth/discord/login" class="inline-flex items-center gap-2 px-6 py-3 rounded-xl text-xs sm:text-sm font-bold text-white bg-gradient-to-r from-brand-primary to-purple-600 hover:shadow-lg hover:shadow-brand-primary/30 transition-all cursor-pointer">
+            <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
+          </a>
+        </div>
+      </div>
+    `;
+    initIcons();
+    return;
+  }
+
+  if (state.servers.length === 0) {
+    container.innerHTML = `
+      <div class="col-span-full glass-panel p-8 sm:p-12 rounded-3xl text-center border border-brand-border/40 max-w-xl mx-auto my-8 space-y-4">
+        <div class="w-16 h-16 rounded-2xl bg-brand-surface border border-brand-border/40 flex items-center justify-center mx-auto text-[#9E9EAD]">
+          <i data-lucide="server-off" class="w-8 h-8"></i>
+        </div>
+        <h3 class="text-xl font-bold text-white">No Shared Servers Found</h3>
+        <p class="text-xs text-[#9E9EAD] leading-relaxed">
+          You don't share any servers with SyncInk Radio yet, or you don't have permissions to manage playback.
+        </p>
+        <div class="pt-3">
+          <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-brand-secondary bg-brand-primary/20 border border-brand-primary/40 hover:bg-brand-primary hover:text-white transition-all">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i> Invite SyncInk Radio
+          </a>
+        </div>
+      </div>
+    `;
+    initIcons();
+    return;
+  }
+
   state.servers.forEach(s => {
     const card = document.createElement('div');
     card.className = 'glass-panel p-5 rounded-2xl flex flex-col justify-between';
@@ -757,8 +899,21 @@ function loadServersView() {
 }
 
 async function openServerSettings(guildId) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to view server settings!', 'warning');
+    return;
+  }
   try {
     const res = await fetch(`/api/servers/${guildId}/settings`);
+    if (res.status === 401) {
+      showToast('Authentication required. Please log in with Discord.', 'warning');
+      return;
+    }
+    if (res.status === 403) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'Forbidden: You do not have permission to manage this server.', 'error');
+      return;
+    }
     const data = await res.json();
     const card = document.getElementById('server-settings-card');
     if (!card) return;
@@ -1094,6 +1249,10 @@ function debounceRadioSearch() {
 }
 
 async function tuneStation(st) {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord to tune radio in a server!', 'warning');
+    return;
+  }
   if (!state.activeGuildId) {
     showToast('Please select a Discord server first in the top bar!', 'warning');
     return;
@@ -1111,6 +1270,15 @@ async function tuneStation(st) {
         favicon: st.favicon
       })
     });
+    if (res.status === 401) {
+      showToast('Authentication required. Please log in with Discord.', 'warning');
+      return;
+    }
+    if (res.status === 403) {
+      const err = await res.json().catch(() => ({}));
+      showToast(err.error || 'You do not have permission to tune radio on this server.', 'error');
+      return;
+    }
     if (res.ok) {
       showToast(`Tuned into ${st.name}!`, 'success');
     }

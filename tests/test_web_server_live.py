@@ -20,7 +20,19 @@ class TestLiveWebServer(AioHTTPTestCase):
         mock_bot.user = MagicMock()
         mock_bot.user.id = 123456789
         mock_bot.user.name = "SyncInk Radio"
-        mock_bot.guilds = []
+        
+        mock_guild = MagicMock()
+        mock_guild.id = 999111222
+        mock_guild.name = "Private Discord Guild"
+        mock_guild.icon = None
+        mock_guild.owner_id = 111222333
+        mock_guild.member_count = 50
+        mock_guild.voice_client = None
+        mock_guild.get_member = lambda uid: None
+        
+        mock_bot.guilds = [mock_guild]
+        mock_bot.get_guild = lambda gid: mock_guild if gid == 999111222 else None
+        
         server = UnifiedWebServer(port=8080, host="127.0.0.1", bot=mock_bot)
         return server.app
 
@@ -112,6 +124,67 @@ class TestLiveWebServer(AioHTTPTestCase):
         sub_pong = await ws_sub.receive_json()
         self.assertEqual(sub_pong.get("event"), "pong")
         await ws_sub.close()
+
+    async def test_unauthenticated_security_locks(self):
+        """Verifies strict 401 Unauthorized blocks on sensitive guild endpoints for guests."""
+        # 1. Unauthenticated /api/servers returns 401 and empty servers
+        resp = await self.client.request("GET", "/api/servers")
+        self.assertEqual(resp.status, 401)
+        data = await resp.json()
+        self.assertFalse(data.get("authenticated", True))
+        self.assertEqual(data.get("servers", []), [])
+
+        # 2. Unauthenticated /api/servers/{id} returns 401
+        resp_detail = await self.client.request("GET", "/api/servers/999111222")
+        self.assertEqual(resp_detail.status, 401)
+
+        # 3. Unauthenticated /api/servers/{id}/control returns 401
+        resp_ctrl = await self.client.request("POST", "/api/servers/999111222/control", json={"action": "play", "query": "test"})
+        self.assertEqual(resp_ctrl.status, 401)
+
+        # 4. Unauthenticated /api/servers/{id}/settings returns 401
+        resp_get_sett = await self.client.request("GET", "/api/servers/999111222/settings")
+        self.assertEqual(resp_get_sett.status, 401)
+
+        resp_post_sett = await self.client.request("POST", "/api/servers/999111222/settings", json={"max_volume": 80})
+        self.assertEqual(resp_post_sett.status, 401)
+
+        # 5. Unauthenticated /api/radio/tune returns 401
+        resp_tune = await self.client.request("POST", "/api/radio/tune", json={"guild_id": "999111222", "url": "https://stream.mp3", "station_name": "Test"})
+        self.assertEqual(resp_tune.status, 401)
+
+    async def test_authenticated_access_control(self):
+        """Verifies that authenticated sessions only see and manage servers they belong to."""
+        from services.web.auth import DashboardAuthManager
+        auth_mgr = DashboardAuthManager.get_instance()
+
+        # Create session for user A (not a member of guild 999111222)
+        user_a = {"id": "123450001", "username": "UserA"}
+        token_a = {"access_token": "token_a", "expires_in": 3600}
+        session_a = await auth_mgr.create_session(user_a, token_a)
+
+        headers_a = {"Cookie": f"syncink_session={session_a}"}
+
+        # User A requests /api/servers -> 200 OK but 0 servers (because User A is not in 999111222)
+        resp_a_servers = await self.client.request("GET", "/api/servers", headers=headers_a)
+        self.assertEqual(resp_a_servers.status, 200)
+        data_a = await resp_a_servers.json()
+        self.assertTrue(data_a["authenticated"])
+        self.assertEqual(len(data_a["servers"]), 0)
+
+        # User A tries to view detail of guild 999111222 -> 403 Forbidden
+        resp_a_detail = await self.client.request("GET", "/api/servers/999111222", headers=headers_a)
+        self.assertEqual(resp_a_detail.status, 403)
+
+        # User A tries to control playback on guild 999111222 -> 403 Forbidden
+        resp_a_ctrl = await self.client.request("POST", "/api/servers/999111222/control", headers=headers_a, json={"action": "pause"})
+        self.assertEqual(resp_a_ctrl.status, 403)
+
+        # User A tries to view settings on guild 999111222 -> 403 Forbidden
+        resp_a_sett = await self.client.request("GET", "/api/servers/999111222/settings", headers=headers_a)
+        self.assertEqual(resp_a_sett.status, 403)
+
+        await auth_mgr.destroy_session(session_a)
 
 
 if __name__ == "__main__":

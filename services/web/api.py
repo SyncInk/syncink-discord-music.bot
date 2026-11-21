@@ -33,11 +33,21 @@ class DashboardAPI:
     @classmethod
     async def handle_login(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         auth_mgr = DashboardAuthManager.get_instance()
+        is_subpath = (
+            request.path.startswith("/dashboard/radio")
+            or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
+            or "dashboard/radio" in str(request.headers.get("Referer", ""))
+        )
+        proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
+        host = request.headers.get("X-Forwarded-Host") or request.host
+
         req_redirect = None
-        if request.path.startswith("/dashboard/radio"):
-            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
-            host = request.headers.get("X-Forwarded-Host") or request.host
+        if is_subpath:
             req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
+        elif host.startswith("localhost") or host.startswith("127.0.0.1"):
+            req_redirect = f"http://{host}/api/auth/discord/callback"
+        else:
+            req_redirect = auth_mgr.redirect_uri
 
         login_url = auth_mgr.get_login_url(redirect_uri=req_redirect)
         raise aiohttp.web.HTTPFound(login_url)
@@ -46,27 +56,36 @@ class DashboardAPI:
     async def handle_oauth_callback(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         code = request.query.get("code")
         error = request.query.get("error")
-        is_subpath = request.path.startswith("/dashboard/radio")
+        is_subpath = (
+            request.path.startswith("/dashboard/radio")
+            or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
+            or "dashboard/radio" in str(request.headers.get("Referer", ""))
+        )
         base_prefix = "/dashboard/radio" if is_subpath else ""
 
         if error or not code:
             log.warning(f"[Dashboard API] OAuth callback error: {error}")
-            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=" + (error or "missing_code"))
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/#overview?auth_error=" + (error or "missing_code"))
 
         auth_mgr = DashboardAuthManager.get_instance()
+        proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
+        host = request.headers.get("X-Forwarded-Host") or request.host
+
         req_redirect = None
         if is_subpath:
-            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
-            host = request.headers.get("X-Forwarded-Host") or request.host
             req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
+        elif host.startswith("localhost") or host.startswith("127.0.0.1"):
+            req_redirect = f"http://{host}/api/auth/discord/callback"
+        else:
+            req_redirect = auth_mgr.redirect_uri
 
         token_data = await auth_mgr.exchange_code(code, redirect_uri=req_redirect)
         if not token_data or "access_token" not in token_data:
-            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=token_exchange_failed")
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/#overview?auth_error=token_exchange_failed")
 
         user_data = await auth_mgr.fetch_user(token_data["access_token"])
         if not user_data:
-            raise aiohttp.web.HTTPFound(f"{base_prefix}/?auth_error=fetch_user_failed")
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/#overview?auth_error=fetch_user_failed")
 
         session_id = await auth_mgr.create_session(user_data, token_data)
 
@@ -246,14 +265,65 @@ class DashboardAPI:
     # ------------------ 2. Discord Servers & Playback Control ------------------
 
     @classmethod
+    def _get_demo_servers(cls) -> List[Dict[str, Any]]:
+        return [
+            {
+                "id": "110000000000000001",
+                "name": "SyncInk Cyber Lounge (Demo)",
+                "icon": "https://files.catbox.moe/74l9su.png",
+                "member_count": 142,
+                "connected": True,
+                "voice_channel": "Lofi Chill & Beats",
+                "voice_channel_id": "90000000000000001",
+                "listeners": 5,
+                "current_track": "Midnight City Vibes",
+                "radio_station": None,
+                "is_playing": True,
+                "permission": "owner",
+                "can_manage": True
+            },
+            {
+                "id": "110000000000000002",
+                "name": "Vibrant Anime Cafe (Demo)",
+                "icon": "https://files.catbox.moe/74l9su.png",
+                "member_count": 89,
+                "connected": True,
+                "voice_channel": "J-Rock Radio 24/7",
+                "voice_channel_id": "90000000000000002",
+                "listeners": 12,
+                "current_track": "Anime J-Pop FM Live",
+                "radio_station": "Anime J-Pop FM Live",
+                "is_playing": True,
+                "permission": "admin",
+                "can_manage": True
+            }
+        ]
+
+    @classmethod
     async def handle_get_servers(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
-        bot = request.app.get("bot")
         user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({
+                "authenticated": False,
+                "error": "Authentication required. Please log in with Discord.",
+                "servers": []
+            }, status=401)
+
+        # Isolated demo user only gets mock demo servers
+        if user.get("discord_user_id") == 999888777:
+            return aiohttp.web.json_response({
+                "authenticated": True,
+                "servers": cls._get_demo_servers()
+            })
+
+        bot = request.app.get("bot")
+        user_id = user["discord_user_id"]
+        is_sys_admin = DashboardAuthManager.is_system_admin(user_id, bot)
 
         user_guild_ids = set()
         user_guilds_map = {}
 
-        if user and user.get("access_token"):
+        if user.get("access_token"):
             auth_mgr = DashboardAuthManager.get_instance()
             guilds = await auth_mgr.fetch_user_guilds(user["access_token"])
             for g in guilds:
@@ -264,8 +334,9 @@ class DashboardAPI:
         server_list = []
         if bot:
             for g in bot.guilds:
-                is_member = (g.id in user_guild_ids) if user else True
-                if not is_member and user:
+                # User MUST be a member of this guild, unless they are the bot system administrator
+                is_member = (g.id in user_guild_ids)
+                if not is_member and not is_sys_admin:
                     continue
 
                 icon_url = str(g.icon.url) if g.icon else "https://files.catbox.moe/74l9su.png"
@@ -274,15 +345,29 @@ class DashboardAPI:
 
                 perm = "listener"
                 can_manage = False
-                if user:
-                    member = g.get_member(user["discord_user_id"])
-                    if g.owner_id == user["discord_user_id"]:
-                        perm = "owner"
-                        can_manage = True
-                    elif member and member.guild_permissions.administrator:
+
+                member = g.get_member(user_id)
+                if not member:
+                    try:
+                        member = await g.fetch_member(user_id)
+                    except Exception:
+                        member = None
+
+                if is_sys_admin or g.owner_id == user_id:
+                    perm = "owner"
+                    can_manage = True
+                elif member and member.guild_permissions.administrator:
+                    perm = "admin"
+                    can_manage = True
+                elif member and (member.guild_permissions.manage_guild or member.guild_permissions.manage_channels):
+                    perm = "dj"
+                    can_manage = True
+                elif g.id in user_guilds_map:
+                    raw_perms = int(user_guilds_map[g.id].get("permissions", 0))
+                    if (raw_perms & 0x8) != 0:
                         perm = "admin"
                         can_manage = True
-                    elif member and (member.guild_permissions.manage_guild or member.guild_permissions.manage_channels):
+                    elif (raw_perms & 0x20) != 0:
                         perm = "dj"
                         can_manage = True
 
@@ -302,56 +387,7 @@ class DashboardAPI:
                     "can_manage": can_manage
                 })
 
-        if not server_list:
-            server_list = [
-                {
-                    "id": "110000000000000001",
-                    "name": "SyncInk Cyber Lounge",
-                    "icon": "https://files.catbox.moe/74l9su.png",
-                    "member_count": 142,
-                    "connected": True,
-                    "voice_channel": "Lofi Chill & Beats",
-                    "voice_channel_id": "90000000000000001",
-                    "listeners": 5,
-                    "current_track": "Midnight City Vibes",
-                    "radio_station": None,
-                    "is_playing": True,
-                    "permission": "owner",
-                    "can_manage": True
-                },
-                {
-                    "id": "110000000000000002",
-                    "name": "Vibrant Anime Cafe",
-                    "icon": "https://files.catbox.moe/74l9su.png",
-                    "member_count": 89,
-                    "connected": True,
-                    "voice_channel": "J-Rock Radio 24/7",
-                    "voice_channel_id": "90000000000000002",
-                    "listeners": 12,
-                    "current_track": "Anime J-Pop FM Live",
-                    "radio_station": "Anime J-Pop FM Live",
-                    "is_playing": True,
-                    "permission": "admin",
-                    "can_manage": True
-                },
-                {
-                    "id": "110000000000000003",
-                    "name": "SyncInk Dev Guild",
-                    "icon": "https://files.catbox.moe/74l9su.png",
-                    "member_count": 12,
-                    "connected": False,
-                    "voice_channel": None,
-                    "voice_channel_id": None,
-                    "listeners": 0,
-                    "current_track": None,
-                    "radio_station": None,
-                    "is_playing": False,
-                    "permission": "dj",
-                    "can_manage": True
-                }
-            ]
-
-        return aiohttp.web.json_response({"servers": server_list})
+        return aiohttp.web.json_response({"authenticated": True, "servers": server_list})
 
     @classmethod
     async def handle_get_server_detail(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -361,7 +397,36 @@ class DashboardAPI:
         except (ValueError, TypeError):
             return aiohttp.web.json_response({"error": "Invalid guild_id"}, status=400)
 
+        # Allow demo guilds
+        if str(guild_id).startswith("110000"):
+            bot = request.app.get("bot")
+            state = DashboardWebSocketManager.get_instance().serialize_guild_playback(guild_id, bot)
+            return aiohttp.web.json_response(state)
+
+        user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
+
+        user_id = user["discord_user_id"]
+        if user_id == 999888777:
+            return aiohttp.web.json_response({"error": "Demo mode cannot view real Discord servers"}, status=403)
+
         bot = request.app.get("bot")
+        guild = bot.get_guild(guild_id) if bot else None
+        if not guild:
+            return aiohttp.web.json_response({"error": "Guild not found on bot instance"}, status=404)
+
+        is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
+        member = guild.get_member(user_id)
+        if not member and not is_admin:
+            try:
+                member = await guild.fetch_member(user_id)
+            except Exception:
+                member = None
+
+        if not member and not is_admin:
+            return aiohttp.web.json_response({"error": "Forbidden: You are not a member of this Discord server"}, status=403)
+
         state = DashboardWebSocketManager.get_instance().serialize_guild_playback(guild_id, bot)
         return aiohttp.web.json_response(state)
 
@@ -386,11 +451,42 @@ class DashboardAPI:
                 "server_id": str(guild_id)
             })
 
+        user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required to control playback"}, status=401)
+
+        user_id = user["discord_user_id"]
+        if user_id == 999888777:
+            return aiohttp.web.json_response({"error": "Demo mode cannot control real Discord servers"}, status=403)
+
         bot = request.app.get("bot")
+        guild = bot.get_guild(guild_id) if bot else None
+        if not guild:
+            return aiohttp.web.json_response({"error": "Server not found on bot instance"}, status=404)
+
+        # STRICT SERVER-SIDE PERMISSION VERIFICATION
+        is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
+        can_manage = DashboardAuthManager.can_manage_guild(user_id, guild)
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except Exception:
+                member = None
+
+        in_voice = False
+        if member and member.voice and member.voice.channel:
+            vc = guild.voice_client
+            if not vc or not vc.is_connected() or (vc.channel and vc.channel.id == member.voice.channel.id):
+                in_voice = True
+
+        if not (is_admin or can_manage or in_voice):
+            return aiohttp.web.json_response({
+                "error": "Forbidden: You must be a Server Manager, DJ, or connected to the bot's voice channel in Discord to control playback"
+            }, status=403)
+
         service = MusicService.get_instance()
         queue = service.get_queue(guild_id)
-
-        guild = bot.get_guild(guild_id) if bot else None
         vc = (guild.voice_client if guild else None) or queue.voice_client
 
         if action == "play":
@@ -528,13 +624,46 @@ class DashboardAPI:
         except (ValueError, TypeError):
             return aiohttp.web.json_response({"error": "Invalid guild_id"}, status=400)
 
-        bot = request.app.get("bot")
-        guild = bot.get_guild(guild_id) if bot else None
+        if str(guild_id).startswith("110000"):
+            return aiohttp.web.json_response({
+                "guild_id": str(guild_id),
+                "can_manage": True,
+                "music_channel_id": None,
+                "default_voice_channel_id": None,
+                "dj_role_id": None,
+                "max_volume": 100,
+                "autoplay_enabled": True,
+                "is_247": True,
+                "announcements_enabled": True,
+                "playback_notifications": True,
+                "server_language": "en",
+                "preferred_radio_country": "India",
+                "audia_genre": "Lo-Fi",
+                "audia_mood": "Chill",
+                "available_roles": [],
+                "available_channels": [],
+                "available_voice_channels": [],
+            })
 
         user = await cls.get_session_user(request)
-        can_manage = False
-        if user and guild:
-            can_manage = DashboardAuthManager.can_manage_guild(user["discord_user_id"], guild)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
+
+        user_id = user["discord_user_id"]
+        if user_id == 999888777:
+            return aiohttp.web.json_response({"error": "Demo mode cannot view real server settings"}, status=403)
+
+        bot = request.app.get("bot")
+        guild = bot.get_guild(guild_id) if bot else None
+        if not guild:
+            return aiohttp.web.json_response({"error": "Guild not found on bot instance"}, status=404)
+
+        is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
+        can_manage = DashboardAuthManager.can_manage_guild(user_id, guild)
+        if not is_admin and not can_manage:
+            return aiohttp.web.json_response({
+                "error": "Forbidden: You do not have permission to view or manage settings for this server"
+            }, status=403)
 
         row = await db.fetchrow("SELECT * FROM guild_settings WHERE guild_id = $1", guild_id)
         settings = dict(row) if row else {}
@@ -579,9 +708,16 @@ class DashboardAPI:
         except (ValueError, TypeError):
             return aiohttp.web.json_response({"error": "Invalid guild_id"}, status=400)
 
+        if str(guild_id).startswith("110000"):
+            return aiohttp.web.json_response({"success": True})
+
         user = await cls.get_session_user(request)
         if not user:
             return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
+
+        user_id = user["discord_user_id"]
+        if user_id == 999888777:
+            return aiohttp.web.json_response({"error": "Demo mode cannot modify real server settings"}, status=403)
 
         bot = request.app.get("bot")
         guild = bot.get_guild(guild_id) if bot else None
@@ -589,7 +725,9 @@ class DashboardAPI:
             return aiohttp.web.json_response({"error": "Guild not found on bot instance"}, status=404)
 
         # STRICT SERVER-SIDE PERMISSION VERIFICATION
-        if not DashboardAuthManager.can_manage_guild(user["discord_user_id"], guild):
+        is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
+        can_manage = DashboardAuthManager.can_manage_guild(user_id, guild)
+        if not is_admin and not can_manage:
             return aiohttp.web.json_response({"error": "Forbidden: You do not have permission to manage this server"}, status=403)
 
         body = await request.json()
@@ -728,7 +866,37 @@ class DashboardAPI:
             return aiohttp.web.json_response({"error": "Missing guild_id or station url"}, status=400)
 
         guild_id = int(guild_id_str)
+        if str(guild_id).startswith("110000"):
+            return aiohttp.web.json_response({"success": True, "station": station_name})
+
+        user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required to tune radio"}, status=401)
+
+        user_id = user["discord_user_id"]
+        if user_id == 999888777:
+            return aiohttp.web.json_response({"error": "Demo mode cannot tune live radio"}, status=403)
+
         bot = request.app.get("bot")
+        guild = bot.get_guild(guild_id) if bot else None
+        if not guild:
+            return aiohttp.web.json_response({"error": "Server not found on bot instance"}, status=404)
+
+        is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
+        can_manage = DashboardAuthManager.can_manage_guild(user_id, guild)
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except Exception:
+                member = None
+
+        in_voice = bool(member and member.voice and member.voice.channel)
+        if not (is_admin or can_manage or in_voice):
+            return aiohttp.web.json_response({
+                "error": "Forbidden: You must be a Server Manager, DJ, or connected to the voice channel to tune radio"
+            }, status=403)
+
         music_cog = bot.get_cog("Music") if bot else None
         if not music_cog:
             return aiohttp.web.json_response({"error": "Music service unavailable"}, status=503)

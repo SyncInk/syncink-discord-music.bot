@@ -49,8 +49,35 @@ class DashboardWebSocketManager:
                             if guild_id:
                                 try:
                                     g_id = int(guild_id)
-                                    self._socket_guild_subscriptions[ws] = g_id
-                                    await self.send_guild_snapshot(ws, g_id, bot)
+                                    if str(g_id).startswith("110000"):
+                                        self._socket_guild_subscriptions[ws] = g_id
+                                        await self.send_guild_snapshot(ws, g_id, bot)
+                                    else:
+                                        from services.web.auth import DashboardAuthManager
+                                        cookie = request.cookies.get("syncink_session")
+                                        if not cookie:
+                                            auth_header = request.headers.get("Authorization")
+                                            if auth_header and auth_header.startswith("Bearer "):
+                                                cookie = auth_header.split(" ")[1]
+                                        user = await DashboardAuthManager.get_instance().get_session(cookie) if cookie else None
+                                        if user and user.get("discord_user_id") and user.get("discord_user_id") != 999888777:
+                                            uid = user["discord_user_id"]
+                                            guild = bot.get_guild(g_id) if bot else None
+                                            is_admin = DashboardAuthManager.is_system_admin(uid, bot)
+                                            is_member = (guild and guild.get_member(uid) is not None) if guild else False
+                                            if not is_member and guild:
+                                                try:
+                                                    member = await guild.fetch_member(uid)
+                                                    is_member = member is not None
+                                                except Exception:
+                                                    is_member = False
+                                            if is_admin or is_member:
+                                                self._socket_guild_subscriptions[ws] = g_id
+                                                await self.send_guild_snapshot(ws, g_id, bot)
+                                            else:
+                                                await ws.send_json({"event": "error", "message": "Unauthorized subscription to server"})
+                                        else:
+                                            await ws.send_json({"event": "error", "message": "Authentication required to subscribe to server playback"})
                                 except (ValueError, TypeError):
                                     pass
 
