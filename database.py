@@ -239,8 +239,8 @@ class DatabaseManager:
         log.info(f"Initialized local SQLite database at {db_path}.")
 
     def _convert_query_to_sqlite(self, query: str) -> str:
-        """Converts PostgreSQL $1, $2 parameter placeholders to SQLite ? placeholders."""
-        return re.sub(r'\$\d+', '?', query)
+        """Converts PostgreSQL $1, $2 parameter placeholders to SQLite ?1, ?2 placeholders."""
+        return re.sub(r"\$(\d+)", lambda m: f"?{m.group(1)}", query)
 
     async def fetch(self, query: str, *args) -> List[Any]:
         await self.ensure_connected()
