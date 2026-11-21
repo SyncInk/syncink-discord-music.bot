@@ -220,7 +220,7 @@
 
         <!-- Discord User Pill / Login Button / Demo Mode -->
         <div id="auth-container" class="flex items-center gap-2">
-          <button id="demo-mode-btn" onclick="toggleDemoMode()" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold text-brand-secondary border border-brand-primary/40 bg-brand-primary/10 hover:bg-brand-primary/20 transition-all cursor-pointer" title="Preview dashboard with interactive demo data">
+          <button id="demo-mode-btn" onclick="toggleDemoMode()" style="display: none;" class="hidden items-center gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-xl text-xs font-semibold text-brand-secondary border border-brand-primary/40 bg-brand-primary/10 hover:bg-brand-primary/20 transition-all cursor-pointer" title="Preview dashboard with interactive demo data">
             <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
             <span id="demo-mode-label">Demo Mode</span>
           </button>
@@ -228,7 +228,7 @@
             <i data-lucide="log-in" class="w-3.5 h-3.5 sm:w-4 sm:h-4"></i>
             <span>Login</span>
           </a>
-          <div id="user-profile-pill" class="hidden items-center gap-2.5 bg-brand-surface border border-brand-border/40 px-2.5 py-1 sm:px-3 sm:py-1.5 rounded-xl">
+          <div id="user-profile-pill" class="hidden items-center gap-2.5 bg-brand-surface border border-brand-border/40 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl">
             <img id="user-avatar" src="https://files.catbox.moe/74l9su.png" alt="Avatar" class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-brand-primary/50 object-cover">
             <div class="text-left hidden sm:block">
               <p id="user-username" class="text-xs font-bold leading-tight"></p>
@@ -945,23 +945,28 @@
     </main>
 
     <!-- ==================== PERSISTENT BOTTOM MUSIC PLAYER BAR (SPOTIFY AESTHETIC) ==================== -->
-    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 h-24 bg-[#121118]/95 backdrop-blur-2xl border-t border-brand-border/40 px-4 sm:px-8 flex items-center justify-between z-40 shadow-2xl">
+    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 h-16 md:h-24 bg-[#121118]/98 backdrop-blur-2xl border-t border-brand-border/40 px-3 sm:px-6 md:px-8 flex items-center justify-between z-40 shadow-2xl overflow-hidden">
+      <!-- Mobile Top Progress Bar (Spotify Mobile style) -->
+      <div class="absolute top-0 left-0 right-0 h-1 bg-white/10 md:hidden cursor-pointer" onclick="handleSeek(event)">
+        <div id="player-progress-bar-mobile" class="h-full bg-gradient-to-r from-brand-primary to-brand-secondary w-0 transition-all duration-150"></div>
+      </div>
+
       <!-- Left Track Info -->
-      <div class="flex items-center gap-3.5 w-1/4 min-w-[150px] sm:min-w-[240px]">
-        <div class="relative shrink-0">
-          <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" class="w-13 h-13 sm:w-14 sm:h-14 rounded-xl object-cover border border-brand-border/50 shadow-md">
+      <div class="flex items-center gap-2.5 sm:gap-3.5 min-w-0 max-w-[55%] md:max-w-none md:w-1/4">
+        <div class="relative shrink-0 overflow-hidden rounded-lg md:rounded-xl">
+          <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" class="w-10 h-10 md:w-14 md:h-14 rounded-lg md:rounded-xl object-cover border border-brand-border/50 shadow-md shrink-0">
         </div>
         <div class="min-w-0 flex-1">
-          <h4 id="player-track-title" class="text-xs sm:text-sm font-bold truncate text-white hover:underline cursor-pointer">Nothing is playing</h4>
-          <p id="player-track-artist" class="text-[11px] sm:text-xs text-[#9E9EAD] truncate hover:text-white cursor-pointer transition-colors">Select a server or start with /play</p>
+          <h4 id="player-track-title" class="text-xs md:text-sm font-bold truncate text-white hover:underline cursor-pointer">Nothing is playing</h4>
+          <p id="player-track-artist" class="text-[10px] md:text-xs text-[#9E9EAD] truncate hover:text-white cursor-pointer transition-colors">Select a server or /play</p>
         </div>
-        <button id="player-btn-like" onclick="toggleLikeCurrentTrack()" class="hidden sm:flex text-[#9E9EAD] hover:text-rose-400 p-1.5 rounded-full hover:bg-white/5 transition-colors shrink-0" title="Favorite Track">
+        <button id="player-btn-like" onclick="toggleLikeCurrentTrack()" class="hidden md:flex text-[#9E9EAD] hover:text-rose-400 p-1.5 rounded-full hover:bg-white/5 transition-colors shrink-0" title="Favorite Track">
           <i data-lucide="heart" class="w-4 h-4"></i>
         </button>
       </div>
 
-      <!-- Center Player Controls & Live Timeline (Spotify-Style) -->
-      <div class="flex flex-col items-center justify-center flex-1 max-w-2xl px-2 sm:px-6">
+      <!-- Center Player Controls & Live Timeline (Spotify-Style Desktop) -->
+      <div class="hidden md:flex flex-col items-center justify-center flex-1 max-w-2xl px-2 sm:px-6">
         <!-- Control Buttons -->
         <div class="flex items-center gap-4 sm:gap-6 mb-1.5">
           <button onclick="controlPlayer('shuffle')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Shuffle Upcoming">
@@ -970,8 +975,8 @@
           <button onclick="controlPlayer('previous')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Previous Track">
             <i data-lucide="skip-back" class="w-4 h-4"></i>
           </button>
-          <button id="player-btn-playpause" onclick="togglePlayPause()" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-[#101014] flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10" title="Play / Pause">
-            <i data-lucide="play" id="icon-playpause" class="w-4 h-4 sm:w-5 sm:h-5 fill-current"></i>
+          <button id="player-btn-playpause" onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-white text-[#101014] flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10" title="Play / Pause">
+            <i data-lucide="play" id="icon-playpause" class="w-5 h-5 fill-current"></i>
           </button>
           <button onclick="controlPlayer('skip')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Skip Forward">
             <i data-lucide="skip-forward" class="w-4 h-4"></i>
@@ -996,16 +1001,32 @@
         </div>
       </div>
 
-      <!-- Right Actions (Server Badge, Volume & Queue) -->
-      <div class="flex items-center justify-end gap-3 w-1/4 min-w-[130px]">
-        <!-- Active Server Badge -->
+      <!-- Right Actions: Mobile Controls (Spotify Mini-Player) & Desktop Actions -->
+      <div class="flex items-center justify-end gap-1.5 sm:gap-3 shrink-0">
+        <!-- Mobile Quick Playback Controls -->
+        <div class="flex md:hidden items-center gap-1">
+          <button id="player-btn-like-mobile" onclick="toggleLikeCurrentTrack()" class="p-1.5 text-[#9E9EAD] hover:text-rose-400 transition-colors" title="Favorite">
+            <i data-lucide="heart" class="w-4 h-4"></i>
+          </button>
+          <button id="player-btn-playpause-mobile" onclick="togglePlayPause()" class="w-9 h-9 rounded-full bg-white text-[#101014] flex items-center justify-center shadow-md active:scale-95 transition-all mx-1" title="Play / Pause">
+            <i data-lucide="play" id="icon-playpause-mobile" class="w-4 h-4 fill-current"></i>
+          </button>
+          <button onclick="controlPlayer('skip')" class="p-1.5 text-[#9E9EAD] hover:text-white transition-colors" title="Skip">
+            <i data-lucide="skip-forward" class="w-4 h-4"></i>
+          </button>
+          <button onclick="toggleQueueDrawer()" class="p-1.5 text-[#9E9EAD] hover:text-white transition-colors" title="Queue">
+            <i data-lucide="list-music" class="w-4 h-4"></i>
+          </button>
+        </div>
+
+        <!-- Desktop Server Badge -->
         <div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#191820] border border-brand-border/40 text-[11px] text-[#9E9EAD]">
           <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
           <span id="player-server-label" class="truncate max-w-[120px] font-medium text-white">Select Server</span>
         </div>
 
-        <!-- Volume Control -->
-        <div class="hidden sm:flex items-center gap-2 group">
+        <!-- Desktop Volume Control -->
+        <div class="hidden md:flex items-center gap-2 group">
           <button onclick="toggleMute()" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Volume">
             <i data-lucide="volume-2" id="icon-volume" class="w-4 h-4"></i>
           </button>
@@ -1014,16 +1035,16 @@
           </div>
         </div>
 
-        <!-- Queue Drawer Toggle -->
-        <button onclick="toggleQueueDrawer()" class="px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs font-semibold text-white flex items-center gap-1.5 transition-all">
+        <!-- Desktop Queue Drawer Toggle -->
+        <button onclick="toggleQueueDrawer()" class="hidden md:flex px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs font-semibold text-white items-center gap-1.5 transition-all">
           <i data-lucide="list-music" class="w-4 h-4 text-brand-secondary"></i>
-          <span id="player-queue-badge" class="hidden sm:inline">Queue</span>
+          <span id="player-queue-badge">Queue</span>
         </button>
       </div>
     </div>
 
     <!-- ==================== QUEUE SLIDE-OVER DRAWER ==================== -->
-    <div id="queue-drawer" class="fixed top-0 right-0 bottom-24 w-80 sm:w-96 bg-[#16151f] border-l border-brand-border/50 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
+    <div id="queue-drawer" class="fixed top-0 right-0 bottom-16 md:bottom-24 w-full sm:w-96 max-w-[340px] sm:max-w-none bg-[#16151f] border-l border-brand-border/50 shadow-2xl z-50 transform translate-x-full transition-transform duration-300 flex flex-col">
       <div class="p-4 border-b border-brand-border/40 flex items-center justify-between">
         <h3 class="font-bold text-sm flex items-center gap-2">
           <i data-lucide="list-music" class="w-4 h-4 text-brand-secondary"></i> Up Next & AI AutoPlay

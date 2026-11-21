@@ -67,8 +67,8 @@ const state = {
 // ------------------- INITIALIZATION -------------------
 window.addEventListener('DOMContentLoaded', async () => {
   initIcons();
-  initRouting();
   await checkAuthStatus();
+  initRouting();
   await loadServers();
   initWebSocket();
   startLocalPlaybackTicker();
@@ -159,6 +159,8 @@ async function checkAuthStatus() {
 
     const demoBtn = document.getElementById('demo-mode-btn');
     if (data.authenticated && data.user) {
+      document.body.classList.add('is-authenticated');
+      document.body.classList.remove('is-unauthenticated');
       state.currentUser = data.user;
       document.getElementById('login-btn').classList.add('hidden');
       const pill = document.getElementById('user-profile-pill');
@@ -168,9 +170,11 @@ async function checkAuthStatus() {
       document.getElementById('user-username').innerText = data.user.username;
       document.getElementById('user-tag').innerText = data.user.discriminator !== '0' ? `#${data.user.discriminator}` : '';
 
-      // Hide demo mode button completely when authenticated
+      // Strictly hide/remove demo mode button completely when authenticated
       if (demoBtn) {
+        demoBtn.style.setProperty('display', 'none', 'important');
         demoBtn.classList.add('hidden');
+        demoBtn.classList.remove('inline-flex');
       }
 
       // Personalized greeting
@@ -187,6 +191,8 @@ async function checkAuthStatus() {
         if (mobileAdmin) mobileAdmin.classList.remove('hidden');
       }
     } else {
+      document.body.classList.add('is-unauthenticated');
+      document.body.classList.remove('is-authenticated');
       state.currentUser = null;
       const loginBtn = document.getElementById('login-btn');
       if (loginBtn) {
@@ -197,7 +203,9 @@ async function checkAuthStatus() {
       pill.classList.add('hidden');
       pill.classList.remove('flex');
       if (demoBtn) {
+        demoBtn.style.setProperty('display', 'inline-flex', 'important');
         demoBtn.classList.remove('hidden');
+        demoBtn.classList.add('inline-flex');
       }
       if (demoLabel) demoLabel.innerText = 'Demo Mode';
     }
@@ -403,19 +411,21 @@ function renderTimelineOnly() {
   const totalEl = document.getElementById('player-total-time');
   const barEl = document.getElementById('player-progress-bar');
   const knobEl = document.getElementById('player-progress-knob');
+  const mobileBarEl = document.getElementById('player-progress-bar-mobile');
 
   if (currentEl) currentEl.innerText = formatDuration(state.playback.position);
   if (totalEl) totalEl.innerText = state.playback.duration > 0 ? formatDuration(state.playback.duration) : 'LIVE';
 
-  if (barEl) {
-    if (state.playback.duration > 0) {
-      const pct = Math.min(100, Math.max(0, (state.playback.position / state.playback.duration) * 100));
-      barEl.style.width = `${pct}%`;
-      if (knobEl) knobEl.style.left = `${pct}%`;
-    } else {
-      barEl.style.width = state.playback.is_playing ? '100%' : '0%';
-      if (knobEl) knobEl.style.left = state.playback.is_playing ? '100%' : '0%';
-    }
+  if (state.playback.duration > 0) {
+    const pct = Math.min(100, Math.max(0, (state.playback.position / state.playback.duration) * 100));
+    if (barEl) barEl.style.width = `${pct}%`;
+    if (knobEl) knobEl.style.left = `${pct}%`;
+    if (mobileBarEl) mobileBarEl.style.width = `${pct}%`;
+  } else {
+    const defaultWidth = state.playback.is_playing ? '100%' : '0%';
+    if (barEl) barEl.style.width = defaultWidth;
+    if (knobEl) knobEl.style.left = defaultWidth;
+    if (mobileBarEl) mobileBarEl.style.width = defaultWidth;
   }
 }
 
@@ -425,6 +435,7 @@ function renderBottomPlayer() {
   const artistEl = document.getElementById('player-track-artist');
   const imgEl = document.getElementById('player-track-img');
   const playPauseIcon = document.getElementById('icon-playpause');
+  const playPauseIconMobile = document.getElementById('icon-playpause-mobile');
   const volumeSlider = document.getElementById('player-volume-slider');
   const queueBadge = document.getElementById('player-queue-badge');
   const serverLabel = document.getElementById('player-server-label');
@@ -443,13 +454,13 @@ function renderBottomPlayer() {
     if (imgEl) imgEl.src = 'https://files.catbox.moe/74l9su.png';
   }
 
-  // Play/Pause icon toggle
+  // Play/Pause icon toggle (both desktop & mobile)
+  const isPlaying = state.playback.is_playing && !state.playback.is_paused;
   if (playPauseIcon) {
-    if (state.playback.is_playing && !state.playback.is_paused) {
-      playPauseIcon.setAttribute('data-lucide', 'pause');
-    } else {
-      playPauseIcon.setAttribute('data-lucide', 'play');
-    }
+    playPauseIcon.setAttribute('data-lucide', isPlaying ? 'pause' : 'play');
+  }
+  if (playPauseIconMobile) {
+    playPauseIconMobile.setAttribute('data-lucide', isPlaying ? 'pause' : 'play');
   }
 
   if (volumeSlider) volumeSlider.value = state.playback.volume;

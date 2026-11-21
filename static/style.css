@@ -260,3 +260,63 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ================================================================
+   Mobile & Responsive Player Optimizations
+   ================================================================ */
+
+/* Strict Lock on Track Artwork Dimensions to Prevent Large Asset Overflow */
+#player-track-img {
+  width: 44px !important;
+  height: 44px !important;
+  min-width: 44px !important;
+  min-height: 44px !important;
+  max-width: 44px !important;
+  max-height: 44px !important;
+  object-fit: cover !important;
+  border-radius: 8px !important;
+  flex-shrink: 0 !important;
+  display: block !important;
+}
+
+@media (min-width: 768px) {
+  #player-track-img {
+    width: 56px !important;
+    height: 56px !important;
+    min-width: 56px !important;
+    min-height: 56px !important;
+    max-width: 56px !important;
+    max-height: 56px !important;
+    border-radius: 12px !important;
+  }
+}
+
+/* Bulletproof Demo Mode Button Visibility Control */
+#demo-mode-btn {
+  display: none !important;
+}
+
+body.is-unauthenticated #demo-mode-btn {
+  display: inline-flex !important;
+}
+
+body.is-authenticated #demo-mode-btn {
+  display: none !important;
+}
+
+/* Bottom Player Mobile Polish */
+#bottom-player {
+  overflow: hidden;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+}
+
+@media (max-width: 767px) {
+  #bottom-player {
+    height: 64px !important;
+  }
+}
+
+#player-progress-bar-mobile {
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+}
