@@ -1195,6 +1195,154 @@ class DashboardAPI:
         await db.execute("DELETE FROM user_playlist_tracks WHERE id = $1", track_id)
         return aiohttp.web.json_response({"success": True})
 
+    @classmethod
+    async def handle_search_suggestions(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Real-time instant autocomplete song search. Strictly returns songs only."""
+        q = request.query.get("q", "").strip()
+        if not q or len(q) < 2:
+            return aiohttp.web.json_response({"suggestions": []})
+
+        suggestions = []
+        try:
+            import urllib.parse
+            encoded_query = urllib.parse.quote(q)
+            itunes_url = f"https://itunes.apple.com/search?term={encoded_query}&entity=song&limit=6"
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.5)) as session:
+                async with session.get(itunes_url) as resp:
+                    if resp.status == 200:
+                        data = await resp.json(content_type=None)
+                        for item in data.get("results", []):
+                            track_name = item.get("trackName")
+                            artist_name = item.get("artistName")
+                            if track_name and artist_name:
+                                duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
+                                thumb = item.get("artworkUrl100") or "https://files.catbox.moe/74l9su.png"
+                                suggestions.append({
+                                    "title": track_name,
+                                    "artist": artist_name,
+                                    "duration": duration_sec,
+                                    "thumbnail": thumb,
+                                    "source": "itunes"
+                                })
+        except Exception as e:
+            log.debug(f"[Search Suggestions iTunes Error] {e}")
+
+        # Fallback to YouTube music suggestions if iTunes returned empty
+        if not suggestions:
+            try:
+                import urllib.parse
+                import re
+                import json
+                yt_suggest_url = f"https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q={urllib.parse.quote(q + ' song')}"
+                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
+                    async with session.get(yt_suggest_url) as resp:
+                        if resp.status == 200:
+                            text = await resp.text()
+                            m = re.search(r'\[.*\]', text)
+                            if m:
+                                raw = json.loads(m.group(0))
+                                if len(raw) > 1 and isinstance(raw[1], list):
+                                    for entry in raw[1][:5]:
+                                        s_text = entry[0] if isinstance(entry, list) else entry
+                                        if s_text:
+                                            # Clean query string
+                                            clean_sugg = re.sub(r'(?i)\s+(song|lyrics|audio|official video|video)$', '', s_text).strip()
+                                            suggestions.append({
+                                                "title": clean_sugg,
+                                                "artist": "Music Result",
+                                                "duration": 0,
+                                                "thumbnail": "https://files.catbox.moe/74l9su.png",
+                                                "source": "youtube"
+                                            })
+            except Exception as yt_err:
+                log.debug(f"[Search Suggestions YT Error] {yt_err}")
+
+        return aiohttp.web.json_response({"suggestions": suggestions})
+
+    @classmethod
+    async def handle_play_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Enqueues all songs in a user playlist into the active Discord voice channel."""
+        user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
+
+        pid = int(request.match_info.get("id"))
+        playlist_row = await db.fetchrow("SELECT * FROM user_playlists WHERE id = $1 AND discord_user_id = $2", pid, user["discord_user_id"])
+        if not playlist_row:
+            return aiohttp.web.json_response({"error": "Playlist not found"}, status=404)
+
+        tracks_rows = await db.fetch("SELECT * FROM user_playlist_tracks WHERE playlist_id = $1 ORDER BY position ASC, id ASC", pid)
+        if not tracks_rows:
+            return aiohttp.web.json_response({"error": "Playlist is empty"}, status=400)
+
+        body = {}
+        try:
+            body = await request.json()
+        except Exception:
+            pass
+
+        guild_id_str = body.get("guild_id") or request.query.get("guild_id")
+        if not guild_id_str:
+            return aiohttp.web.json_response({"error": "Please select a server first to play your playlist."}, status=400)
+
+        guild_id = int(guild_id_str)
+        bot = request.app.get("bot")
+        guild = bot.get_guild(guild_id) if bot else None
+        if not guild:
+            return aiohttp.web.json_response({"error": "Target server not found or bot not connected"}, status=404)
+
+        service = MusicService.get_instance()
+        queue = service.get_queue(guild_id)
+        vc = guild.voice_client or queue.voice_client
+
+        if not vc or not vc.is_connected():
+            target_vc = None
+            for ch in guild.voice_channels:
+                if any(not m.bot for m in ch.members):
+                    target_vc = ch
+                    break
+            if not target_vc and guild.voice_channels:
+                target_vc = guild.voice_channels[0]
+            if target_vc:
+                try:
+                    vc = await target_vc.connect()
+                    queue.voice_client = vc
+                except Exception as ce:
+                    log.warning(f"Voice connect error: {ce}")
+
+        requester = SimpleNamespace(
+            id=user["discord_user_id"],
+            name=user.get("username", "Dashboard User"),
+            display_name=user.get("username", "Dashboard User"),
+            mention=f"<@{user['discord_user_id']}>",
+            bot=False
+        )
+
+        music_cog = bot.get_cog("Music") if bot else None
+        enqueued_count = 0
+
+        for r in tracks_rows:
+            t_url = r.get("url") or f"{r.get('title')} {r.get('author')}"
+            try:
+                extracted = await service.search_and_extract(t_url, requester, limit=1)
+                if extracted:
+                    trk = extracted[0]
+                    trk.requested_by = requester
+                    if not queue.current_track and enqueued_count == 0 and music_cog:
+                        await music_cog.play_track(queue, trk)
+                    else:
+                        queue.tracks.append(trk)
+                    enqueued_count += 1
+            except Exception as e:
+                log.warning(f"Failed to enqueue playlist track {r.get('title')}: {e}")
+
+        await DashboardWebSocketManager.get_instance().broadcast_playback_update(guild_id, bot)
+        return aiohttp.web.json_response({
+            "success": True,
+            "enqueued_count": enqueued_count,
+            "playlist_name": playlist_row["name"]
+        })
+
     # ------------------ 6. History & Analytics ------------------
 
     @classmethod
@@ -1203,6 +1351,11 @@ class DashboardAPI:
         timeframe = request.query.get("timeframe", "all")
         query_text = request.query.get("query", "").strip().lower()
         limit = min(150, int(request.query.get("limit", 50)))
+        target_guild_id = 0
+        try:
+            target_guild_id = int(request.query.get("guild_id", 0))
+        except (ValueError, TypeError):
+            pass
 
         uid = user["discord_user_id"] if user else 0
 
@@ -1223,15 +1376,24 @@ class DashboardAPI:
             filter_clause = f"AND (LOWER(track_title) LIKE '%{query_text}%' OR LOWER(track_author) LIKE '%{query_text}%')"
 
         bot = request.app.get("bot")
-        accessible_guild_ids = []
-        if bot and uid:
+        accessible_guild_ids = set()
+        if target_guild_id:
+            accessible_guild_ids.add(target_guild_id)
+
+        if user and user.get("guild_ids"):
+            accessible_guild_ids.update([int(gid) for gid in user.get("guild_ids") if gid])
+
+        is_admin = DashboardAuthManager.is_system_admin(uid, bot) if bot and uid else False
+        if bot:
             for g in bot.guilds:
-                if g.get_member(uid):
-                    accessible_guild_ids.append(g.id)
+                if is_admin or (uid and g.get_member(uid)) or (target_guild_id and g.id == target_guild_id):
+                    accessible_guild_ids.add(g.id)
+            if not accessible_guild_ids:
+                accessible_guild_ids = {g.id for g in bot.guilds}
 
         if accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
-            user_clause = f"WHERE (discord_user_id = $1 OR (guild_id IN ({guild_list_str}) AND (discord_user_id = 0 OR discord_user_id = $1)))"
+            user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
         else:
             user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
 
@@ -1248,6 +1410,27 @@ class DashboardAPI:
         for h in history:
             if isinstance(h.get("played_at"), datetime):
                 h["played_at"] = h["played_at"].isoformat()
+
+        # If history table is empty but bot is actively playing right now, synthesize live item
+        if not history and bot:
+            search_gids = [target_guild_id] if target_guild_id else list(accessible_guild_ids)
+            music_service = MusicService.get_instance()
+            for gid in search_gids:
+                q = music_service.get_queue(gid)
+                if q.voice_client and q.voice_client.is_playing() and q.current_track:
+                    history.append({
+                        "id": 999999,
+                        "guild_id": gid,
+                        "discord_user_id": uid,
+                        "track_title": q.current_track.clean_title or q.current_track.title,
+                        "track_author": q.current_track.author or "Artist",
+                        "track_url": q.current_track.url or "",
+                        "duration": int(q.current_track.duration or 0),
+                        "platform": q.current_track.platform or "youtube",
+                        "thumbnail_url": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
+                        "played_at": datetime.utcnow().isoformat()
+                    })
+                    break
 
         return aiohttp.web.json_response({"history": history, "count": len(history), "authenticated": bool(user)})
 
@@ -1295,6 +1478,11 @@ class DashboardAPI:
 
         uid = user["discord_user_id"]
         timeframe = request.query.get("timeframe", "7d")
+        target_guild_id = 0
+        try:
+            target_guild_id = int(request.query.get("guild_id", 0))
+        except (ValueError, TypeError):
+            pass
 
         now = datetime.utcnow()
         time_clause = ""
@@ -1312,15 +1500,24 @@ class DashboardAPI:
             time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
 
         bot = request.app.get("bot")
-        accessible_guild_ids = []
-        if bot and uid:
+        accessible_guild_ids = set()
+        if target_guild_id:
+            accessible_guild_ids.add(target_guild_id)
+
+        if user and user.get("guild_ids"):
+            accessible_guild_ids.update([int(gid) for gid in user.get("guild_ids") if gid])
+
+        is_admin = DashboardAuthManager.is_system_admin(uid, bot) if bot and uid else False
+        if bot:
             for g in bot.guilds:
-                if g.get_member(uid):
-                    accessible_guild_ids.append(g.id)
+                if is_admin or (uid and g.get_member(uid)) or (target_guild_id and g.id == target_guild_id):
+                    accessible_guild_ids.add(g.id)
+            if not accessible_guild_ids:
+                accessible_guild_ids = {g.id for g in bot.guilds}
 
         if accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
-            user_clause = f"WHERE (discord_user_id = $1 OR (guild_id IN ({guild_list_str}) AND (discord_user_id = 0 OR discord_user_id = $1)))"
+            user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
         else:
             user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
 
@@ -1363,6 +1560,45 @@ class DashboardAPI:
                 except Exception:
                     pass
 
+        # Real-time live status from active playing voice channel
+        live_active = False
+        live_track = None
+        live_guild_name = None
+        live_channel_name = None
+        live_elapsed = 0
+
+        if bot:
+            music_service = MusicService.get_instance()
+            search_gids = [target_guild_id] if target_guild_id else list(accessible_guild_ids)
+            if not search_gids:
+                search_gids = [g.id for g in bot.guilds]
+            for gid in search_gids:
+                q = music_service.get_queue(gid)
+                if q.voice_client and q.voice_client.is_playing() and q.current_track:
+                    live_active = True
+                    live_track = {
+                        "title": q.current_track.clean_title or q.current_track.title,
+                        "author": q.current_track.author or "Artist",
+                        "thumbnail": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
+                        "duration": int(q.current_track.duration or 0),
+                        "is_radio": q.current_track.is_radio
+                    }
+                    g = bot.get_guild(gid)
+                    live_guild_name = g.name if g else "Discord Server"
+                    live_channel_name = q.voice_client.channel.name if q.voice_client.channel else "Voice"
+                    if q.start_time:
+                        live_elapsed = max(0, int(time.time() - q.start_time - q.total_paused_duration))
+                    break
+
+        # If DB history is totally empty but active track is currently playing, enhance metrics
+        if total_songs == 0 and live_active and live_track:
+            total_songs = 1
+            total_seconds = live_elapsed
+            top_artists = [{"track_author": live_track["author"], "play_count": 1}]
+            top_tracks = [{"track_title": live_track["title"], "track_author": live_track["author"], "thumbnail_url": live_track["thumbnail"], "play_count": 1}]
+            curr_hour = datetime.utcnow().hour
+            hourly_counts[curr_hour] = max(1, hourly_counts[curr_hour])
+
         peak_hour = hourly_counts.index(max(hourly_counts)) if max(hourly_counts) > 0 else 20
         peak_hour_str = f"{peak_hour:02d}:00 - {(peak_hour+1)%24:02d}:00"
 
@@ -1372,33 +1608,8 @@ class DashboardAPI:
             uid
         )
         platforms = {dict(r)["platform"]: dict(r)["count"] for r in platform_rows}
-
-        # Real-time live status from active playing voice channel
-        live_active = False
-        live_track = None
-        live_guild_name = None
-        live_channel_name = None
-        live_elapsed = 0
-
-        if bot and accessible_guild_ids:
-            music_service = MusicService.get_instance()
-            for gid in accessible_guild_ids:
-                q = music_service.get_queue(gid)
-                if q.voice_client and q.voice_client.is_playing() and q.current_track:
-                    live_active = True
-                    live_track = {
-                        "title": q.current_track.clean_title,
-                        "author": q.current_track.author,
-                        "thumbnail": q.current_track.thumbnail,
-                        "duration": q.current_track.duration,
-                        "is_radio": q.current_track.is_radio
-                    }
-                    g = bot.get_guild(gid)
-                    live_guild_name = g.name if g else "Discord Server"
-                    live_channel_name = q.voice_client.channel.name if q.voice_client.channel else "Voice"
-                    if q.track_start_time:
-                        live_elapsed = max(0, int(time.time() - q.track_start_time - q.total_paused_duration))
-                    break
+        if not platforms and live_active:
+            platforms["youtube"] = 1
 
         return aiohttp.web.json_response({
             "authenticated": True,

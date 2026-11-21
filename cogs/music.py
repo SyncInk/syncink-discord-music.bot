@@ -2249,13 +2249,34 @@ class Music(commands.Cog):
                         human_members = [m for m in queue.voice_client.channel.members if not m.bot]
                         if human_members:
                             user_id = human_members[0].id
-                    query = """
-                        INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
-                        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                    """
-                    asyncio.create_task(db.execute(query, queue.guild_id, user_id, track.clean_title, track.author, track.url, track.duration, track.platform, track.thumbnail))
-                except Exception:
-                    pass
+
+                    async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb):
+                        try:
+                            # Verify user preference for private listening
+                            pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
+                            if pref and pref.get("private_listening"):
+                                return
+                            q = """
+                                INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
+                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                            """
+                            await db.execute(q, gid, uid, title, author, url, int(dur or 0), plat or "audio", thumb or "")
+                            log.debug(f"[Listening History] Recorded '{title}' for user {uid} in guild {gid}")
+                        except Exception as h_err:
+                            log.warning(f"[Listening History] Could not record playback: {h_err}")
+
+                    asyncio.create_task(_record_history_log(
+                        queue.guild_id,
+                        user_id,
+                        track.clean_title or track.title or "Unknown Track",
+                        track.author or "Unknown Artist",
+                        track.url or "",
+                        int(track.duration or 0),
+                        track.platform or "youtube",
+                        track.thumbnail or "https://files.catbox.moe/74l9su.png"
+                    ))
+                except Exception as log_err:
+                    log.warning(f"[Listening History Task Init] {log_err}")
 
                 if not track.is_radio:
                     norm_key = normalize_title(track.clean_title)

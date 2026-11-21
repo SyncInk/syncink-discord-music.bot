@@ -68,10 +68,19 @@ const state = {
 window.addEventListener('DOMContentLoaded', async () => {
   initIcons();
   await checkAuthStatus();
-  initRouting();
   await loadServers();
+  initRouting();
   initWebSocket();
   startLocalPlaybackTicker();
+
+  // Close search suggestions on outside click
+  document.addEventListener('click', (e) => {
+    const searchBox = document.getElementById('overview-quick-play-input');
+    const dropdown = document.getElementById('search-suggestions-dropdown');
+    if (dropdown && !dropdown.contains(e.target) && e.target !== searchBox) {
+      dropdown.classList.add('hidden');
+    }
+  });
 });
 
 function initIcons() {
@@ -170,11 +179,9 @@ async function checkAuthStatus() {
       document.getElementById('user-username').innerText = data.user.username;
       document.getElementById('user-tag').innerText = data.user.discriminator !== '0' ? `#${data.user.discriminator}` : '';
 
-      // Strictly hide/remove demo mode button completely when authenticated
+      // Strictly remove demo mode button completely from DOM when authenticated
       if (demoBtn) {
-        demoBtn.style.setProperty('display', 'none', 'important');
-        demoBtn.classList.add('hidden');
-        demoBtn.classList.remove('inline-flex');
+        demoBtn.remove();
       }
 
       // Personalized greeting
@@ -322,6 +329,9 @@ function startLocalPlaybackTicker() {
         state.playback.position = state.playback.duration;
       }
       renderTimelineOnly();
+      checkUpcomingTrackNotice();
+    } else {
+      dismissUpcomingBanner();
     }
 
     // 2. Real-time Analytics Live 1-Second Sync with Discord Voice
@@ -329,6 +339,47 @@ function startLocalPlaybackTicker() {
       tickAnalyticsEverySecond();
     }
   }, 1000);
+}
+
+function checkUpcomingTrackNotice() {
+  const banner = document.getElementById('upcoming-track-banner');
+  if (!banner) return;
+  if (!state.playback.is_playing || state.playback.is_paused || !state.playback.duration || state.playback.duration < 15) {
+    banner.classList.add('hidden');
+    return;
+  }
+
+  const remaining = state.playback.duration - state.playback.position;
+  if (remaining <= 10 && remaining > 0) {
+    const countdownEl = document.getElementById('upcoming-countdown');
+    if (countdownEl) countdownEl.innerText = remaining;
+
+    const titleEl = document.getElementById('upcoming-track-title');
+    const artistEl = document.getElementById('upcoming-track-artist');
+    const imgEl = document.getElementById('upcoming-track-img');
+
+    const nextTrack = (state.playback.queue && state.playback.queue[0]) || null;
+    if (nextTrack) {
+      if (titleEl) titleEl.innerText = nextTrack.title;
+      if (artistEl) artistEl.innerText = nextTrack.author || 'Next Track';
+      if (imgEl) imgEl.src = nextTrack.thumbnail || 'https://files.catbox.moe/74l9su.png';
+      banner.classList.remove('hidden');
+    } else if (state.playback.autoplay) {
+      if (titleEl) titleEl.innerText = 'Smart AutoPlay Track';
+      if (artistEl) artistEl.innerText = 'Curated by Audia AI 1.0';
+      if (imgEl) imgEl.src = 'https://syncink.site/audia-ai-logo.png';
+      banner.classList.remove('hidden');
+    } else {
+      banner.classList.add('hidden');
+    }
+  } else {
+    banner.classList.add('hidden');
+  }
+}
+
+function dismissUpcomingBanner() {
+  const banner = document.getElementById('upcoming-track-banner');
+  if (banner) banner.classList.add('hidden');
 }
 
 function tickAnalyticsEverySecond() {
@@ -365,7 +416,8 @@ function tickAnalyticsEverySecond() {
 async function fetchAnalyticsSilently() {
   if (state.currentView !== 'analytics' || !state.currentUser) return;
   try {
-    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}`);
+    const gidParam = state.activeGuildId ? `&guild_id=${state.activeGuildId}` : '';
+    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}${gidParam}`);
     if (res.ok) {
       const data = await res.json();
       state.analyticsBaseSeconds = (data.total_seconds || 0) - (data.live_elapsed || 0);
@@ -403,6 +455,7 @@ function updatePlaybackState(data) {
   renderBottomPlayer();
   renderSpotlightCard();
   renderQueueDrawer();
+  syncMobileFullPlayer();
   initIcons();
 }
 
@@ -413,19 +466,31 @@ function renderTimelineOnly() {
   const knobEl = document.getElementById('player-progress-knob');
   const mobileBarEl = document.getElementById('player-progress-bar-mobile');
 
-  if (currentEl) currentEl.innerText = formatDuration(state.playback.position);
-  if (totalEl) totalEl.innerText = state.playback.duration > 0 ? formatDuration(state.playback.duration) : 'LIVE';
+  // Mobile Fullscreen Player elements
+  const mfpCurrentEl = document.getElementById('mfp-current-time');
+  const mfpTotalEl = document.getElementById('mfp-total-time');
+  const mfpBarEl = document.getElementById('mfp-progress-bar');
+
+  const curFormatted = formatDuration(state.playback.position);
+  const totFormatted = state.playback.duration > 0 ? formatDuration(state.playback.duration) : 'LIVE';
+
+  if (currentEl) currentEl.innerText = curFormatted;
+  if (totalEl) totalEl.innerText = totFormatted;
+  if (mfpCurrentEl) mfpCurrentEl.innerText = curFormatted;
+  if (mfpTotalEl) mfpTotalEl.innerText = totFormatted;
 
   if (state.playback.duration > 0) {
     const pct = Math.min(100, Math.max(0, (state.playback.position / state.playback.duration) * 100));
     if (barEl) barEl.style.width = `${pct}%`;
     if (knobEl) knobEl.style.left = `${pct}%`;
     if (mobileBarEl) mobileBarEl.style.width = `${pct}%`;
+    if (mfpBarEl) mfpBarEl.style.width = `${pct}%`;
   } else {
     const defaultWidth = state.playback.is_playing ? '100%' : '0%';
     if (barEl) barEl.style.width = defaultWidth;
     if (knobEl) knobEl.style.left = defaultWidth;
     if (mobileBarEl) mobileBarEl.style.width = defaultWidth;
+    if (mfpBarEl) mfpBarEl.style.width = defaultWidth;
   }
 }
 
@@ -490,6 +555,50 @@ function renderBottomPlayer() {
   }
 
   renderTimelineOnly();
+  syncMobileFullPlayer();
+}
+
+function openMobileFullPlayer() {
+  const mfp = document.getElementById('mobile-full-player');
+  if (!mfp) return;
+  syncMobileFullPlayer();
+  mfp.classList.remove('hidden');
+  initIcons();
+}
+
+function closeMobileFullPlayer() {
+  const mfp = document.getElementById('mobile-full-player');
+  if (mfp) mfp.classList.add('hidden');
+}
+
+function syncMobileFullPlayer() {
+  const track = state.playback.current_track;
+  const titleEl = document.getElementById('mfp-track-title');
+  const artistEl = document.getElementById('mfp-track-artist');
+  const imgEl = document.getElementById('mfp-track-img');
+  const playPauseIcon = document.getElementById('icon-mfp-playpause');
+  const serverLabel = document.getElementById('mfp-server-label');
+
+  if (track) {
+    if (titleEl) titleEl.innerText = track.title;
+    if (artistEl) artistEl.innerText = track.author || 'Artist';
+    if (imgEl) imgEl.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+  } else if (state.playback.radio_station) {
+    if (titleEl) titleEl.innerText = state.playback.radio_station;
+    if (artistEl) artistEl.innerText = '24/7 Live Radio';
+    if (imgEl) imgEl.src = (state.playback.active_radio_info && state.playback.active_radio_info.favicon) || 'https://files.catbox.moe/74l9su.png';
+  } else {
+    if (titleEl) titleEl.innerText = 'Nothing is playing';
+    if (artistEl) artistEl.innerText = 'Select a server or /play';
+    if (imgEl) imgEl.src = 'https://files.catbox.moe/74l9su.png';
+  }
+
+  const isPlaying = state.playback.is_playing && !state.playback.is_paused;
+  if (playPauseIcon) {
+    playPauseIcon.setAttribute('data-lucide', isPlaying ? 'pause' : 'play');
+  }
+  const srv = state.servers.find(s => String(s.id) === String(state.activeGuildId));
+  if (serverLabel) serverLabel.innerText = state.playback.server_name || (srv ? srv.name : 'Discord Server');
 }
 
 function renderSpotlightCard() {
@@ -720,6 +829,70 @@ function cycleLoopMode() {
   showToast(`Repeat mode: ${next.toUpperCase()}`, 'info');
 }
 
+function handleSearchInput(val) {
+  clearTimeout(state.searchDebounceTimer);
+  const dropdown = document.getElementById('search-suggestions-dropdown');
+  if (!dropdown) return;
+  const query = (val || '').trim();
+  if (query.length < 2) {
+    dropdown.classList.add('hidden');
+    dropdown.innerHTML = '';
+    return;
+  }
+  state.searchDebounceTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`/api/search/suggestions?q=${encodeURIComponent(query)}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const suggestions = data.suggestions || [];
+      dropdown.innerHTML = '';
+      if (suggestions.length === 0) {
+        dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#6B6A78]">No song matches found</div>';
+        dropdown.classList.remove('hidden');
+        return;
+      }
+      suggestions.forEach(item => {
+        const div = document.createElement('div');
+        div.className = 'flex items-center gap-3 p-2.5 rounded-xl hover:bg-brand-surface-elevated cursor-pointer group transition-all';
+        div.onclick = () => selectSearchSuggestion(item.title, item.artist);
+        div.innerHTML = `
+          <img src="${item.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-10 h-10 rounded-lg object-cover border border-brand-border/40 shrink-0 shadow">
+          <div class="min-w-0 flex-1">
+            <p class="text-xs font-bold text-white group-hover:text-brand-secondary truncate transition-colors">${escapeHtml(item.title)}</p>
+            <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(item.artist)}</p>
+          </div>
+          <span class="text-[10px] text-[#6B6A78] font-mono mr-1">${item.duration ? formatDuration(item.duration) : ''}</span>
+          <button class="w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white flex items-center justify-center transition-all shrink-0">
+            <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
+          </button>
+        `;
+        dropdown.appendChild(div);
+      });
+      initIcons();
+      dropdown.classList.remove('hidden');
+    } catch (e) {
+      console.warn('Search suggestions error:', e);
+    }
+  }, 250);
+}
+
+function handleSearchFocus() {
+  const input = document.getElementById('overview-quick-play-input');
+  if (input && input.value.trim().length >= 2) {
+    handleSearchInput(input.value);
+  }
+}
+
+function selectSearchSuggestion(title, artist) {
+  const input = document.getElementById('overview-quick-play-input');
+  const fullQuery = `${title} ${artist}`.trim();
+  if (input) input.value = fullQuery;
+  const dropdown = document.getElementById('search-suggestions-dropdown');
+  if (dropdown) dropdown.classList.add('hidden');
+  sendControlAction('play', { query: fullQuery });
+  showToast(`Playing "${title}" on Discord...`, 'success');
+}
+
 function triggerQuickPlay() {
   if (!state.currentUser) {
     showToast('Please log in with Discord to play music in a server!', 'warning');
@@ -728,6 +901,8 @@ function triggerQuickPlay() {
   const input = document.getElementById('overview-quick-play-input');
   const query = input.value.trim();
   if (!query) return;
+  const dropdown = document.getElementById('search-suggestions-dropdown');
+  if (dropdown) dropdown.classList.add('hidden');
   sendControlAction('play', { query });
   input.value = '';
   showToast(`Enqueuing "${query}"...`, 'info');
@@ -832,7 +1007,14 @@ async function loadServers() {
     if (dropdownList) dropdownList.innerHTML = '';
 
     if (state.servers.length > 0) {
-      if (!state.activeGuildId || !state.servers.find(s => s.id === state.activeGuildId)) {
+      let savedGuildId = null;
+      try {
+        savedGuildId = localStorage.getItem('syncink_active_guild_id');
+      } catch (e) {}
+
+      if (savedGuildId && state.servers.find(s => String(s.id) === String(savedGuildId))) {
+        state.activeGuildId = state.servers.find(s => String(s.id) === String(savedGuildId)).id;
+      } else if (!state.activeGuildId || !state.servers.find(s => String(s.id) === String(state.activeGuildId))) {
         state.activeGuildId = state.servers[0].id;
       }
 
@@ -848,7 +1030,7 @@ async function loadServers() {
         if (dropdownList) dropdownList.appendChild(item);
       });
 
-      const active = state.servers.find(s => s.id === state.activeGuildId) || state.servers[0];
+      const active = state.servers.find(s => String(s.id) === String(state.activeGuildId)) || state.servers[0];
       selectServer(active.id, false);
     } else {
       state.activeGuildId = null;
@@ -890,7 +1072,11 @@ function toggleServerDropdown() {
 
 function selectServer(guildId, fetchNow = true) {
   state.activeGuildId = guildId;
-  const s = state.servers.find(srv => srv.id === guildId);
+  try {
+    localStorage.setItem('syncink_active_guild_id', String(guildId));
+  } catch (e) {}
+
+  const s = state.servers.find(srv => String(srv.id) === String(guildId));
   if (s) {
     const activeName = document.getElementById('active-server-name');
     const activeIcon = document.getElementById('active-server-icon');
@@ -900,6 +1086,13 @@ function selectServer(guildId, fetchNow = true) {
   const dd = document.getElementById('server-dropdown');
   if (dd) dd.classList.add('hidden');
   subscribeToGuild(guildId);
+
+  // If on a guild-dependent view, refresh data for this server
+  if (fetchNow) {
+    if (state.currentView === 'history') loadListeningHistory();
+    else if (state.currentView === 'analytics') loadAnalytics();
+    else if (state.currentView === 'overview') loadOverviewData();
+  }
 }
 
 function loadServersView() {
@@ -1694,18 +1887,26 @@ async function loadCustomPlaylists() {
 
     data.playlists.forEach(p => {
       const card = document.createElement('div');
-      card.className = 'glass-panel p-5 rounded-2xl flex flex-col justify-between';
+      card.className = 'glass-panel p-5 rounded-2xl flex flex-col justify-between group hover:border-brand-primary/60 transition-all';
       card.innerHTML = `
         <div>
-          <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 mb-3">
-            <i data-lucide="list-music" class="w-6 h-6"></i>
+          <div class="flex items-center justify-between mb-3">
+            <div class="w-12 h-12 rounded-2xl bg-indigo-500/20 border border-indigo-500/40 flex items-center justify-center text-indigo-400 group-hover:scale-105 transition-transform">
+              <i data-lucide="list-music" class="w-6 h-6"></i>
+            </div>
+            <span class="text-[11px] font-mono text-brand-secondary bg-brand-primary/15 px-2 py-0.5 rounded-lg border border-brand-primary/30">${p.track_count || 0} tracks</span>
           </div>
           <h4 class="font-bold text-base text-white truncate">${escapeHtml(p.name)}</h4>
-          <p class="text-xs text-[#9E9EAD] mt-1 line-clamp-2">${escapeHtml(p.description || 'Custom Playlist')}</p>
-          <p class="text-[11px] text-[#6B6A78] mt-2 font-mono">${p.track_count || 0} tracks</p>
+          <p class="text-xs text-[#9E9EAD] mt-1 line-clamp-2">${escapeHtml(p.description || 'Custom playlist')}</p>
         </div>
-        <div class="flex items-center gap-2 mt-4 pt-3 border-t border-brand-border/20">
-          <button onclick="deletePlaylist(${p.id})" class="p-2 rounded-xl text-[#9E9EAD] hover:text-rose-400" title="Delete Playlist">
+        <div class="flex items-center gap-2 mt-5 pt-3 border-t border-brand-border/20">
+          <button onclick="playPlaylist(${p.id})" class="flex-1 py-2 rounded-xl text-xs font-bold bg-brand-primary hover:bg-purple-600 text-white flex items-center justify-center gap-1.5 transition-all shadow-md">
+            <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i> Play All
+          </button>
+          <button onclick="openPlaylistTracksModal(${p.id}, '${escapeHtml(p.name)}', '${escapeHtml(p.description || '')}')" class="px-3 py-2 rounded-xl text-xs font-semibold bg-brand-surface border border-brand-border/40 hover:text-white text-[#9E9EAD] transition-all" title="View & Edit Tracks">
+            <i data-lucide="eye" class="w-3.5 h-3.5 inline mr-1"></i> Tracks
+          </button>
+          <button onclick="deletePlaylist(${p.id})" class="p-2 rounded-xl text-[#9E9EAD] hover:text-rose-400 hover:bg-white/5 transition-all" title="Delete Playlist">
             <i data-lucide="trash-2" class="w-4 h-4"></i>
           </button>
         </div>
@@ -1715,6 +1916,194 @@ async function loadCustomPlaylists() {
     initIcons();
   } catch (e) {
     console.warn('Playlists error:', e);
+  }
+}
+
+let activeViewingPlaylistId = null;
+
+async function playPlaylist(id) {
+  if (!state.activeGuildId) {
+    showToast('Please select a Discord server first before playing!', 'warning');
+    return;
+  }
+  try {
+    showToast('Starting playlist playback in Discord voice channel...', 'info');
+    const res = await fetch(`/api/playlists/${id}/play`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ guild_id: state.activeGuildId })
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast(`Playing playlist "${data.playlist_name}" (${data.enqueued_count} tracks queued)!`, 'success');
+    } else {
+      showToast(data.error || 'Failed to start playlist', 'error');
+    }
+  } catch (err) {
+    showToast('Error playing playlist: ' + err, 'error');
+  }
+}
+
+function playCurrentOpenedPlaylist() {
+  if (activeViewingPlaylistId) {
+    playPlaylist(activeViewingPlaylistId);
+  }
+}
+
+async function openPlaylistTracksModal(pid, name, desc) {
+  activeViewingPlaylistId = pid;
+  const modal = document.getElementById('modal-playlist-tracks');
+  const nameEl = document.getElementById('plt-modal-name');
+  const descEl = document.getElementById('plt-modal-desc');
+  const listEl = document.getElementById('plt-tracks-list');
+  if (!modal || !listEl) return;
+
+  if (nameEl) nameEl.innerHTML = `<i data-lucide="list-music" class="w-5 h-5 text-indigo-400 shrink-0"></i> ${escapeHtml(name)}`;
+  if (descEl) descEl.innerText = desc || 'Manage songs in this collection';
+
+  listEl.innerHTML = '<div class="py-8 text-center text-xs text-[#9E9EAD]">Loading tracks...</div>';
+  modal.classList.remove('hidden');
+  initIcons();
+
+  try {
+    const res = await fetch(`/api/playlists/${pid}/tracks`);
+    const data = await res.json();
+    listEl.innerHTML = '';
+    const tracks = data.tracks || [];
+    if (tracks.length === 0) {
+      listEl.innerHTML = '<div class="py-8 text-center text-xs text-[#6B6A78]">This playlist is currently empty.<br>Add songs using the "Add to Playlist" button while listening!</div>';
+      return;
+    }
+    tracks.forEach((t, idx) => {
+      const item = document.createElement('div');
+      item.className = 'flex items-center gap-3 p-2.5 rounded-xl bg-brand-surface/60 border border-brand-border/30 hover:border-brand-primary/40 transition-all';
+      item.innerHTML = `
+        <span class="text-xs font-mono text-[#6B6A78] w-5 text-center">${idx + 1}</span>
+        <img src="${t.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-9 h-9 rounded-lg object-cover shrink-0">
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-white truncate">${escapeHtml(t.title)}</p>
+          <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(t.author || 'Artist')}</p>
+        </div>
+        <span class="text-xs text-[#6B6A78] font-mono">${t.duration ? formatDuration(t.duration) : ''}</span>
+        <button onclick="sendControlAction('play', { query: '${escapeHtml(t.url || t.title)}' })" class="p-1.5 text-brand-secondary hover:text-white" title="Play Now">
+          <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+        </button>
+        <button onclick="removeTrackFromPlaylist(${pid}, ${t.id})" class="p-1.5 text-[#6B6A78] hover:text-rose-400" title="Remove Track">
+          <i data-lucide="trash-2" class="w-4 h-4"></i>
+        </button>
+      `;
+      listEl.appendChild(item);
+    });
+    initIcons();
+  } catch (err) {
+    listEl.innerHTML = '<div class="py-6 text-center text-xs text-rose-400">Failed to load playlist tracks</div>';
+  }
+}
+
+function closePlaylistTracksModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const modal = document.getElementById('modal-playlist-tracks');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function removeTrackFromPlaylist(pid, trackId) {
+  try {
+    await fetch(`/api/playlists/${pid}/tracks/${trackId}`, { method: 'DELETE' });
+    showToast('Track removed from playlist', 'info');
+    openPlaylistTracksModal(pid, '', '');
+    loadCustomPlaylists();
+  } catch (err) {
+    showToast('Failed to remove track: ' + err, 'error');
+  }
+}
+
+async function openAddToPlaylistModal() {
+  const track = state.playback.current_track;
+  if (!track) {
+    showToast('Play a song first to add it to a playlist!', 'warning');
+    return;
+  }
+  const modal = document.getElementById('modal-add-to-playlist');
+  const songTitle = document.getElementById('atp-song-title');
+  const songArtist = document.getElementById('atp-song-artist');
+  const songImg = document.getElementById('atp-song-img');
+  const listEl = document.getElementById('atp-playlists-list');
+  if (!modal) return;
+
+  if (songTitle) songTitle.innerText = track.title;
+  if (songArtist) songArtist.innerText = track.author || 'Artist';
+  if (songImg) songImg.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+
+  listEl.innerHTML = '<div class="py-4 text-center text-xs text-[#9E9EAD]">Loading your playlists...</div>';
+  modal.classList.remove('hidden');
+  initIcons();
+
+  try {
+    const res = await fetch('/api/playlists');
+    const data = await res.json();
+    listEl.innerHTML = '';
+    const playlists = data.playlists || [];
+    if (playlists.length === 0) {
+      listEl.innerHTML = `
+        <div class="py-4 text-center text-xs text-[#6B6A78]">
+          <p class="mb-2">No custom playlists created yet.</p>
+          <button onclick="closeAddToPlaylistModal(); openCreatePlaylistModal();" class="px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-brand-primary">Create New Playlist</button>
+        </div>
+      `;
+      return;
+    }
+    playlists.forEach(p => {
+      const row = document.createElement('div');
+      row.className = 'flex items-center justify-between p-2.5 rounded-xl bg-[#14131a] hover:bg-brand-surface-elevated border border-brand-border/30 cursor-pointer transition-all';
+      row.onclick = () => saveCurrentTrackToPlaylist(p.id, p.name);
+      row.innerHTML = `
+        <div class="min-w-0 flex-1">
+          <p class="text-xs font-bold text-white truncate">${escapeHtml(p.name)}</p>
+          <p class="text-[10px] text-[#9E9EAD]">${p.track_count || 0} tracks</p>
+        </div>
+        <button class="px-3 py-1 rounded-lg text-xs font-bold bg-brand-primary/20 text-brand-secondary hover:bg-brand-primary hover:text-white transition-all">
+          Add
+        </button>
+      `;
+      listEl.appendChild(row);
+    });
+    initIcons();
+  } catch (err) {
+    listEl.innerHTML = '<div class="py-4 text-center text-xs text-rose-400">Failed to load playlists</div>';
+  }
+}
+
+function closeAddToPlaylistModal(e) {
+  if (e && e.target !== e.currentTarget) return;
+  const modal = document.getElementById('modal-add-to-playlist');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function saveCurrentTrackToPlaylist(pid, playlistName) {
+  const track = state.playback.current_track;
+  if (!track) return;
+  try {
+    const res = await fetch(`/api/playlists/${pid}/tracks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: track.title,
+        author: track.author || 'Artist',
+        url: track.url || '',
+        duration: track.duration || 0,
+        thumbnail: track.thumbnail || '',
+        platform: track.platform || 'youtube'
+      })
+    });
+    if (res.ok) {
+      showToast(`Added "${track.title}" to ${playlistName}!`, 'success');
+      closeAddToPlaylistModal();
+      loadCustomPlaylists();
+    } else {
+      showToast('Failed to add track to playlist', 'error');
+    }
+  } catch (err) {
+    showToast('Error: ' + err, 'error');
   }
 }
 
@@ -1785,7 +2174,8 @@ async function loadListeningHistory() {
 
   try {
     const q = document.getElementById('history-search-input') ? document.getElementById('history-search-input').value.trim() : '';
-    const res = await fetch(`/api/history?timeframe=${state.historyTimeframe}&query=${encodeURIComponent(q)}&limit=60`);
+    const gidParam = state.activeGuildId ? `&guild_id=${state.activeGuildId}` : '';
+    const res = await fetch(`/api/history?timeframe=${state.historyTimeframe}&query=${encodeURIComponent(q)}${gidParam}&limit=60`);
     const data = await res.json();
     tbody.innerHTML = '';
 
@@ -1882,7 +2272,8 @@ async function loadAnalytics() {
   }
 
   try {
-    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}`);
+    const gidParam = state.activeGuildId ? `&guild_id=${state.activeGuildId}` : '';
+    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}${gidParam}`);
     const data = await res.json();
 
     state.analyticsBaseSeconds = (data.total_seconds || 0) - (data.live_elapsed || 0);

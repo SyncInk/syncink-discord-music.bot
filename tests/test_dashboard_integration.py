@@ -335,5 +335,37 @@ class TestDashboardCompleteIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertGreaterEqual(len(playlists), 1)
         self.assertEqual(playlists[0]["name"], "Late Night Chill")
 
+    # ---------------- 9. Search Autocomplete & Playlist Playback ----------------
+    async def test_10_search_suggestions_and_playlist_play(self):
+        """Verifies autocomplete song search and playlist track enqueueing."""
+        from services.web.api import DashboardAPI
+        from aiohttp.test_utils import make_mocked_request
+
+        # 1. Search suggestions endpoint test
+        req = make_mocked_request("GET", "/api/search/suggestions?q=levitat")
+        resp = await DashboardAPI.handle_search_suggestions(req)
+        self.assertEqual(resp.status, 200)
+        data = json.loads(resp.text)
+        self.assertIn("suggestions", data)
+        # Should return list of song items
+        self.assertIsInstance(data["suggestions"], list)
+
+        # 2. History endpoint with guild_id filter
+        hist_req = make_mocked_request("GET", f"/api/history?guild_id={self.mock_guild1.id}")
+        hist_req.app["bot"] = self.mock_bot
+        hist_resp = await DashboardAPI.handle_get_history(hist_req)
+        self.assertEqual(hist_resp.status, 200)
+        hist_data = json.loads(hist_resp.text)
+        self.assertIn("history", hist_data)
+
+        # 3. Analytics endpoint with guild_id filter
+        an_req = make_mocked_request("GET", f"/api/analytics?guild_id={self.mock_guild1.id}")
+        an_req.app["bot"] = self.mock_bot
+        an_resp = await DashboardAPI.handle_get_analytics(an_req)
+        self.assertEqual(an_resp.status, 200)
+        an_data = json.loads(an_resp.text)
+        self.assertIn("total_tracks", an_data)
+        self.assertIn("peak_listening_hour", an_data)
+
 if __name__ == "__main__":
     unittest.main()

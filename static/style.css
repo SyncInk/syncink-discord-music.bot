@@ -308,6 +308,8 @@ body.is-authenticated #demo-mode-btn {
 #bottom-player {
   overflow: hidden;
   box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.6);
+  transform: translateZ(0);
+  will-change: transform;
 }
 
 @media (max-width: 767px) {
@@ -319,4 +321,65 @@ body.is-authenticated #demo-mode-btn {
 #player-progress-bar-mobile {
   border-radius: 999px;
   background: linear-gradient(90deg, var(--accent-primary), var(--accent-secondary));
+}
+
+/* ================================================================
+   60fps Animations & Mobile Fullscreen Player System
+   ================================================================ */
+
+/* Hardware Accelerated Transforms & Fluid Transitions */
+.animate-slide-up {
+  animation: slideUpSmooth 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  will-change: transform, opacity;
+  transform: translate3d(0, 0, 0);
+}
+
+@keyframes slideUpSmooth {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Mobile Fullscreen Player Sheet (Spotify Mobile Aesthetic) */
+#mobile-full-player {
+  background: radial-gradient(circle at 50% 20%, #201738 0%, #121019 60%, #0d0c12 100%);
+  animation: modalSlideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: transform;
+  transform: translate3d(0, 0, 0);
+}
+
+@keyframes modalSlideUp {
+  from {
+    transform: translate3d(0, 100%, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+/* Upcoming Track Toast Banner */
+#upcoming-track-banner {
+  box-shadow: 0 16px 40px -8px rgba(128, 85, 217, 0.4), 0 0 20px rgba(0, 0, 0, 0.8);
+  border: 1px solid rgba(185, 162, 242, 0.4);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* Search Autocomplete Dropdown Styling */
+#search-suggestions-dropdown {
+  box-shadow: 0 20px 48px -4px rgba(0, 0, 0, 0.9), 0 0 0 1px rgba(128, 85, 217, 0.3);
+  scrollbar-width: thin;
+}
+
+#search-suggestions-dropdown::-webkit-scrollbar {
+  width: 4px;
+}
+#search-suggestions-dropdown::-webkit-scrollbar-thumb {
+  background: var(--accent-primary);
+  border-radius: 999px;
 }
