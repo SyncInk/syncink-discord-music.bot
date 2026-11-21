@@ -431,6 +431,60 @@ class DashboardAPI:
         return aiohttp.web.json_response(state)
 
     @classmethod
+    async def _send_discord_player_card(cls, bot, guild, queue, track=None, is_enqueued=False, enqueued_position=1):
+        """Ensures Discord channel has the rich interactive player card when playback is initiated via Web Dashboard."""
+        if not bot or not guild:
+            return
+        music_cog = bot.get_cog("Music")
+        if not music_cog:
+            return
+
+        # Find or assign the best text channel in the guild
+        if not queue.text_channel or queue.text_channel.guild.id != guild.id:
+            target_ch = None
+            preferred_names = ["music", "bot-commands", "commands", "radio", "music-bot", "general", "bot", "chat"]
+            for name in preferred_names:
+                for ch in guild.text_channels:
+                    if ch.name.lower() == name and ch.permissions_for(guild.me).send_messages:
+                        target_ch = ch
+                        break
+                if target_ch:
+                    break
+
+            if not target_ch and guild.system_channel and guild.system_channel.permissions_for(guild.me).send_messages:
+                target_ch = guild.system_channel
+
+            if not target_ch:
+                for ch in guild.text_channels:
+                    if ch.permissions_for(guild.me).send_messages:
+                        target_ch = ch
+                        break
+
+            if target_ch:
+                queue.text_channel = target_ch
+
+        if not queue.text_channel:
+            return
+
+        try:
+            from cogs.music import MusicPlayerLayoutView, TrackEnqueuedLayoutView
+            if is_enqueued and track:
+                view = TrackEnqueuedLayoutView(track, position=enqueued_position)
+                await queue.text_channel.send(view=view)
+            else:
+                if queue.now_playing_message:
+                    try:
+                        await queue.now_playing_message.delete()
+                    except Exception:
+                        pass
+                    queue.now_playing_message = None
+
+                view = MusicPlayerLayoutView(music_cog, queue)
+                queue.now_playing_message = await queue.text_channel.send(view=view)
+        except Exception as e:
+            log.warning(f"[Dashboard Discord Player Card Error] {e}")
+
+    @classmethod
     async def handle_server_control(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         guild_id_str = request.match_info.get("guild_id")
         try:
@@ -525,8 +579,10 @@ class DashboardAPI:
                         music_cog = bot.get_cog("Music") if bot else None
                         if music_cog:
                             await music_cog.play_track(queue, track)
+                            await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False)
                     else:
                         queue.tracks.append(track)
+                        await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=True, enqueued_position=len(queue.tracks))
             except Exception as pe:
                 return aiohttp.web.json_response({"error": f"Failed to enqueue: {pe}"}, status=500)
 
@@ -939,6 +995,7 @@ class DashboardAPI:
         queue.tracks.clear()
 
         await music_cog.play_track(queue, track)
+        await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False)
         await DashboardWebSocketManager.get_instance().broadcast_playback_update(guild_id, bot)
 
         return aiohttp.web.json_response({"success": True, "station": station_name})
@@ -1202,62 +1259,88 @@ class DashboardAPI:
         if not q or len(q) < 2:
             return aiohttp.web.json_response({"suggestions": []})
 
+        import urllib.parse
+        import re
+        import json
+
         suggestions = []
+        clean_yt_candidates = []
+        top_keyword = None
+
+        # 1. Query YouTube autocomplete (Google Suggest) to resolve prefixes (e.g. "yalga" -> "yalgaar")
         try:
-            import urllib.parse
-            encoded_query = urllib.parse.quote(q)
-            itunes_url = f"https://itunes.apple.com/search?term={encoded_query}&entity=song&limit=6"
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.5)) as session:
-                async with session.get(itunes_url) as resp:
+            yt_suggest_url = f"https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={urllib.parse.quote(q)}"
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
+                async with session.get(yt_suggest_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
                     if resp.status == 200:
-                        data = await resp.json(content_type=None)
-                        for item in data.get("results", []):
-                            track_name = item.get("trackName")
-                            artist_name = item.get("artistName")
-                            if track_name and artist_name:
-                                duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
-                                thumb = item.get("artworkUrl100") or "https://files.catbox.moe/74l9su.png"
-                                suggestions.append({
-                                    "title": track_name,
-                                    "artist": artist_name,
-                                    "duration": duration_sec,
-                                    "thumbnail": thumb,
-                                    "source": "itunes"
-                                })
-        except Exception as e:
-            log.debug(f"[Search Suggestions iTunes Error] {e}")
+                        raw = await resp.json(content_type=None)
+                        if len(raw) > 1 and isinstance(raw[1], list):
+                            for s in raw[1]:
+                                s_text = s.strip() if isinstance(s, str) else ""
+                                if not s_text:
+                                    continue
+                                # Filter out non-song videos (reaction, trailer, movie, vlog, full movie, etc.)
+                                if re.search(r'\b(reaction|movie|film|trailer|full movie|vlog|scene|episode|funny|news)\b', s_text, re.I):
+                                    continue
+                                clean_s = re.sub(r'(?i)\s+(song|songs|audio|official video|video|lyrics|status|full song)$', '', s_text).strip()
+                                if clean_s and clean_s.lower() not in [x.lower() for x in clean_yt_candidates]:
+                                    clean_yt_candidates.append(clean_s)
+                                    if not top_keyword and clean_s.lower() != q.lower():
+                                        top_keyword = clean_s
+        except Exception as yt_err:
+            log.debug(f"[Search Suggestions YT Autocomplete Error] {yt_err}")
 
-        # Fallback to YouTube music suggestions if iTunes returned empty
-        if not suggestions:
+        # 2. Query iTunes song database with enriched keyword (top_keyword) and q itself
+        terms_to_search = []
+        if top_keyword:
+            terms_to_search.append(top_keyword)
+        if q.lower() not in [t.lower() for t in terms_to_search]:
+            terms_to_search.append(q)
+
+        itunes_results = []
+        seen_titles = set()
+
+        for term in terms_to_search[:2]:
             try:
-                import urllib.parse
-                import re
-                import json
-                yt_suggest_url = f"https://suggestqueries.google.com/complete/search?client=youtube&ds=yt&q={urllib.parse.quote(q + ' song')}"
+                itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(term)}&entity=song&limit=4"
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
-                    async with session.get(yt_suggest_url) as resp:
+                    async with session.get(itunes_url) as resp:
                         if resp.status == 200:
-                            text = await resp.text()
-                            m = re.search(r'\[.*\]', text)
-                            if m:
-                                raw = json.loads(m.group(0))
-                                if len(raw) > 1 and isinstance(raw[1], list):
-                                    for entry in raw[1][:5]:
-                                        s_text = entry[0] if isinstance(entry, list) else entry
-                                        if s_text:
-                                            # Clean query string
-                                            clean_sugg = re.sub(r'(?i)\s+(song|lyrics|audio|official video|video)$', '', s_text).strip()
-                                            suggestions.append({
-                                                "title": clean_sugg,
-                                                "artist": "Music Result",
-                                                "duration": 0,
-                                                "thumbnail": "https://files.catbox.moe/74l9su.png",
-                                                "source": "youtube"
-                                            })
-            except Exception as yt_err:
-                log.debug(f"[Search Suggestions YT Error] {yt_err}")
+                            data = await resp.json(content_type=None)
+                            for item in data.get("results", []):
+                                track_name = item.get("trackName")
+                                artist_name = item.get("artistName")
+                                if track_name and artist_name:
+                                    k = (track_name.lower(), artist_name.lower())
+                                    if k not in seen_titles:
+                                        seen_titles.add(k)
+                                        duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
+                                        thumb = item.get("artworkUrl100") or "https://files.catbox.moe/74l9su.png"
+                                        itunes_results.append({
+                                            "title": track_name,
+                                            "artist": artist_name,
+                                            "duration": duration_sec,
+                                            "thumbnail": thumb,
+                                            "source": "itunes"
+                                        })
+            except Exception as it_err:
+                log.debug(f"[Search Suggestions iTunes Error] {it_err}")
 
-        return aiohttp.web.json_response({"suggestions": suggestions})
+        # Combine iTunes results first (accurate song & artist metadata)
+        suggestions.extend(itunes_results)
+
+        # Append clean YouTube candidates that aren't already represented
+        for cand in clean_yt_candidates:
+            if not any(cand.lower() == s["title"].lower() for s in suggestions):
+                suggestions.append({
+                    "title": cand.title(),
+                    "artist": "Song Result",
+                    "duration": 0,
+                    "thumbnail": "https://files.catbox.moe/74l9su.png",
+                    "source": "youtube"
+                })
+
+        return aiohttp.web.json_response({"suggestions": suggestions[:8]})
 
     @classmethod
     async def handle_play_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -1330,6 +1413,7 @@ class DashboardAPI:
                     trk.requested_by = requester
                     if not queue.current_track and enqueued_count == 0 and music_cog:
                         await music_cog.play_track(queue, trk)
+                        await cls._send_discord_player_card(bot, guild, queue, trk, is_enqueued=False)
                     else:
                         queue.tracks.append(trk)
                     enqueued_count += 1
@@ -1391,7 +1475,9 @@ class DashboardAPI:
             if not accessible_guild_ids:
                 accessible_guild_ids = {g.id for g in bot.guilds}
 
-        if accessible_guild_ids:
+        if target_guild_id:
+            user_clause = f"WHERE (guild_id = {target_guild_id} OR discord_user_id = $1)"
+        elif accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
             user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
         else:
@@ -1410,16 +1496,24 @@ class DashboardAPI:
         for h in history:
             if isinstance(h.get("played_at"), datetime):
                 h["played_at"] = h["played_at"].isoformat()
+            h["is_live_now"] = False
 
-        # If history table is empty but bot is actively playing right now, synthesize live item
-        if not history and bot:
+        # 1. Synthesize live currently playing track at the top of history (ALWAYS, not just when empty)
+        live_entry = None
+        session_history = []
+        if bot:
             search_gids = [target_guild_id] if target_guild_id else list(accessible_guild_ids)
+            if not search_gids:
+                search_gids = [g.id for g in bot.guilds]
             music_service = MusicService.get_instance()
             for gid in search_gids:
+                g = bot.get_guild(gid)
+                vc = (g.voice_client if g else None)
                 q = music_service.get_queue(gid)
-                if q.voice_client and q.voice_client.is_playing() and q.current_track:
-                    history.append({
-                        "id": 999999,
+                active_vc = vc or q.voice_client
+                if not live_entry and q.current_track and active_vc and (active_vc.is_playing() or active_vc.is_paused()):
+                    live_entry = {
+                        "id": 0,
                         "guild_id": gid,
                         "discord_user_id": uid,
                         "track_title": q.current_track.clean_title or q.current_track.title,
@@ -1428,11 +1522,35 @@ class DashboardAPI:
                         "duration": int(q.current_track.duration or 0),
                         "platform": q.current_track.platform or "youtube",
                         "thumbnail_url": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
-                        "played_at": datetime.utcnow().isoformat()
-                    })
-                    break
+                        "played_at": "Now Playing",
+                        "is_live_now": True
+                    }
 
-        return aiohttp.web.json_response({"history": history, "count": len(history), "authenticated": bool(user)})
+                # 2. Merge recent in-memory session history (queue.history) from active queue
+                for trk in reversed(getattr(q, "history", [])[-25:]):
+                    t_title = trk.clean_title or trk.title
+                    if not any(h.get("track_title", "").lower() == t_title.lower() for h in history):
+                        session_history.append({
+                            "id": 800000 + len(session_history),
+                            "guild_id": gid,
+                            "discord_user_id": uid,
+                            "track_title": t_title,
+                            "track_author": trk.author or "Artist",
+                            "track_url": trk.url or "",
+                            "duration": int(trk.duration or 0),
+                            "platform": trk.platform or "youtube",
+                            "thumbnail_url": trk.thumbnail or "https://files.catbox.moe/74l9su.png",
+                            "played_at": datetime.utcnow().isoformat(),
+                            "is_live_now": False
+                        })
+
+        full_history = []
+        if live_entry:
+            full_history.append(live_entry)
+        full_history.extend(session_history)
+        full_history.extend([h for h in history if not live_entry or h.get("track_title", "").lower() != live_entry["track_title"].lower()])
+
+        return aiohttp.web.json_response({"history": full_history[:limit], "count": len(full_history), "authenticated": bool(user)})
 
     @classmethod
     async def handle_delete_history_item(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -1515,7 +1633,9 @@ class DashboardAPI:
             if not accessible_guild_ids:
                 accessible_guild_ids = {g.id for g in bot.guilds}
 
-        if accessible_guild_ids:
+        if target_guild_id:
+            user_clause = f"WHERE (guild_id = {target_guild_id} OR discord_user_id = $1)"
+        elif accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
             user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
         else:
@@ -1574,7 +1694,9 @@ class DashboardAPI:
                 search_gids = [g.id for g in bot.guilds]
             for gid in search_gids:
                 q = music_service.get_queue(gid)
-                if q.voice_client and q.voice_client.is_playing() and q.current_track:
+                g = bot.get_guild(gid)
+                vc = (g.voice_client if g else None) or q.voice_client
+                if q.current_track and vc and (vc.is_playing() or vc.is_paused()):
                     live_active = True
                     live_track = {
                         "title": q.current_track.clean_title or q.current_track.title,
@@ -1583,9 +1705,8 @@ class DashboardAPI:
                         "duration": int(q.current_track.duration or 0),
                         "is_radio": q.current_track.is_radio
                     }
-                    g = bot.get_guild(gid)
                     live_guild_name = g.name if g else "Discord Server"
-                    live_channel_name = q.voice_client.channel.name if q.voice_client.channel else "Voice"
+                    live_channel_name = vc.channel.name if vc.channel else "Voice"
                     if q.start_time:
                         live_elapsed = max(0, int(time.time() - q.start_time - q.total_paused_duration))
                     break

@@ -2252,16 +2252,17 @@ class Music(commands.Cog):
 
                     async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb):
                         try:
-                            # Verify user preference for private listening
-                            pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
-                            if pref and pref.get("private_listening"):
-                                return
+                            # Verify user preference for private listening if user id is known
+                            if uid:
+                                pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
+                                if pref and pref.get("private_listening"):
+                                    return
                             q = """
                                 INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                             """
-                            await db.execute(q, gid, uid, title, author, url, int(dur or 0), plat or "audio", thumb or "")
-                            log.debug(f"[Listening History] Recorded '{title}' for user {uid} in guild {gid}")
+                            await db.execute(q, gid, uid or 0, title, author, url, int(dur or 0), plat or "audio", thumb or "")
+                            log.info(f"[Listening History] Successfully recorded '{title}' for user {uid} in guild {gid}")
                         except Exception as h_err:
                             log.warning(f"[Listening History] Could not record playback: {h_err}")
 

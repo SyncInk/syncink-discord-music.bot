@@ -30,6 +30,7 @@ class DatabaseManager:
         self.pool: Optional[Any] = None
         self._sqlite_conn: Optional[sqlite3.Connection] = None
         self._lock: Optional[asyncio.Lock] = None
+        self._sqlite_lock: Optional[asyncio.Lock] = None
 
     def is_connected(self) -> bool:
         if self.is_postgres:
@@ -254,12 +255,15 @@ class DatabaseManager:
                 raise DatabaseError(redacted_err)
         else:
             q = self._convert_query_to_sqlite(query)
+            if self._sqlite_lock is None:
+                self._sqlite_lock = asyncio.Lock()
             def _run():
                 cur = self._sqlite_conn.cursor()
                 cur.execute(q, args)
                 rows = cur.fetchall()
                 return [SQLiteRecord(dict(r)) for r in rows]
-            return await asyncio.to_thread(_run)
+            async with self._sqlite_lock:
+                return await asyncio.to_thread(_run)
 
     async def fetchrow(self, query: str, *args) -> Optional[Any]:
         await self.ensure_connected()
@@ -273,12 +277,15 @@ class DatabaseManager:
                 raise DatabaseError(redacted_err)
         else:
             q = self._convert_query_to_sqlite(query)
+            if self._sqlite_lock is None:
+                self._sqlite_lock = asyncio.Lock()
             def _run():
                 cur = self._sqlite_conn.cursor()
                 cur.execute(q, args)
                 row = cur.fetchone()
                 return SQLiteRecord(dict(row)) if row else None
-            return await asyncio.to_thread(_run)
+            async with self._sqlite_lock:
+                return await asyncio.to_thread(_run)
 
     async def fetchval(self, query: str, *args) -> Optional[Any]:
         await self.ensure_connected()
@@ -309,12 +316,15 @@ class DatabaseManager:
                 raise DatabaseError(redacted_err)
         else:
             q = self._convert_query_to_sqlite(query)
+            if self._sqlite_lock is None:
+                self._sqlite_lock = asyncio.Lock()
             def _run():
                 cur = self._sqlite_conn.cursor()
                 cur.execute(q, args)
                 self._sqlite_conn.commit()
                 return "SUCCESS"
-            return await asyncio.to_thread(_run)
+            async with self._sqlite_lock:
+                return await asyncio.to_thread(_run)
 
     async def close(self):
         if self.is_postgres and self.pool:

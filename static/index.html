@@ -47,7 +47,7 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Cyber Violet Stylesheet -->
-  <link rel="stylesheet" href="static/style.css?v=2.6.0">
+  <link rel="stylesheet" href="static/style.css?v=2.7.0">
 </head>
 <body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none font-sans">
 
@@ -248,16 +248,16 @@
       <!-- ==================== VIEW 1: HOME OVERVIEW ==================== -->
       <section id="view-overview" class="view-panel space-y-6 max-w-7xl mx-auto pb-16">
         <!-- Hero Banner with Cyber Violet Glow -->
-        <div class="relative overflow-hidden rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1e1533] via-[#161224] to-[#101014] shadow-2xl">
-          <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-brand-primary/20 blur-3xl pointer-events-none"></div>
+        <div class="relative z-20 rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1e1533] via-[#161224] to-[#101014] shadow-2xl">
+          <!-- Ambient Glow Background Overflow Container -->
+          <div class="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
+            <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-brand-primary/20 blur-3xl"></div>
+          </div>
           <div class="relative z-10 max-w-3xl">
-            <!-- Audia AI Official Logo & Version Mark -->
+            <!-- Audia AI Official Logo & Version Mark (No duplicate text, only official logo image + v1.0 tag) -->
             <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#1d172e]/90 border border-brand-primary/40 shadow-lg shadow-brand-primary/10 mb-4 backdrop-blur-md">
-              <img src="https://syncink.site/audia-ai-logo.png" alt="Audia AI Logo" class="w-6 h-6 rounded-lg object-contain shrink-0 shadow-md">
-              <div class="flex items-center gap-2">
-                <span class="font-extrabold text-xs tracking-tight text-white">Audia AI</span>
-                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
-              </div>
+              <img src="https://syncink.site/audia-ai-logo.png" alt="Audia AI" class="h-6 w-auto object-contain shrink-0 shadow-md">
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
             </div>
             <h2 id="overview-greeting" class="text-2xl sm:text-4xl font-extrabold tracking-tight mb-3">Welcome to SyncInk Radio</h2>
             <p class="text-[#9E9EAD] text-xs sm:text-sm leading-relaxed mb-6">Explore 30,000+ live worldwide radio stations, high-fidelity music streaming, and personalized continuous AutoPlay powered by Audia AI.</p>
@@ -524,12 +524,10 @@
       <section id="view-audia" class="view-panel hidden space-y-6 max-w-7xl mx-auto pb-16">
         <div class="glass-panel p-6 sm:p-8 rounded-3xl border border-brand-primary/40 relative overflow-hidden bg-gradient-to-r from-[#1f1636] to-[#14121d]">
           <div class="max-w-2xl">
+            <!-- Audia AI Official Logo & Version Mark (No duplicate text, only official logo image + v1.0 tag) -->
             <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#1d172e]/90 border border-brand-primary/40 shadow-lg shadow-brand-primary/10 mb-3 backdrop-blur-md">
-              <img src="https://syncink.site/audia-ai-logo.png" alt="Audia AI Logo" class="w-6 h-6 rounded-lg object-contain shrink-0 shadow-md">
-              <div class="flex items-center gap-2">
-                <span class="font-extrabold text-xs tracking-tight text-white">Audia AI</span>
-                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
-              </div>
+              <img src="https://syncink.site/audia-ai-logo.png" alt="Audia AI" class="h-6 w-auto object-contain shrink-0 shadow-md">
+              <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
             </div>
             <h2 class="text-2xl sm:text-3xl font-extrabold mb-2">Personal Taste Profile & Smart Autoplay</h2>
             <p class="text-sm text-[#9E9EAD] leading-relaxed">Audia continuously analyzes real playback completions, user skips, repeat habits, and liked artists to construct a personal recommendation matrix.</p>
@@ -1028,25 +1026,19 @@
 
       <!-- Right Actions: Mobile Controls (Spotify Mini-Player) & Desktop Actions -->
       <div class="flex items-center justify-end gap-1 sm:gap-2.5 shrink-0">
-        <!-- Mobile Quick Playback Controls (Responsive & Complete) -->
-        <div class="flex md:hidden items-center gap-0.5 sm:gap-1">
-          <button id="player-btn-like-mobile" onclick="toggleLikeCurrentTrack()" class="p-1 text-[#9E9EAD] hover:text-rose-400 transition-colors" title="Favorite">
-            <i data-lucide="heart" class="w-4 h-4"></i>
+        <!-- Mobile Quick Playback Controls (Clean, Evenly Spaced Essential Controls) -->
+        <div class="flex md:hidden items-center gap-3 sm:gap-4 shrink-0">
+          <button id="player-btn-like-mobile" onclick="event.stopPropagation(); toggleLikeCurrentTrack();" class="p-2 text-[#9E9EAD] hover:text-rose-400 active:scale-90 transition-all" title="Favorite">
+            <i data-lucide="heart" class="w-5 h-5"></i>
           </button>
-          <button onclick="controlPlayer('previous')" class="p-1 text-[#9E9EAD] hover:text-white transition-colors" title="Previous">
-            <i data-lucide="skip-back" class="w-4 h-4"></i>
+          <button id="player-btn-playpause-mobile" onclick="event.stopPropagation(); togglePlayPause();" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-[#101014] flex items-center justify-center shadow-lg active:scale-95 transition-all" title="Play / Pause">
+            <i data-lucide="play" id="icon-playpause-mobile" class="w-5 h-5 fill-current"></i>
           </button>
-          <button id="player-btn-playpause-mobile" onclick="togglePlayPause()" class="w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-white text-[#101014] flex items-center justify-center shadow-md active:scale-95 transition-all mx-0.5" title="Play / Pause">
-            <i data-lucide="play" id="icon-playpause-mobile" class="w-4 h-4 fill-current"></i>
+          <button onclick="event.stopPropagation(); controlPlayer('skip');" class="p-2 text-[#9E9EAD] hover:text-white active:scale-90 transition-all" title="Skip">
+            <i data-lucide="skip-forward" class="w-5 h-5"></i>
           </button>
-          <button onclick="controlPlayer('skip')" class="p-1 text-[#9E9EAD] hover:text-white transition-colors" title="Skip">
-            <i data-lucide="skip-forward" class="w-4 h-4"></i>
-          </button>
-          <button onclick="openMobileFullPlayer()" class="p-1 text-[#9E9EAD] hover:text-brand-secondary transition-colors" title="Expand Full Player">
-            <i data-lucide="chevron-up" class="w-4 h-4"></i>
-          </button>
-          <button onclick="toggleQueueDrawer()" class="p-1 text-[#9E9EAD] hover:text-white transition-colors" title="Queue">
-            <i data-lucide="list-music" class="w-4 h-4"></i>
+          <button onclick="event.stopPropagation(); openMobileFullPlayer();" class="p-2 text-[#9E9EAD] hover:text-brand-secondary active:scale-90 transition-all" title="Expand Full Player">
+            <i data-lucide="chevron-up" class="w-5 h-5"></i>
           </button>
         </div>
 
@@ -1327,6 +1319,6 @@
   <div id="toast-container"></div>
 
   <!-- Main Client Application Logic -->
-  <script src="static/app.js?v=2.6.0"></script>
+  <script src="static/app.js?v=2.7.0"></script>
 </body>
 </html>

@@ -273,6 +273,8 @@ function initWebSocket() {
         if (payload.event === 'playback_update') {
           if (!state.activeGuildId || state.activeGuildId === payload.guild_id) {
             updatePlaybackState(payload.data);
+            if (state.currentView === 'history') loadListeningHistory();
+            if (state.currentView === 'analytics') loadAnalytics();
           }
         }
       } catch (err) {
@@ -885,7 +887,8 @@ function handleSearchFocus() {
 
 function selectSearchSuggestion(title, artist) {
   const input = document.getElementById('overview-quick-play-input');
-  const fullQuery = `${title} ${artist}`.trim();
+  const isGeneric = !artist || ['Song Result', 'Music Result', 'Music Track'].includes(artist.trim());
+  const fullQuery = isGeneric ? title.trim() : `${title} ${artist}`.trim();
   if (input) input.value = fullQuery;
   const dropdown = document.getElementById('search-suggestions-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
@@ -2185,24 +2188,31 @@ async function loadListeningHistory() {
     }
 
     data.history.forEach(h => {
+      const isLive = h.is_live_now || h.played_at === 'Now Playing';
       const tr = document.createElement('tr');
-      tr.className = 'hover:bg-brand-surface/40 transition-colors';
+      tr.className = isLive ? 'bg-brand-primary/15 border-l-2 border-brand-secondary hover:bg-brand-primary/20 transition-all' : 'hover:bg-brand-surface/40 transition-colors';
       tr.innerHTML = `
         <td class="px-4 py-3 flex items-center gap-3">
-          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-8 h-8 rounded-lg object-cover shrink-0">
-          <span class="font-medium text-white truncate max-w-xs">${escapeHtml(h.track_title)}</span>
+          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
+          <div class="min-w-0 flex items-center gap-2">
+            <span class="font-medium text-white truncate max-w-xs">${escapeHtml(h.track_title)}</span>
+            ${isLive ? '<span class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-primary/40 text-brand-secondary border border-brand-primary/50 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE</span>' : ''}
+          </div>
         </td>
         <td class="px-4 py-3 text-[#9E9EAD] hidden sm:table-cell truncate max-w-xs">${escapeHtml(h.track_author || 'Artist')}</td>
         <td class="px-4 py-3 text-[#9E9EAD] hidden md:table-cell uppercase font-semibold text-[10px]">${escapeHtml(h.platform || 'audio')}</td>
         <td class="px-4 py-3 font-mono text-[#9E9EAD]">${formatDuration(h.duration)}</td>
-        <td class="px-4 py-3 text-right text-[#6B6A78]">${h.played_at ? formatRelativeTime(h.played_at) : ''}</td>
+        <td class="px-4 py-3 text-right ${isLive ? 'text-brand-secondary font-semibold' : 'text-[#6B6A78]'}">
+          ${isLive ? '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-primary/30 text-brand-secondary"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Now Playing</span>' : (h.played_at ? formatRelativeTime(h.played_at) : '')}
+        </td>
         <td class="px-4 py-3 text-right">
           <button onclick="sendControlAction('play', { query: '${escapeHtml(h.track_title)}' })" class="text-brand-secondary hover:text-white p-1" title="Replay">
             <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
           </button>
+          ${isLive ? '' : `
           <button onclick="deleteHistoryItem(${h.id})" class="text-[#6B6A78] hover:text-rose-400 p-1" title="Delete">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
-          </button>
+          </button>`}
         </td>
       `;
       tbody.appendChild(tr);
@@ -2309,8 +2319,27 @@ async function loadAnalytics() {
     const secs = totalSec % 60;
     if (data.live_active) {
       document.getElementById('analytics-total-hours').innerHTML = `${hrs}h ${mins}m <span class="text-xs text-emerald-400 font-mono">${secs}s</span>`;
+      // Ensure real-time 1-second live ticker runs smoothly while on analytics
+      if (!state.analyticsTicker) {
+        state.analyticsTicker = setInterval(() => {
+          if (state.currentView !== 'analytics' || !state.analyticsLiveActive) return;
+          state.analyticsLiveSeconds++;
+          const liveTotal = state.analyticsBaseSeconds + state.analyticsLiveSeconds;
+          const curHrs = Math.floor(liveTotal / 3600);
+          const curMins = Math.floor((liveTotal % 3600) / 60);
+          const curSecs = liveTotal % 60;
+          const hoursEl = document.getElementById('analytics-total-hours');
+          if (hoursEl) {
+            hoursEl.innerHTML = `${curHrs}h ${curMins}m <span class="text-xs text-emerald-400 font-mono animate-pulse">${curSecs}s</span>`;
+          }
+        }, 1000);
+      }
     } else {
       document.getElementById('analytics-total-hours').innerText = `${data.total_hours || 0} hrs`;
+      if (state.analyticsTicker) {
+        clearInterval(state.analyticsTicker);
+        state.analyticsTicker = null;
+      }
     }
 
     document.getElementById('analytics-total-tracks').innerText = data.total_tracks || 0;
