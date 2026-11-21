@@ -97,7 +97,6 @@ class Help(commands.Cog):
             desc_lines.append(f"{cat_emoji} **{cat_name}**\n╰ {cat_desc}\n")
 
         embed.description = "\n".join(desc_lines).strip()
-        embed.set_footer(text=f"Page 1 of {total_pages} • SyncInk Platform", icon_url="https://files.catbox.moe/74l9su.png")
         return embed
 
     def _build_category_page(self, title_with_emoji: str, commands_list: list[tuple[str, str]], page_num: int, total_pages: int) -> discord.Embed:
@@ -109,7 +108,6 @@ class Help(commands.Cog):
         for cmd_name, cmd_desc in commands_list:
             lines.append(f"**`{cmd_name}`**\n╰ {cmd_desc}\n")
         embed.description = "\n".join(lines).strip()
-        embed.set_footer(text=f"Page {page_num} of {total_pages} • SyncInk Platform", icon_url="https://files.catbox.moe/74l9su.png")
         return embed
 
     def _get_help_data(self) -> tuple[list[tuple[str, str, str]], list[tuple[str, list[tuple[str, str]]]]]:
@@ -118,7 +116,7 @@ class Help(commands.Cog):
             (Emojis.SPOTIFY, "Spotify Integration", "Link Spotify account via PKCE OAuth, stream personal playlists, and access /spotify mytop."),
             (Emojis.QUEUE, "Queue & Audio Controls", "Manage queue order, real-time player card, shuffle, volume, and repeat modes."),
             (Emojis.RADIO, "24/7 Radio & AI AutoPlay", "Stream global live radio stations by country flag and configure personalized AI AutoPlay."),
-            (Emojis.SETTINGS, "System & Auto-Deployment", "Automated GitHub updating, self-restart, git status, and server invite.")
+            (Emojis.SYNCBOT, "Bot Information & Links", "Get official bot invite link, documentation, and real-time Web Dashboard access.")
         ]
 
         playback_cmds = [
@@ -153,11 +151,9 @@ class Help(commands.Cog):
             ("/audia [on/off]", "Audia AI intelligent music assistant, mood/genre focus, and AutoPlay (Aliases: /dj, /autoplay).")
         ]
 
-        system_cmds = [
-            ("/update", "Check GitHub for latest commits, pull updates, and automatically restart bot."),
-            ("/restart", "Gracefully reboot the bot process without touching terminal."),
-            ("/gitstatus", "View current active Git commit, branch, and deployment timestamp."),
-            ("/invite", "Get official bot invite link with full external emoji and embed permissions.")
+        bot_info_cmds = [
+            ("/invite", "Get official bot invite link with full audio and slash command permissions."),
+            ("/help", "Open this interactive command guide and reference.")
         ]
 
         category_details = [
@@ -165,7 +161,7 @@ class Help(commands.Cog):
             (f"{Emojis.SPOTIFY} Spotify Integration", spotify_cmds),
             (f"{Emojis.QUEUE} Queue & Audio Controls", queue_cmds),
             (f"{Emojis.RADIO} 24/7 Radio & AI AutoPlay", radio_cmds),
-            (f"{Emojis.SETTINGS} System & Auto-Deployment", system_cmds)
+            (f"{Emojis.SYNCBOT} Bot Information & Links", bot_info_cmds)
         ]
 
         return categories_overview, category_details
@@ -190,9 +186,9 @@ class Help(commands.Cog):
             )
         ]
 
-        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
-        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Auto GitHub updates, restart, git status"]
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.SPOTIFY, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SYNCBOT]
+        labels_list = ["Playback & Streaming", "Spotify Integration", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "Bot Information & Links"]
+        descs_list = ["Play, search, skip, stop", "Link Spotify, user playlists", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Bot invite link and documentation"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))
@@ -223,9 +219,9 @@ class Help(commands.Cog):
             )
         ]
 
-        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SETTINGS]
-        labels_list = ["Playback & Streaming", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "System & Auto-Deployment"]
-        descs_list = ["Play, search, skip, stop", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Auto GitHub updates, restart, git status"]
+        emojis_list = [EmojiPartials.PLAY_BUTTON, EmojiPartials.SPOTIFY, EmojiPartials.QUEUE, EmojiPartials.RADIO, EmojiPartials.SYNCBOT]
+        labels_list = ["Playback & Streaming", "Spotify Integration", "Queue & Audio Controls", "24/7 Radio & AI AutoPlay", "Bot Information & Links"]
+        descs_list = ["Play, search, skip, stop", "Link Spotify, user playlists", "Queue, progress, volume, loop", "Global live radio and Audia AI", "Bot invite link and documentation"]
 
         for i, (cat_title, cmds) in enumerate(cat_details, start=1):
             pages.append(self._build_category_page(cat_title, cmds, i + 1, total_pages))

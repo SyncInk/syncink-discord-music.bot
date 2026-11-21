@@ -439,9 +439,22 @@ class DashboardAPI:
         if not music_cog:
             return
 
-        # Find or assign the best text channel in the guild
-        if not queue.text_channel or queue.text_channel.guild.id != guild.id:
-            target_ch = None
+        # Check if guild has a configured dedicated music text channel
+        target_ch = None
+        try:
+            from services.settings_service import SettingsService
+            settings = await SettingsService.get_guild_settings(guild.id)
+            cid = settings.get("music_channel_id")
+            if cid:
+                ch = guild.get_channel(int(cid))
+                if ch and ch.permissions_for(guild.me).send_messages:
+                    target_ch = ch
+        except Exception as se:
+            log.debug(f"[API] Could not resolve dedicated music channel: {se}")
+
+        if target_ch:
+            queue.text_channel = target_ch
+        elif not queue.text_channel or queue.text_channel.guild.id != guild.id:
             preferred_names = ["music", "bot-commands", "commands", "radio", "music-bot", "general", "bot", "chat"]
             for name in preferred_names:
                 for ch in guild.text_channels:

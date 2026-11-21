@@ -5,6 +5,8 @@ from typing import Set, Dict
 # Set of emoji IDs verified to belong to this bot's application or accessible guilds
 # Pre-seeded with verified Audia AI and preference emojis; updated dynamically by EmojiManager upon startup.
 VERIFIED_BOT_EMOJI_IDS: Set[int] = {
+    1559661648011075664,  # playing (animated)
+    1520914584012328961,  # syncwarning (animated)
     1571879222908031078,  # Audia_AI
     1568327108533551144,  # PunjabiPop
     1568327227983007864,  # LofiCoffee
@@ -21,6 +23,12 @@ VERIFIED_BOT_EMOJI_IDS: Set[int] = {
 
 # Map of normalized emoji names -> verified custom Discord emoji tags (<:name:id> or <a:name:id>)
 VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {
+    "playing": "<a:playing:1559661648011075664>",
+    "syncwarning": "<a:syncwarning:1520914584012328961>",
+    "sync_alert": "<a:syncwarning:1520914584012328961>",
+    "syncalert": "<a:syncwarning:1520914584012328961>",
+    "warning": "<a:syncwarning:1520914584012328961>",
+    "alert": "<a:syncwarning:1520914584012328961>",
     "audia_ai": "<:Audia_AI:1571879222908031078>",
     "audia": "<:Audia_AI:1571879222908031078>",
     "audiaai": "<:Audia_AI:1571879222908031078>",
@@ -156,8 +164,8 @@ class Emojis:
     Dynamically upgraded to verified custom Discord application emojis by EmojiManager upon startup.
     """
     # System Alerts & Notices
-    ALERT = "⚠️"
-    WARNING = "⚠️"
+    ALERT = "<a:syncwarning:1520914584012328961>"
+    WARNING = "<a:syncwarning:1520914584012328961>"
     SETTINGS = "⚙️"
     REFUSED = "❌"
     APPROVED = "✅"
@@ -191,7 +199,7 @@ class Emojis:
     DELETE = "🗑️"
     LIKE = "👍"
     DISLIKE = "👎"
-    PLAYING = "🎶"
+    PLAYING = "<a:playing:1559661648011075664>"
     SCALE = "⚖️"
     REFRESH = "🔄"
     VOLUME = "🔊"
@@ -255,8 +263,8 @@ class EmojiPartials:
     Upgraded dynamically by EmojiManager if custom emojis are verified for this application.
     """
     # System Alerts & Notices
-    ALERT = discord.PartialEmoji(name="⚠️")
-    WARNING = discord.PartialEmoji(name="⚠️")
+    ALERT = discord.PartialEmoji(name="syncwarning", id=1520914584012328961, animated=True)
+    WARNING = discord.PartialEmoji(name="syncwarning", id=1520914584012328961, animated=True)
     SETTINGS = discord.PartialEmoji(name="⚙️")
     REFUSED = discord.PartialEmoji(name="❌")
     APPROVED = discord.PartialEmoji(name="✅")
@@ -290,7 +298,7 @@ class EmojiPartials:
     DELETE = discord.PartialEmoji(name="🗑️")
     LIKE = discord.PartialEmoji(name="👍")
     DISLIKE = discord.PartialEmoji(name="👎")
-    PLAYING = discord.PartialEmoji(name="🎶")
+    PLAYING = discord.PartialEmoji(name="playing", id=1559661648011075664, animated=True)
     SCALE = discord.PartialEmoji(name="scale", id=1568355166913167430, animated=False)
     REFRESH = discord.PartialEmoji(name="refresh", id=1568357873224781835, animated=False)
 
@@ -353,8 +361,15 @@ OLD_TAG_MAP = {
     "<a:refused:1547035200926654624>": "<a:refused:1558019488408932423>",
     "<:SyncInkAI:1549154093421826058>": "<:SyncInkAI:1568405549572165703>",
     "<:s_arrow:1558799699102793801>": "<:s_arrow:1568408148463718490>",
-    "<a:syncwarning:1547034231438319616>": "<a:sync_alert:1513822294831534220>",
-    "<a:syncalert:1547036006455189626>": "<a:sync_alert:1513822294831534220>",
+    "<a:syncwarning:1547034231438319616>": "<a:syncwarning:1520914584012328961>",
+    "<a:syncalert:1547036006455189626>": "<a:syncwarning:1520914584012328961>",
+    "<a:sync_alert:1513822294831534220>": "<a:syncwarning:1520914584012328961>",
+    "<a:syncwarning:1513822294831534220>": "<a:syncwarning:1520914584012328961>",
+    "<a:syncwarning:1573698286941118705>": "<a:syncwarning:1520914584012328961>",
+    "<a:sync_alert:1573698286941118705>": "<a:syncwarning:1520914584012328961>",
+    "<a:1573698286941118705>": "<a:syncwarning:1520914584012328961>",
+    "<a::1573698286941118705>": "<a:syncwarning:1520914584012328961>",
+    "<:1573698286941118705>": "<a:syncwarning:1520914584012328961>",
     "<a:check_yes:1547034079076032512>": "<a:sync_check_yes:1518997998128988160>",
     "<:syncbot:1552437282059980810>": "<:syncrobot:1538932141273120828>",
 }
@@ -383,6 +398,11 @@ def format_discord_emojis(text: str) -> str:
     # 3. Upgrade legacy tags
     for old_tag, new_tag in OLD_TAG_MAP.items():
         text = text.replace(old_tag, new_tag)
+
+    # Replace broken or unverified alert tags & replace 🎶 with animated playing
+    text = re.sub(r'<a?:[a-zA-Z0-9_~-]*:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+    text = re.sub(r'<a?:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+    text = text.replace("🎶", "<a:playing:1559661648011075664>")
 
     # 4. Filter unverified custom emojis (<a?:name:id>)
     # If the bot is not permitted to send this ID, Discord strips it to :name: text.

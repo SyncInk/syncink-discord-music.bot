@@ -20,8 +20,45 @@ class EmojiManager:
     Guarantees cross-server compatibility and completely eliminates raw broken :name: text.
     """
 
-    # User-verified custom emojis (populated dynamically from actual API discovery only)
-    DEFAULT_KNOWN_EMOJIS = {}
+    # User-verified custom emojis (guaranteed application emojis)
+    DEFAULT_KNOWN_EMOJIS = {
+        "playing": {
+            "id": 1559661648011075664,
+            "name": "playing",
+            "animated": True,
+            "tag": "<a:playing:1559661648011075664>",
+        },
+        "syncwarning": {
+            "id": 1520914584012328961,
+            "name": "syncwarning",
+            "animated": True,
+            "tag": "<a:syncwarning:1520914584012328961>",
+        },
+        "sync_alert": {
+            "id": 1520914584012328961,
+            "name": "syncwarning",
+            "animated": True,
+            "tag": "<a:syncwarning:1520914584012328961>",
+        },
+        "syncalert": {
+            "id": 1520914584012328961,
+            "name": "syncwarning",
+            "animated": True,
+            "tag": "<a:syncwarning:1520914584012328961>",
+        },
+        "warning": {
+            "id": 1520914584012328961,
+            "name": "syncwarning",
+            "animated": True,
+            "tag": "<a:syncwarning:1520914584012328961>",
+        },
+        "alert": {
+            "id": 1520914584012328961,
+            "name": "syncwarning",
+            "animated": True,
+            "tag": "<a:syncwarning:1520914584012328961>",
+        },
+    }
 
     # Essential application emojis and their candidate filenames in assets/emojis
     EMOJI_ASSET_FILES = {
@@ -287,14 +324,17 @@ class EmojiManager:
         # True Application Emojis uploaded above work globally across all servers.
         pass
 
-        # 5. Integrate pre-configured known application emojis (user-specified)
+        # 5. Integrate pre-configured known application emojis (user-specified, always take priority)
         for norm, d in cls.DEFAULT_KNOWN_EMOJIS.items():
-            if norm not in app_emoji_dict:
-                app_emoji_dict[norm] = d
+            app_emoji_dict[norm] = d
 
         # 6. Update global verified registries
         VERIFIED_BOT_EMOJI_IDS.clear()
         VERIFIED_BOT_EMOJIS_BY_NAME.clear()
+
+        # Always protect user-verified application emojis
+        VERIFIED_BOT_EMOJI_IDS.add(1559661648011075664)  # playing (animated)
+        VERIFIED_BOT_EMOJI_IDS.add(1520914584012328961)  # syncwarning (animated)
 
         for norm, d in app_emoji_dict.items():
             VERIFIED_BOT_EMOJI_IDS.add(d["id"])
@@ -303,11 +343,11 @@ class EmojiManager:
 
         # Setup standard aliases
         alias_pairs = [
-            ("syncwarning", "sync_alert"),
-            ("syncalert", "sync_alert"),
-            ("sync_warning", "sync_alert"),
-            ("warning", "sync_alert"),
-            ("alert", "sync_alert"),
+            ("sync_alert", "syncwarning"),
+            ("syncalert", "syncwarning"),
+            ("sync_warning", "syncwarning"),
+            ("warning", "syncwarning"),
+            ("alert", "syncwarning"),
             ("check_yes", "sync_check_yes"),
             ("synccheckyes", "sync_check_yes"),
             ("checkyes", "sync_check_yes"),
