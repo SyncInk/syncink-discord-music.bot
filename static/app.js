@@ -157,6 +157,7 @@ async function checkAuthStatus() {
     const data = await res.json();
     const demoLabel = document.getElementById('demo-mode-label');
 
+    const demoBtn = document.getElementById('demo-mode-btn');
     if (data.authenticated && data.user) {
       state.currentUser = data.user;
       document.getElementById('login-btn').classList.add('hidden');
@@ -167,8 +168,9 @@ async function checkAuthStatus() {
       document.getElementById('user-username').innerText = data.user.username;
       document.getElementById('user-tag').innerText = data.user.discriminator !== '0' ? `#${data.user.discriminator}` : '';
 
-      if (demoLabel) {
-        demoLabel.innerText = data.user.id === '999888777' ? 'Exit Demo' : 'Demo Mode';
+      // Hide demo mode button completely when authenticated
+      if (demoBtn) {
+        demoBtn.classList.add('hidden');
       }
 
       // Personalized greeting
@@ -194,6 +196,9 @@ async function checkAuthStatus() {
       const pill = document.getElementById('user-profile-pill');
       pill.classList.add('hidden');
       pill.classList.remove('flex');
+      if (demoBtn) {
+        demoBtn.classList.remove('hidden');
+      }
       if (demoLabel) demoLabel.innerText = 'Demo Mode';
     }
   } catch (e) {
@@ -302,6 +307,7 @@ async function fetchGuildSnapshot(guildId) {
 function startLocalPlaybackTicker() {
   if (state.localTicker) clearInterval(state.localTicker);
   state.localTicker = setInterval(() => {
+    // 1. Bottom Player timeline
     if (state.playback.is_playing && !state.playback.is_paused) {
       state.playback.position += 1;
       if (state.playback.duration > 0 && state.playback.position > state.playback.duration) {
@@ -309,7 +315,79 @@ function startLocalPlaybackTicker() {
       }
       renderTimelineOnly();
     }
+
+    // 2. Real-time Analytics Live 1-Second Sync with Discord Voice
+    if (state.currentView === 'analytics' && state.currentUser) {
+      tickAnalyticsEverySecond();
+    }
   }, 1000);
+}
+
+function tickAnalyticsEverySecond() {
+  state.analyticsTickCount = (state.analyticsTickCount || 0) + 1;
+  const isLive = state.analyticsLiveActive || (state.playback && state.playback.is_playing && !state.playback.is_paused);
+
+  if (isLive) {
+    state.analyticsLiveSeconds = (state.analyticsLiveSeconds || 0) + 1;
+    const totalSec = (state.analyticsBaseSeconds || 0) + state.analyticsLiveSeconds;
+    const totalHoursEl = document.getElementById('analytics-total-hours');
+    if (totalHoursEl) {
+      const hrs = Math.floor(totalSec / 3600);
+      const mins = Math.floor((totalSec % 3600) / 60);
+      const secs = totalSec % 60;
+      if (hrs > 0) {
+        totalHoursEl.innerHTML = `${hrs}h ${mins}m <span class="text-xs text-emerald-400 font-mono">${secs}s</span>`;
+      } else {
+        totalHoursEl.innerHTML = `${mins}m <span class="text-xs text-emerald-400 font-mono">${secs}s</span>`;
+      }
+    }
+
+    const liveClockEl = document.getElementById('analytics-live-clock');
+    if (liveClockEl) {
+      liveClockEl.innerText = formatDuration(state.playback.position || state.analyticsLiveSeconds);
+    }
+  }
+
+  // Resync silently from backend every 5 seconds
+  if (state.analyticsTickCount % 5 === 0) {
+    fetchAnalyticsSilently();
+  }
+}
+
+async function fetchAnalyticsSilently() {
+  if (state.currentView !== 'analytics' || !state.currentUser) return;
+  try {
+    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}`);
+    if (res.ok) {
+      const data = await res.json();
+      state.analyticsBaseSeconds = (data.total_seconds || 0) - (data.live_elapsed || 0);
+      state.analyticsLiveActive = data.live_active;
+      if (data.live_active) {
+        state.analyticsLiveSeconds = data.live_elapsed || 0;
+        const banner = document.getElementById('analytics-live-banner');
+        if (banner) {
+          banner.classList.remove('hidden');
+          banner.classList.add('flex');
+          if (data.live_track) {
+            const titleEl = document.getElementById('analytics-live-title');
+            const artistEl = document.getElementById('analytics-live-artist');
+            const artEl = document.getElementById('analytics-live-art');
+            const serverEl = document.getElementById('analytics-live-server');
+            if (titleEl) titleEl.innerText = data.live_track.title;
+            if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
+            if (artEl) artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+            if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
+          }
+        }
+      }
+      const totalTracksEl = document.getElementById('analytics-total-tracks');
+      if (totalTracksEl && data.total_tracks !== undefined) totalTracksEl.innerText = data.total_tracks;
+      const peakHourEl = document.getElementById('analytics-peak-hour');
+      if (peakHourEl && data.peak_listening_hour) peakHourEl.innerText = data.peak_listening_hour;
+    }
+  } catch (e) {
+    // silent catch
+  }
 }
 
 function updatePlaybackState(data) {
@@ -324,6 +402,7 @@ function renderTimelineOnly() {
   const currentEl = document.getElementById('player-current-time');
   const totalEl = document.getElementById('player-total-time');
   const barEl = document.getElementById('player-progress-bar');
+  const knobEl = document.getElementById('player-progress-knob');
 
   if (currentEl) currentEl.innerText = formatDuration(state.playback.position);
   if (totalEl) totalEl.innerText = state.playback.duration > 0 ? formatDuration(state.playback.duration) : 'LIVE';
@@ -332,8 +411,10 @@ function renderTimelineOnly() {
     if (state.playback.duration > 0) {
       const pct = Math.min(100, Math.max(0, (state.playback.position / state.playback.duration) * 100));
       barEl.style.width = `${pct}%`;
+      if (knobEl) knobEl.style.left = `${pct}%`;
     } else {
       barEl.style.width = state.playback.is_playing ? '100%' : '0%';
+      if (knobEl) knobEl.style.left = state.playback.is_playing ? '100%' : '0%';
     }
   }
 }
@@ -999,13 +1080,44 @@ async function saveServerSettings() {
 
 // ------------------- VIEW 1: OVERVIEW DATA -------------------
 async function loadOverviewData() {
+  const container = document.getElementById('overview-recs-grid');
+  if (!state.currentUser) {
+    if (container) {
+      container.innerHTML = `
+        <div class="col-span-full glass-panel p-6 sm:p-8 rounded-2xl text-center border border-brand-primary/30 max-w-xl mx-auto space-y-3 shadow-xl">
+          <div class="w-12 h-12 rounded-xl bg-brand-primary/20 border border-brand-primary/40 flex items-center justify-center mx-auto text-brand-secondary">
+            <i data-lucide="shield-lock" class="w-6 h-6"></i>
+          </div>
+          <h4 class="text-base font-bold text-white">Login Required for Audia AI</h4>
+          <p class="text-xs text-[#9E9EAD] max-w-md mx-auto leading-relaxed">
+            Please log in with your Discord account so Audia AI can analyze your listening habits, track favorites, and generate personalized song recommendations.
+          </p>
+          <div class="pt-2">
+            <a href="${BASE_PATH}/api/auth/discord/login" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-brand-primary to-purple-600 hover:shadow-lg hover:shadow-brand-primary/30 transition-all">
+              <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
+            </a>
+          </div>
+        </div>
+      `;
+      initIcons();
+    }
+    const recHistContainer = document.getElementById('overview-recent-tracks');
+    if (recHistContainer) {
+      recHistContainer.innerHTML = '<div class="col-span-full py-8 text-center text-[#6B6A78] text-xs">Log in to view your recent playback history.</div>';
+    }
+    return;
+  }
+
   // Load AI recommendations
   try {
     const res = await fetch('/api/audia/recommendations');
     const data = await res.json();
-    const container = document.getElementById('overview-recs-grid');
     if (container) {
       container.innerHTML = '';
+      if (!data.authenticated) {
+        container.innerHTML = '<div class="col-span-full py-8 text-center text-[#6B6A78] text-xs">Please log in to load recommendations.</div>';
+        return;
+      }
       (data.recommendations || []).slice(0, 6).forEach(rec => {
         const card = document.createElement('div');
         card.className = 'glass-card-interactive p-4 flex flex-col justify-between';
@@ -1013,7 +1125,7 @@ async function loadOverviewData() {
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full badge-violet uppercase">${escapeHtml(rec.genre || 'Pop')}</span>
-              <span class="text-[10px] text-amber-400 font-semibold flex items-center gap-1">
+              <span class="text-[10px] text-amber-400 font-semibold flex items-center gap-1 font-mono">
                 <i data-lucide="sparkles" class="w-3 h-3"></i> ${Math.round((rec.confidence || 0.9) * 100)}% match
               </span>
             </div>
@@ -1032,6 +1144,7 @@ async function loadOverviewData() {
         `;
         container.appendChild(card);
       });
+      initIcons();
     }
   } catch (e) {
     console.warn('Overview recs error:', e);
@@ -1374,11 +1487,31 @@ async function loadAudiaProfile() {
 }
 
 async function loadAudiaStudioRecommendations() {
+  const container = document.getElementById('audia-recommendations-list');
+  if (!container) return;
+
+  if (!state.currentUser) {
+    container.innerHTML = `
+      <div class="col-span-full glass-panel p-8 rounded-2xl text-center border border-brand-primary/30 space-y-3 shadow-xl">
+        <div class="w-12 h-12 rounded-xl bg-brand-primary/20 border border-brand-primary/40 flex items-center justify-center mx-auto text-brand-secondary">
+          <i data-lucide="shield-lock" class="w-6 h-6"></i>
+        </div>
+        <h4 class="text-base font-bold text-white">Login Required for Audia AI Recommendations</h4>
+        <p class="text-xs text-[#9E9EAD] max-w-md mx-auto">Log in with Discord so Audia AI can analyze your listening history, favorite genres, and musical taste.</p>
+        <div class="pt-2">
+          <a href="${BASE_PATH}/api/auth/discord/login" class="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-brand-primary hover:bg-purple-600 transition-all">
+            <i data-lucide="log-in" class="w-4 h-4"></i> Login with Discord
+          </a>
+        </div>
+      </div>
+    `;
+    initIcons();
+    return;
+  }
+
   try {
     const res = await fetch('/api/audia/recommendations');
     const data = await res.json();
-    const container = document.getElementById('audia-recommendations-list');
-    if (!container) return;
     container.innerHTML = '';
 
     (data.recommendations || []).forEach(r => {
@@ -1621,12 +1754,28 @@ async function deletePlaylist(id) {
 
 // ------------------- VIEW 5: LISTENING HISTORY -------------------
 async function loadListeningHistory() {
+  const tbody = document.getElementById('history-table-body');
+  if (!tbody) return;
+
+  if (!state.currentUser) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="6" class="py-12 text-center text-[#9E9EAD]">
+          <div class="max-w-xs mx-auto space-y-2">
+            <p class="text-sm font-semibold text-white">Discord Login Required</p>
+            <p class="text-xs text-[#6B6A78]">Log in with Discord to view and search your listening history.</p>
+            <a href="${BASE_PATH}/api/auth/discord/login" class="inline-block mt-2 px-4 py-2 rounded-xl text-xs font-bold bg-brand-primary hover:bg-purple-600 text-white transition-all">Login with Discord</a>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
   try {
     const q = document.getElementById('history-search-input') ? document.getElementById('history-search-input').value.trim() : '';
     const res = await fetch(`/api/history?timeframe=${state.historyTimeframe}&query=${encodeURIComponent(q)}&limit=60`);
     const data = await res.json();
-    const tbody = document.getElementById('history-table-body');
-    if (!tbody) return;
     tbody.innerHTML = '';
 
     if (!data.history || data.history.length === 0) {
@@ -1706,11 +1855,62 @@ async function confirmClearHistory() {
 
 // ------------------- VIEW 6: ANALYTICS -------------------
 async function loadAnalytics() {
+  if (!state.currentUser) {
+    document.getElementById('analytics-total-hours').innerText = '0 hrs';
+    document.getElementById('analytics-total-tracks').innerText = '0';
+    document.getElementById('analytics-peak-hour').innerText = '--';
+    const banner = document.getElementById('analytics-live-banner');
+    if (banner) { banner.classList.add('hidden'); banner.classList.remove('flex'); }
+    const chartContainer = document.getElementById('analytics-hourly-chart');
+    if (chartContainer) chartContainer.innerHTML = '<div class="w-full text-center py-8 text-xs text-[#6B6A78]">Log in with Discord to view your activity chart.</div>';
+    const artistsContainer = document.getElementById('analytics-top-artists');
+    if (artistsContainer) artistsContainer.innerHTML = '<div class="p-6 text-center text-xs text-[#6B6A78]">Log in to view top artists.</div>';
+    const tracksContainer = document.getElementById('analytics-top-tracks');
+    if (tracksContainer) tracksContainer.innerHTML = '<div class="p-6 text-center text-xs text-[#6B6A78]">Log in to view top tracks.</div>';
+    return;
+  }
+
   try {
     const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}`);
     const data = await res.json();
 
-    document.getElementById('analytics-total-hours').innerText = `${data.total_hours || 0} hrs`;
+    state.analyticsBaseSeconds = (data.total_seconds || 0) - (data.live_elapsed || 0);
+    state.analyticsLiveActive = data.live_active;
+    state.analyticsLiveSeconds = data.live_elapsed || 0;
+
+    // Handle Live Playback Status Banner
+    const banner = document.getElementById('analytics-live-banner');
+    if (banner) {
+      if (data.live_active) {
+        banner.classList.remove('hidden');
+        banner.classList.add('flex');
+        if (data.live_track) {
+          const titleEl = document.getElementById('analytics-live-title');
+          const artistEl = document.getElementById('analytics-live-artist');
+          const artEl = document.getElementById('analytics-live-art');
+          const serverEl = document.getElementById('analytics-live-server');
+          if (titleEl) titleEl.innerText = data.live_track.title;
+          if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
+          if (artEl) artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+          if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
+        }
+      } else {
+        banner.classList.add('hidden');
+        banner.classList.remove('flex');
+      }
+    }
+
+    // Format live stream time
+    const totalSec = data.total_seconds || 0;
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    const secs = totalSec % 60;
+    if (data.live_active) {
+      document.getElementById('analytics-total-hours').innerHTML = `${hrs}h ${mins}m <span class="text-xs text-emerald-400 font-mono">${secs}s</span>`;
+    } else {
+      document.getElementById('analytics-total-hours').innerText = `${data.total_hours || 0} hrs`;
+    }
+
     document.getElementById('analytics-total-tracks').innerText = data.total_tracks || 0;
     document.getElementById('analytics-peak-hour').innerText = data.peak_listening_hour || '--';
 
@@ -1740,37 +1940,45 @@ async function loadAnalytics() {
     const artistsContainer = document.getElementById('analytics-top-artists');
     if (artistsContainer) {
       artistsContainer.innerHTML = '';
-      (data.top_artists || []).forEach((a, i) => {
-        const div = document.createElement('div');
-        div.className = 'flex items-center justify-between p-3 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs';
-        div.innerHTML = `
-          <div class="flex items-center gap-2.5">
-            <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
-            <span class="font-bold text-white">${escapeHtml(a.track_author)}</span>
-          </div>
-          <span class="font-semibold text-brand-secondary">${a.play_count} plays</span>
-        `;
-        artistsContainer.appendChild(div);
-      });
+      if (!data.top_artists || data.top_artists.length === 0) {
+        artistsContainer.innerHTML = '<div class="p-6 text-center text-xs text-[#6B6A78]">No artist plays recorded yet.</div>';
+      } else {
+        data.top_artists.forEach((a, i) => {
+          const div = document.createElement('div');
+          div.className = 'flex items-center justify-between p-3 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs';
+          div.innerHTML = `
+            <div class="flex items-center gap-2.5">
+              <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
+              <span class="font-bold text-white">${escapeHtml(a.track_author)}</span>
+            </div>
+            <span class="font-semibold text-brand-secondary">${a.play_count} plays</span>
+          `;
+          artistsContainer.appendChild(div);
+        });
+      }
     }
 
     // Top Tracks
     const tracksContainer = document.getElementById('analytics-top-tracks');
     if (tracksContainer) {
       tracksContainer.innerHTML = '';
-      (data.top_tracks || []).forEach((t, i) => {
-        const div = document.createElement('div');
-        div.className = 'flex items-center justify-between p-3 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs';
-        div.innerHTML = `
-          <div class="flex items-center gap-2.5 min-w-0">
-            <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
-            <img src="${t.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-7 h-7 rounded-lg object-cover shrink-0">
-            <span class="font-bold text-white truncate max-w-xs">${escapeHtml(t.track_title)}</span>
-          </div>
-          <span class="font-semibold text-brand-secondary shrink-0">${t.play_count} plays</span>
-        `;
-        tracksContainer.appendChild(div);
-      });
+      if (!data.top_tracks || data.top_tracks.length === 0) {
+        tracksContainer.innerHTML = '<div class="p-6 text-center text-xs text-[#6B6A78]">No track plays recorded yet.</div>';
+      } else {
+        data.top_tracks.forEach((t, i) => {
+          const div = document.createElement('div');
+          div.className = 'flex items-center justify-between p-3 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs';
+          div.innerHTML = `
+            <div class="flex items-center gap-2.5 min-w-0">
+              <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
+              <img src="${t.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-7 h-7 rounded-lg object-cover shrink-0">
+              <span class="font-bold text-white truncate max-w-xs">${escapeHtml(t.track_title)}</span>
+            </div>
+            <span class="font-semibold text-brand-secondary shrink-0">${t.play_count} plays</span>
+          `;
+          tracksContainer.appendChild(div);
+        });
+      }
     }
   } catch (err) {
     console.warn('Analytics error:', err);

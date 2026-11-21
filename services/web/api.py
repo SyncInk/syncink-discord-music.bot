@@ -4,6 +4,7 @@ import json
 import random
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List
+from types import SimpleNamespace
 import aiohttp.web
 from database import db
 from utils.logger import log
@@ -515,9 +516,11 @@ class DashboardAPI:
                             log.warning(f"Voice connect error: {ce}")
 
             try:
-                tracks = await service.search_and_extract(query, None, limit=1)
+                requester = member or SimpleNamespace(id=user_id, name=user.get("username", "Dashboard User"), display_name=user.get("username", "Dashboard User"), mention=f"<@{user_id}>", bot=False)
+                tracks = await service.search_and_extract(query, requester, limit=1)
                 if tracks:
                     track = tracks[0]
+                    track.requested_by = requester
                     if not queue.current_track:
                         music_cog = bot.get_cog("Music") if bot else None
                         if music_cog:
@@ -928,7 +931,9 @@ class DashboardAPI:
         }
 
         from cogs.music import make_radio_track
-        track = make_radio_track(station_dict, country, None)
+        requester = member or SimpleNamespace(id=user_id, name=user.get("username", "Dashboard User"), display_name=user.get("username", "Dashboard User"), mention=f"<@{user_id}>", bot=False)
+        track = make_radio_track(station_dict, country, requester)
+        track.requested_by = requester
         queue.active_radio_station = country
         queue.active_radio_station_info = station_dict
         queue.tracks.clear()
@@ -973,10 +978,19 @@ class DashboardAPI:
     @classmethod
     async def handle_get_audia_recommendations(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         user = await cls.get_session_user(request)
-        user_id = user["discord_user_id"] if user else 0
+        if not user or not user.get("discord_user_id"):
+            return aiohttp.web.json_response({
+                "authenticated": False,
+                "recommendations": [],
+                "message": "Authentication required for personalized Audia AI recommendations"
+            })
 
+        user_id = user["discord_user_id"]
         recs = await AutoPlayService.get_instance().get_recommendations_for_user(user_id, limit=8)
-        return aiohttp.web.json_response({"recommendations": recs})
+        return aiohttp.web.json_response({
+            "authenticated": True,
+            "recommendations": recs
+        })
 
     @classmethod
     async def handle_update_audia_settings(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -1208,9 +1222,22 @@ class DashboardAPI:
         if query_text:
             filter_clause = f"AND (LOWER(track_title) LIKE '%{query_text}%' OR LOWER(track_author) LIKE '%{query_text}%')"
 
+        bot = request.app.get("bot")
+        accessible_guild_ids = []
+        if bot and uid:
+            for g in bot.guilds:
+                if g.get_member(uid):
+                    accessible_guild_ids.append(g.id)
+
+        if accessible_guild_ids:
+            guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
+            user_clause = f"WHERE (discord_user_id = $1 OR (guild_id IN ({guild_list_str}) AND (discord_user_id = 0 OR discord_user_id = $1)))"
+        else:
+            user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
+
         query = f"""
             SELECT * FROM listening_history
-            WHERE ($1 = 0 OR discord_user_id = $1)
+            {user_clause}
             {time_clause}
             {filter_clause}
             ORDER BY played_at DESC
@@ -1222,7 +1249,7 @@ class DashboardAPI:
             if isinstance(h.get("played_at"), datetime):
                 h["played_at"] = h["played_at"].isoformat()
 
-        return aiohttp.web.json_response({"history": history, "count": len(history)})
+        return aiohttp.web.json_response({"history": history, "count": len(history), "authenticated": bool(user)})
 
     @classmethod
     async def handle_delete_history_item(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -1246,7 +1273,27 @@ class DashboardAPI:
     @classmethod
     async def handle_get_analytics(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         user = await cls.get_session_user(request)
-        uid = user["discord_user_id"] if user else 0
+        if not user:
+            return aiohttp.web.json_response({
+                "authenticated": False,
+                "timeframe": "7d",
+                "total_tracks": 0,
+                "total_seconds": 0,
+                "total_hours": 0.0,
+                "peak_listening_hour": "--",
+                "hourly_distribution": [0] * 24,
+                "top_artists": [],
+                "top_tracks": [],
+                "platform_breakdown": {},
+                "live_active": False,
+                "live_track": None,
+                "live_guild_name": None,
+                "live_channel_name": None,
+                "live_elapsed": 0,
+                "server_timestamp": time.time()
+            })
+
+        uid = user["discord_user_id"]
         timeframe = request.query.get("timeframe", "7d")
 
         now = datetime.utcnow()
@@ -1264,9 +1311,22 @@ class DashboardAPI:
             since = now - timedelta(days=90)
             time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
 
+        bot = request.app.get("bot")
+        accessible_guild_ids = []
+        if bot and uid:
+            for g in bot.guilds:
+                if g.get_member(uid):
+                    accessible_guild_ids.append(g.id)
+
+        if accessible_guild_ids:
+            guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
+            user_clause = f"WHERE (discord_user_id = $1 OR (guild_id IN ({guild_list_str}) AND (discord_user_id = 0 OR discord_user_id = $1)))"
+        else:
+            user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
+
         # Totals
         total_songs_row = await db.fetchrow(
-            f"SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_seconds FROM listening_history WHERE ($1 = 0 OR discord_user_id = $1) {time_clause}",
+            f"SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_seconds FROM listening_history {user_clause} {time_clause}",
             uid
         )
         total_songs = total_songs_row["count"] if total_songs_row else 0
@@ -1274,21 +1334,21 @@ class DashboardAPI:
 
         # Top Artists
         top_artists_rows = await db.fetch(
-            f"SELECT track_author, COUNT(*) as play_count FROM listening_history WHERE ($1 = 0 OR discord_user_id = $1) AND track_author IS NOT NULL {time_clause} GROUP BY track_author ORDER BY play_count DESC LIMIT 8",
+            f"SELECT track_author, COUNT(*) as play_count FROM listening_history {user_clause} AND track_author IS NOT NULL {time_clause} GROUP BY track_author ORDER BY play_count DESC LIMIT 8",
             uid
         )
         top_artists = [dict(r) for r in top_artists_rows]
 
         # Top Tracks
         top_tracks_rows = await db.fetch(
-            f"SELECT track_title, track_author, thumbnail_url, COUNT(*) as play_count FROM listening_history WHERE ($1 = 0 OR discord_user_id = $1) {time_clause} GROUP BY track_title, track_author, thumbnail_url ORDER BY play_count DESC LIMIT 8",
+            f"SELECT track_title, track_author, thumbnail_url, COUNT(*) as play_count FROM listening_history {user_clause} {time_clause} GROUP BY track_title, track_author, thumbnail_url ORDER BY play_count DESC LIMIT 8",
             uid
         )
         top_tracks = [dict(r) for r in top_tracks_rows]
 
         # Hourly Distribution (0-23 hours for peak listening activity)
         history_rows = await db.fetch(
-            f"SELECT played_at FROM listening_history WHERE ($1 = 0 OR discord_user_id = $1) {time_clause} ORDER BY played_at DESC LIMIT 500",
+            f"SELECT played_at FROM listening_history {user_clause} {time_clause} ORDER BY played_at DESC LIMIT 500",
             uid
         )
         hourly_counts = [0] * 24
@@ -1308,21 +1368,55 @@ class DashboardAPI:
 
         # Platform distribution
         platform_rows = await db.fetch(
-            f"SELECT platform, COUNT(*) as count FROM listening_history WHERE ($1 = 0 OR discord_user_id = $1) {time_clause} GROUP BY platform",
+            f"SELECT platform, COUNT(*) as count FROM listening_history {user_clause} {time_clause} GROUP BY platform",
             uid
         )
         platforms = {dict(r)["platform"]: dict(r)["count"] for r in platform_rows}
 
+        # Real-time live status from active playing voice channel
+        live_active = False
+        live_track = None
+        live_guild_name = None
+        live_channel_name = None
+        live_elapsed = 0
+
+        if bot and accessible_guild_ids:
+            music_service = MusicService.get_instance()
+            for gid in accessible_guild_ids:
+                q = music_service.get_queue(gid)
+                if q.voice_client and q.voice_client.is_playing() and q.current_track:
+                    live_active = True
+                    live_track = {
+                        "title": q.current_track.clean_title,
+                        "author": q.current_track.author,
+                        "thumbnail": q.current_track.thumbnail,
+                        "duration": q.current_track.duration,
+                        "is_radio": q.current_track.is_radio
+                    }
+                    g = bot.get_guild(gid)
+                    live_guild_name = g.name if g else "Discord Server"
+                    live_channel_name = q.voice_client.channel.name if q.voice_client.channel else "Voice"
+                    if q.track_start_time:
+                        live_elapsed = max(0, int(time.time() - q.track_start_time - q.total_paused_duration))
+                    break
+
         return aiohttp.web.json_response({
+            "authenticated": True,
             "timeframe": timeframe,
             "total_tracks": total_songs,
-            "total_seconds": total_seconds,
-            "total_hours": round(total_seconds / 3600.0, 1),
+            "total_seconds": total_seconds + live_elapsed,
+            "total_hours": round((total_seconds + live_elapsed) / 3600.0, 2),
             "peak_listening_hour": peak_hour_str,
             "hourly_distribution": hourly_counts,
             "top_artists": top_artists,
             "top_tracks": top_tracks,
-            "platform_breakdown": platforms
+            "platform_breakdown": platforms,
+            "live_active": live_active,
+            "live_track": live_track,
+            "live_guild_name": live_guild_name,
+            "live_channel_name": live_channel_name,
+            "live_elapsed": live_elapsed,
+            "server_timestamp": time.time()
         })
 
     # ------------------ 7. System Administration & Diagnostics ------------------

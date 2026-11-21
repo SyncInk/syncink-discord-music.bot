@@ -2245,6 +2245,10 @@ class Music(commands.Cog):
                 # Log play to dashboard analytics & history
                 try:
                     user_id = track.requested_by.id if track.requested_by and hasattr(track.requested_by, "id") else 0
+                    if user_id == 0 and queue.voice_client and queue.voice_client.channel:
+                        human_members = [m for m in queue.voice_client.channel.members if not m.bot]
+                        if human_members:
+                            user_id = human_members[0].id
                     query = """
                         INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)

@@ -160,6 +160,15 @@
       <a href="#admin" id="mobile-nav-admin" onclick="navigateTo('admin')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface hidden">
         <i data-lucide="shield-check" class="w-4 h-4 text-brand-secondary"></i> System Admin
       </a>
+
+      <!-- Mobile Bot Invite CTA Link -->
+      <div class="pt-3 pb-1 border-t border-brand-border/30 mt-3">
+        <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-[#6B6A78]">Add to Discord</p>
+        <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/15 border border-brand-primary/30 hover:bg-brand-primary/25 transition-all mt-1">
+          <i data-lucide="plus-circle" class="w-4 h-4 text-brand-secondary"></i>
+          <span>Invite Bot to Server</span>
+        </a>
+      </div>
     </nav>
   </aside>
 
@@ -234,16 +243,25 @@
     </header>
 
     <!-- Scrollable Viewport (Views) -->
-    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-40">
+    <main class="flex-1 overflow-y-auto p-4 sm:p-6 pb-56 sm:pb-64 lg:pb-72">
 
       <!-- ==================== VIEW 1: HOME OVERVIEW ==================== -->
-      <section id="view-overview" class="view-panel space-y-6 max-w-7xl mx-auto">
+      <section id="view-overview" class="view-panel space-y-6 max-w-7xl mx-auto pb-16">
         <!-- Hero Banner with Cyber Violet Glow -->
         <div class="relative overflow-hidden rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1e1533] via-[#161224] to-[#101014] shadow-2xl">
           <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-brand-primary/20 blur-3xl pointer-events-none"></div>
           <div class="relative z-10 max-w-3xl">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/20 border border-brand-primary/40 text-brand-secondary text-xs font-bold mb-4">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Audia AI 1.0 Active
+            <!-- Audia AI Official Logo & Version Mark -->
+            <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#1d172e]/90 border border-brand-primary/40 shadow-lg shadow-brand-primary/10 mb-4 backdrop-blur-md">
+              <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-[#8055D9] via-[#9d6bf0] to-[#B9A2F2] flex items-center justify-center shadow-md shadow-[#8055D9]/40 shrink-0">
+                <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2v20M17 5v14M7 9v6M22 10v4M2 11v2"/>
+                </svg>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-extrabold text-xs tracking-tight text-white">Audia AI</span>
+                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
+              </div>
             </div>
             <h2 id="overview-greeting" class="text-2xl sm:text-4xl font-extrabold tracking-tight mb-3">Welcome to SyncInk Radio</h2>
             <p class="text-[#9E9EAD] text-xs sm:text-sm leading-relaxed mb-6">Explore 30,000+ live worldwide radio stations, high-fidelity music streaming, and personalized continuous AutoPlay powered by Audia AI.</p>
@@ -500,11 +518,19 @@
       </section>
 
       <!-- ==================== VIEW 3: AUDIA AI STUDIO ==================== -->
-      <section id="view-audia" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+      <section id="view-audia" class="view-panel hidden space-y-6 max-w-7xl mx-auto pb-16">
         <div class="glass-panel p-6 sm:p-8 rounded-3xl border border-brand-primary/40 relative overflow-hidden bg-gradient-to-r from-[#1f1636] to-[#14121d]">
           <div class="max-w-2xl">
-            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-brand-primary/20 border border-brand-primary/40 text-brand-secondary text-xs font-bold mb-3">
-              <i data-lucide="sparkles" class="w-3.5 h-3.5"></i> Audia AI • Powered by SyncInk
+            <div class="inline-flex items-center gap-2.5 px-3.5 py-1.5 rounded-xl bg-[#1d172e]/90 border border-brand-primary/40 shadow-lg shadow-brand-primary/10 mb-3 backdrop-blur-md">
+              <div class="w-6 h-6 rounded-lg bg-gradient-to-br from-[#8055D9] via-[#9d6bf0] to-[#B9A2F2] flex items-center justify-center shadow-md shadow-[#8055D9]/40 shrink-0">
+                <svg class="w-3.5 h-3.5 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M12 2v20M17 5v14M7 9v6M22 10v4M2 11v2"/>
+                </svg>
+              </div>
+              <div class="flex items-center gap-2">
+                <span class="font-extrabold text-xs tracking-tight text-white">Audia AI</span>
+                <span class="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary">v1.0</span>
+              </div>
             </div>
             <h2 class="text-2xl sm:text-3xl font-extrabold mb-2">Personal Taste Profile & Smart Autoplay</h2>
             <p class="text-sm text-[#9E9EAD] leading-relaxed">Audia continuously analyzes real playback completions, user skips, repeat habits, and liked artists to construct a personal recommendation matrix.</p>
@@ -638,7 +664,7 @@
       </section>
 
       <!-- ==================== VIEW 5: LISTENING HISTORY ==================== -->
-      <section id="view-history" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+      <section id="view-history" class="view-panel hidden space-y-6 max-w-7xl mx-auto pb-16">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
@@ -687,7 +713,7 @@
       </section>
 
       <!-- ==================== VIEW 6: ANALYTICS ==================== -->
-      <section id="view-analytics" class="view-panel hidden space-y-6 max-w-7xl mx-auto">
+      <section id="view-analytics" class="view-panel hidden space-y-6 max-w-7xl mx-auto pb-16">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
             <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
@@ -703,6 +729,40 @@
             <button onclick="switchAnalyticsTimeframe('30d')" id="an-tf-30d" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">30D</button>
             <button onclick="switchAnalyticsTimeframe('90d')" id="an-tf-90d" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">90D</button>
             <button onclick="switchAnalyticsTimeframe('all')" id="an-tf-all" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">All Time</button>
+          </div>
+        </div>
+
+        <!-- Live Real-Time Bot Voice Sync Banner -->
+        <div id="analytics-live-banner" class="hidden glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/25 via-[#191820] to-[#191820] flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
+          <div class="flex items-center gap-3.5">
+            <div class="relative shrink-0">
+              <img id="analytics-live-art" src="https://files.catbox.moe/74l9su.png" class="w-12 h-12 rounded-xl object-cover border border-emerald-500/40 shadow-md">
+              <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
+              <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#101014]"></span>
+            </div>
+            <div class="min-w-0">
+              <div class="flex items-center gap-2 mb-0.5">
+                <span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE SYNC
+                </span>
+                <span id="analytics-live-server" class="text-xs text-[#9E9EAD] truncate">Discord Server</span>
+              </div>
+              <h4 id="analytics-live-title" class="text-xs sm:text-sm font-bold text-white truncate max-w-sm">Track Title</h4>
+              <p id="analytics-live-artist" class="text-[11px] text-[#9E9EAD] truncate">Artist</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-4 self-end sm:self-center font-mono shrink-0">
+            <div class="text-right">
+              <p class="text-[10px] text-[#9E9EAD] uppercase tracking-wider">Live Session</p>
+              <p id="analytics-live-clock" class="text-base font-bold text-emerald-400">00:00</p>
+            </div>
+            <div class="equalizer-container">
+              <span class="equalizer-bar"></span>
+              <span class="equalizer-bar"></span>
+              <span class="equalizer-bar"></span>
+              <span class="equalizer-bar"></span>
+              <span class="equalizer-bar"></span>
+            </div>
           </div>
         </div>
 
@@ -884,69 +944,78 @@
 
     </main>
 
-    <!-- ==================== PERSISTENT BOTTOM MUSIC PLAYER BAR ==================== -->
-    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 h-24 bg-[#14131a]/95 backdrop-blur-xl border-t border-brand-border/50 px-4 sm:px-8 flex items-center justify-between z-40 shadow-2xl">
+    <!-- ==================== PERSISTENT BOTTOM MUSIC PLAYER BAR (SPOTIFY AESTHETIC) ==================== -->
+    <div id="bottom-player" class="fixed bottom-0 left-0 right-0 h-24 bg-[#121118]/95 backdrop-blur-2xl border-t border-brand-border/40 px-4 sm:px-8 flex items-center justify-between z-40 shadow-2xl">
       <!-- Left Track Info -->
-      <div class="flex items-center gap-3 w-1/4 min-w-[140px] sm:min-w-[220px]">
-        <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" class="w-12 h-12 rounded-xl object-cover border border-brand-border/40 shrink-0 shadow-md">
-        <div class="min-w-0">
-          <h4 id="player-track-title" class="text-xs sm:text-sm font-bold truncate text-white">Nothing is playing</h4>
-          <p id="player-track-artist" class="text-[11px] sm:text-xs text-[#9E9EAD] truncate">Select a server or start with /play</p>
+      <div class="flex items-center gap-3.5 w-1/4 min-w-[150px] sm:min-w-[240px]">
+        <div class="relative shrink-0">
+          <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" class="w-13 h-13 sm:w-14 sm:h-14 rounded-xl object-cover border border-brand-border/50 shadow-md">
         </div>
-        <button id="player-btn-like" onclick="toggleLikeCurrentTrack()" class="hidden sm:block text-[#9E9EAD] hover:text-rose-400 p-1 shrink-0" title="Favorite Track">
+        <div class="min-w-0 flex-1">
+          <h4 id="player-track-title" class="text-xs sm:text-sm font-bold truncate text-white hover:underline cursor-pointer">Nothing is playing</h4>
+          <p id="player-track-artist" class="text-[11px] sm:text-xs text-[#9E9EAD] truncate hover:text-white cursor-pointer transition-colors">Select a server or start with /play</p>
+        </div>
+        <button id="player-btn-like" onclick="toggleLikeCurrentTrack()" class="hidden sm:flex text-[#9E9EAD] hover:text-rose-400 p-1.5 rounded-full hover:bg-white/5 transition-colors shrink-0" title="Favorite Track">
           <i data-lucide="heart" class="w-4 h-4"></i>
         </button>
       </div>
 
-      <!-- Center Player Controls & Live Timeline -->
-      <div class="flex flex-col items-center justify-center flex-1 max-w-xl px-2 sm:px-4">
+      <!-- Center Player Controls & Live Timeline (Spotify-Style) -->
+      <div class="flex flex-col items-center justify-center flex-1 max-w-2xl px-2 sm:px-6">
         <!-- Control Buttons -->
-        <div class="flex items-center gap-3 sm:gap-5 mb-1.5">
-          <button onclick="controlPlayer('shuffle')" class="text-[#9E9EAD] hover:text-white p-1" title="Shuffle Upcoming">
+        <div class="flex items-center gap-4 sm:gap-6 mb-1.5">
+          <button onclick="controlPlayer('shuffle')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Shuffle Upcoming">
             <i data-lucide="shuffle" class="w-4 h-4"></i>
           </button>
-          <button onclick="controlPlayer('previous')" class="text-[#9E9EAD] hover:text-white p-1" title="Previous Track">
+          <button onclick="controlPlayer('previous')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Previous Track">
             <i data-lucide="skip-back" class="w-4 h-4"></i>
           </button>
-          <button id="player-btn-playpause" onclick="togglePlayPause()" class="w-10 h-10 rounded-full bg-brand-primary text-white flex items-center justify-center hover:scale-105 transition-transform shadow-lg shadow-brand-primary/40" title="Play / Pause">
-            <i data-lucide="play" id="icon-playpause" class="w-5 h-5 fill-current"></i>
+          <button id="player-btn-playpause" onclick="togglePlayPause()" class="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-white text-[#101014] flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-lg shadow-white/10" title="Play / Pause">
+            <i data-lucide="play" id="icon-playpause" class="w-4 h-4 sm:w-5 sm:h-5 fill-current"></i>
           </button>
-          <button onclick="controlPlayer('skip')" class="text-[#9E9EAD] hover:text-white p-1" title="Skip Forward">
+          <button onclick="controlPlayer('skip')" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Skip Forward">
             <i data-lucide="skip-forward" class="w-4 h-4"></i>
           </button>
-          <button id="player-btn-loop" onclick="cycleLoopMode()" class="text-[#9E9EAD] hover:text-white p-1" title="Repeat Mode">
+          <button id="player-btn-loop" onclick="cycleLoopMode()" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Repeat Mode">
             <i data-lucide="repeat" class="w-4 h-4"></i>
           </button>
         </div>
 
-        <!-- Synchronized Progress Bar & Times -->
-        <div class="w-full flex items-center gap-2.5 text-[11px] text-[#9E9EAD] font-mono">
-          <span id="player-current-time">00:00</span>
-          <div class="relative flex-1 h-1.5 bg-brand-surface rounded-full overflow-hidden cursor-pointer group" onclick="handleSeek(event)">
-            <div id="player-progress-bar" class="h-full bg-gradient-to-r from-brand-primary to-brand-secondary rounded-full w-0 transition-all duration-300"></div>
+        <!-- Scrubber Bar & Times -->
+        <div class="w-full flex items-center gap-3 text-[11px] text-[#9E9EAD] font-mono">
+          <span id="player-current-time" class="w-10 text-right">00:00</span>
+          <div class="relative flex-1 py-2 cursor-pointer group" onclick="handleSeek(event)">
+            <!-- Progress Track -->
+            <div class="h-1 group-hover:h-1.5 bg-white/20 rounded-full overflow-hidden transition-all duration-150">
+              <div id="player-progress-bar" class="h-full bg-white group-hover:bg-[#B9A2F2] rounded-full w-0 transition-all duration-150"></div>
+            </div>
+            <!-- Progress Knob -->
+            <div id="player-progress-knob" class="absolute top-1/2 -translate-y-1/2 w-3 h-3 bg-white rounded-full shadow opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" style="left: 0%;"></div>
           </div>
-          <span id="player-total-time">00:00</span>
+          <span id="player-total-time" class="w-10">00:00</span>
         </div>
       </div>
 
-      <!-- Right Actions (Volume & Queue Drawer Button) -->
-      <div class="flex items-center justify-end gap-3 w-1/4 min-w-[120px]">
+      <!-- Right Actions (Server Badge, Volume & Queue) -->
+      <div class="flex items-center justify-end gap-3 w-1/4 min-w-[130px]">
         <!-- Active Server Badge -->
-        <div class="hidden xl:flex items-center gap-2 px-2.5 py-1 rounded-xl bg-brand-surface border border-brand-border/40 text-[11px] text-[#9E9EAD]">
-          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-          <span id="player-server-label" class="truncate max-w-[100px]">Server</span>
+        <div class="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#191820] border border-brand-border/40 text-[11px] text-[#9E9EAD]">
+          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span id="player-server-label" class="truncate max-w-[120px] font-medium text-white">Select Server</span>
         </div>
 
         <!-- Volume Control -->
-        <div class="hidden sm:flex items-center gap-2">
-          <button onclick="toggleMute()" class="text-[#9E9EAD] hover:text-white" title="Volume">
+        <div class="hidden sm:flex items-center gap-2 group">
+          <button onclick="toggleMute()" class="text-[#9E9EAD] hover:text-white p-1 transition-colors" title="Volume">
             <i data-lucide="volume-2" id="icon-volume" class="w-4 h-4"></i>
           </button>
-          <input type="range" id="player-volume-slider" min="1" max="150" value="100" oninput="changeVolume(this.value)" class="w-20 h-1.5">
+          <div class="w-20 sm:w-24 flex items-center">
+            <input type="range" id="player-volume-slider" min="1" max="150" value="100" oninput="changeVolume(this.value)" class="w-full h-1 bg-white/20 accent-[#B9A2F2] rounded-full cursor-pointer hover:h-1.5 transition-all">
+          </div>
         </div>
 
         <!-- Queue Drawer Toggle -->
-        <button onclick="toggleQueueDrawer()" class="px-2.5 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs font-semibold text-white flex items-center gap-1.5">
+        <button onclick="toggleQueueDrawer()" class="px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs font-semibold text-white flex items-center gap-1.5 transition-all">
           <i data-lucide="list-music" class="w-4 h-4 text-brand-secondary"></i>
           <span id="player-queue-badge" class="hidden sm:inline">Queue</span>
         </button>

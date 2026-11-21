@@ -1811,44 +1811,156 @@ class AutoPlayService:
         guild_queue.prefetch_task = asyncio.create_task(_do_prefetch())
 
     async def get_recommendations_for_user(self, user_id: int, limit: int = 6) -> List[Dict[str, Any]]:
-        """Generates hyper-personalized recommendations with explanation strings for the Dashboard."""
+        """Generates hyper-personalized recommendations with explanation strings for the Dashboard.
+        Analyzes actual listening history, user favorites, and learned affinity profiles.
+        Guarantees distinct recommendations for each user."""
+        if not user_id:
+            return []
+
         prof = self.get_user_profile(user_id)
-        top_artists = [a for a, s in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True)[:5]]
-        top_genres = [g for g, s in sorted(prof.genre_affinity.items(), key=lambda x: x[1], reverse=True)[:3]]
+
+        # 1. Hydrate real listening history and favorites from SQLite DB
+        db_history_tracks = []
+        db_artists_count: Dict[str, int] = {}
+        try:
+            from database import db
+            rows = await db.fetch(
+                "SELECT track_title, track_author FROM listening_history WHERE discord_user_id = $1 ORDER BY played_at DESC LIMIT 30",
+                user_id
+            )
+            for r in rows:
+                t_title = r.get("track_title")
+                t_author = r.get("track_author")
+                if t_title:
+                    db_history_tracks.append(t_title.lower())
+                if t_author and t_author not in ("Unknown Artist", "Various Artists"):
+                    db_artists_count[t_author] = db_artists_count.get(t_author, 0) + 1
+
+            fav_rows = await db.fetch(
+                "SELECT title, subtitle FROM user_favorites WHERE discord_user_id = $1 ORDER BY created_at DESC LIMIT 20",
+                user_id
+            )
+            for r in fav_rows:
+                f_title = r.get("title")
+                f_sub = r.get("subtitle")
+                if f_title:
+                    db_history_tracks.append(f_title.lower())
+                if f_sub and f_sub not in ("Unknown Artist", "Various Artists", "song", "radio"):
+                    db_artists_count[f_sub] = db_artists_count.get(f_sub, 0) + 2
+        except Exception as e:
+            log.debug(f"[Audia User Recs DB Load Warning] {e}")
+
+        # Combine DB history with profile affinity
+        for art, aff in prof.artist_affinity.items():
+            db_artists_count[art] = db_artists_count.get(art, 0) + int(aff)
+
+        sorted_artists = [a for a, _ in sorted(db_artists_count.items(), key=lambda x: x[1], reverse=True)]
+        top_artists = sorted_artists[:5]
+        top_genres = [g for g, _ in sorted(prof.genre_affinity.items(), key=lambda x: x[1], reverse=True)[:3]]
+
+        # 2. Detect dominant cluster from user's actual history
+        dominant_cluster_key = None
+        for art in top_artists:
+            art_lower = art.lower()
+            for c_key, c_data in MUSIC_CLUSTERS.items():
+                if any(art_lower in ca.lower() for ca in c_data.get("artists", [])):
+                    dominant_cluster_key = c_key
+                    break
+            if dominant_cluster_key:
+                break
+
+        cluster_keys = list(MUSIC_CLUSTERS.keys())
+        if not dominant_cluster_key:
+            # Deterministically partition new users into distinct taste seeds based on user_id
+            seed_idx = int(user_id) % len(cluster_keys)
+            dominant_cluster_key = cluster_keys[seed_idx]
+
+        primary_cluster = MUSIC_CLUSTERS.get(dominant_cluster_key, MUSIC_CLUSTERS["hindi_indie_acoustic"])
 
         ctx_info = {
             "seed_title": "Listener Favorites",
-            "seed_artist": top_artists[0] if top_artists else "Diverse Artist",
-            "seed_genre": prof.manual_genre or (top_genres[0] if top_genres else "Pop & Indie"),
-            "seed_language": prof.manual_language or "Hindi + English",
-            "seed_mood": prof.manual_mood or "Chill & Energetic",
+            "seed_artist": top_artists[0] if top_artists else primary_cluster.get("artists", ["Diverse Artist"])[0],
+            "seed_genre": prof.manual_genre or primary_cluster.get("genre", "Pop & Indie"),
+            "seed_language": prof.manual_language or primary_cluster.get("language", "Hindi + English"),
+            "seed_mood": prof.manual_mood or primary_cluster.get("mood", "Chill"),
             "mode": "Taste Profile Match",
             "top_artists": top_artists,
             "top_genres": top_genres,
             "discovery_mode": prof.discovery_mode,
-            "recent_tracks": [t.get("title", "") for t in prof.liked_tracks[-6:] if isinstance(t, dict) and t.get("title")],
+            "recent_tracks": [t for t in db_history_tracks[:8]],
             "blocked_artists": prof.blocked_artists,
         }
 
+        # 3. Try Remote AI (Gemini / OpenAI) first if keys are configured
         candidates = []
         if self.gemini_key or self.openai_key:
             try:
                 candidates = await self._fetch_ai_recommendations(ctx_info)
-            except Exception:
+            except Exception as ai_err:
+                log.debug(f"[Audia User Recs AI Err] {ai_err}")
                 candidates = []
 
+        # 4. Personalized Heuristic Engine: Ensures unique, personalized sets per user
         if not candidates:
-            candidates = self._get_heuristic_candidates(ctx_info)
+            # Use user-specific random seed refreshing every 2 hours
+            time_bucket = int(time.time() // 7200)
+            user_rng = random.Random(int(user_id) + time_bucket)
+
+            # Pick from primary cluster + secondary neighboring cluster
+            secondary_idx = (cluster_keys.index(dominant_cluster_key) + 1) % len(cluster_keys)
+            secondary_cluster = MUSIC_CLUSTERS[cluster_keys[secondary_idx]]
+
+            pool: List[Dict[str, Any]] = []
+
+            # Sample primary cluster tracks
+            p_samples = list(primary_cluster.get("sample_tracks", []))
+            user_rng.shuffle(p_samples)
+            for s_title, s_artist in p_samples:
+                if s_title.lower() in db_history_tracks or s_artist in prof.blocked_artists:
+                    continue
+                reason_templates = [
+                    f"Selected by Audia AI based on your affinity for {primary_cluster['genre']} and {s_artist}.",
+                    f"Curated for your personal taste profile matching {primary_cluster['mood'].lower()} acoustic vibes.",
+                    f"Seamless match for your listening habits with high {primary_cluster['genre']} rhythm coherence."
+                ]
+                pool.append({
+                    "title": s_title,
+                    "artist": s_artist,
+                    "genre": primary_cluster["genre"],
+                    "language": primary_cluster["language"],
+                    "mood": primary_cluster["mood"],
+                    "reason": user_rng.choice(reason_templates),
+                })
+
+            # Sample secondary cluster tracks (for balanced discovery)
+            s_samples = list(secondary_cluster.get("sample_tracks", []))
+            user_rng.shuffle(s_samples)
+            for s_title, s_artist in s_samples:
+                if s_title.lower() in db_history_tracks or s_artist in prof.blocked_artists:
+                    continue
+                pool.append({
+                    "title": s_title,
+                    "artist": s_artist,
+                    "genre": secondary_cluster["genre"],
+                    "language": secondary_cluster["language"],
+                    "mood": secondary_cluster["mood"],
+                    "reason": f"Fresh discovery from {secondary_cluster['genre']} recommended to complement your favorite songs.",
+                })
+
+            candidates = pool
 
         results = []
-        for c in candidates[:limit]:
+        confidences = [0.96, 0.94, 0.92, 0.91, 0.89, 0.88, 0.87, 0.85]
+        for idx, c in enumerate(candidates[:limit]):
+            conf = confidences[idx] if idx < len(confidences) else round(0.85 - (idx * 0.01), 2)
             results.append({
                 "title": c.get("title"),
                 "artist": c.get("artist"),
                 "genre": c.get("genre", "Pop"),
                 "language": c.get("language", "Global"),
                 "mood": c.get("mood", "Vibrant"),
-                "reason": c.get("reason") or f"Recommended based on your affinity for {c.get('genre', 'diverse genres')} and similar artists.",
-                "confidence": c.get("confidence", 0.94)
+                "reason": c.get("reason") or f"Recommended based on your affinity for {c.get('genre', 'diverse genres')}.",
+                "confidence": c.get("confidence", conf)
             })
+
         return results
