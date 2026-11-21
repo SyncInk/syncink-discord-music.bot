@@ -12,7 +12,7 @@ class DashboardAuthManager:
     _instance: Optional['DashboardAuthManager'] = None
 
     def __init__(self):
-        self.client_id = os.getenv("DISCORD_CLIENT_ID") or os.getenv("CLIENT_ID") or ""
+        self.client_id = os.getenv("DISCORD_CLIENT_ID") or os.getenv("CLIENT_ID") or "1500567606648897819"
         self.client_secret = os.getenv("DISCORD_CLIENT_SECRET") or os.getenv("CLIENT_SECRET") or ""
         self.redirect_uri = os.getenv("DISCORD_REDIRECT_URI") or "https://syncink.site/dashboard/radio/api/auth/discord/callback"
 

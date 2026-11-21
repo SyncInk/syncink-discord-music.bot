@@ -31,25 +31,33 @@ class DashboardAPI:
     # ------------------ 1. Authentication & User Profile ------------------
 
     @classmethod
+    def get_effective_redirect_uri(cls, request: aiohttp.web.Request) -> str:
+        """Resolves the canonical Discord OAuth2 redirect URI matching Discord Developer Portal."""
+        # 1. Environment variable override
+        env_uri = os.getenv("DISCORD_REDIRECT_URI")
+        if env_uri:
+            return env_uri
+
+        # 2. Check if request is forwarded from Cloudflare or production domain
+        is_cf = bool(request.headers.get("CF-Ray") or request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-Host"))
+        host = (request.headers.get("X-Forwarded-Host") or request.host or "").lower()
+
+        # 3. Pure local offline development without reverse proxy
+        if not is_cf and (host.startswith("localhost") or host.startswith("127.0.0.1")):
+            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "http"
+            is_subpath = request.path.startswith("/dashboard/radio")
+            sub = "/dashboard/radio" if is_subpath else ""
+            return f"{proto}://{host}{sub}/api/auth/discord/callback"
+
+        # 4. Standard public production redirect URI registered in Discord Developer Portal
+        return "https://syncink.site/dashboard/radio/api/auth/discord/callback"
+
+    @classmethod
     async def handle_login(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         auth_mgr = DashboardAuthManager.get_instance()
-        is_subpath = (
-            request.path.startswith("/dashboard/radio")
-            or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
-            or "dashboard/radio" in str(request.headers.get("Referer", ""))
-        )
-        proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
-        host = request.headers.get("X-Forwarded-Host") or request.host
-
-        req_redirect = None
-        if is_subpath:
-            req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
-        elif host.startswith("localhost") or host.startswith("127.0.0.1"):
-            req_redirect = f"http://{host}/api/auth/discord/callback"
-        else:
-            req_redirect = auth_mgr.redirect_uri
-
+        req_redirect = cls.get_effective_redirect_uri(request)
         login_url = auth_mgr.get_login_url(redirect_uri=req_redirect)
+        log.info(f"[Dashboard API] Initiating Discord OAuth login with redirect_uri: {req_redirect}")
         raise aiohttp.web.HTTPFound(login_url)
 
     @classmethod
@@ -68,16 +76,7 @@ class DashboardAPI:
             raise aiohttp.web.HTTPFound(f"{base_prefix}/#overview?auth_error=" + (error or "missing_code"))
 
         auth_mgr = DashboardAuthManager.get_instance()
-        proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "https"
-        host = request.headers.get("X-Forwarded-Host") or request.host
-
-        req_redirect = None
-        if is_subpath:
-            req_redirect = f"{proto}://{host}/dashboard/radio/api/auth/discord/callback"
-        elif host.startswith("localhost") or host.startswith("127.0.0.1"):
-            req_redirect = f"http://{host}/api/auth/discord/callback"
-        else:
-            req_redirect = auth_mgr.redirect_uri
+        req_redirect = cls.get_effective_redirect_uri(request)
 
         token_data = await auth_mgr.exchange_code(code, redirect_uri=req_redirect)
         if not token_data or "access_token" not in token_data:
