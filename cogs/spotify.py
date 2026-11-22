@@ -148,8 +148,8 @@ class Spotify(commands.Cog):
         if not self.client.is_configured:
             embed = discord.Embed(
                 description=format_discord_emojis(
-                    f"### {Emojis.WARNING} Spotify Developer API Not Configured\n"
-                    "The bot administrator has not configured `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` in `.env` yet."
+                    f"### {Emojis.WARNING} Spotify Integration Temporarily Unavailable\n\n"
+                    "The Spotify connection service is currently unavailable. Please try again later."
                 ),
                 color=0xFEE75C
             )
@@ -204,7 +204,7 @@ class Spotify(commands.Cog):
 
             display_name = user_auth.display_name or member_name
             spotify_id = user_auth.spotify_user_id
-            if spotify_id.startswith("spotify_") or spotify_id.startswith("user_"):
+            if spotify_id.startswith("spotify_") or spotify_id.startswith("user_") or spotify_id == str(interaction.user.id):
                 spotify_id = f"@{interaction.user.name}"
 
             embed = discord.Embed(
@@ -241,12 +241,11 @@ class Spotify(commands.Cog):
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         # Fetch top tracks from Spotify Web API
         url = "https://api.spotify.com/v1/me/top/tracks?limit=10"
         headers = {"Authorization": f"Bearer {token}"}
         items = []
-        is_dev_mode = False
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
@@ -254,14 +253,10 @@ class Spotify(commands.Cog):
                     data = await resp.json()
                     items = data.get("items", [])
                 else:
-                    if resp.status == 403:
-                        is_dev_mode = True
-                        log.debug(f"[Spotify] /v1/me/top/tracks returned 403 for {interaction.user.id} (Spotify Dev Mode user allowlist required).")
-                    else:
-                        log.warning(f"[Spotify] /v1/me/top/tracks returned HTTP {resp.status} for user {interaction.user.id}")
+                    log.debug(f"[Spotify] /v1/me/top/tracks returned HTTP {resp.status} for user {interaction.user.id}")
 
-        source_label = "Spotify Live Top Tracks"
-        # If Spotify returned empty or blocked by Dev Mode (HTTP 403), fallback to listener history on SyncInk Radio
+        source_label = "Spotify Top Tracks"
+        # If Spotify returned empty or restricted, fallback to listener history on SyncInk Radio
         if not items:
             try:
                 rows = await db.fetch("""
@@ -288,25 +283,17 @@ class Spotify(commands.Cog):
                 pass
 
         if not items:
-            if is_dev_mode:
-                embed = discord.Embed(
-                    title=f"{Emojis.SPOTIFY} Spotify Developer Mode Setup Required",
-                    description=format_discord_emojis(
-                        f"### {Emojis.WARNING} Top Tracks Restricted (HTTP 403)\n\n"
-                        "Your Spotify Developer App is currently in **Development Mode**.\n"
-                        "In Development Mode, Spotify blocks personal top tracks until your email is added:\n\n"
-                        "1️⃣ Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)\n"
-                        "2️⃣ Open your app ➔ **Settings** ➔ **User Management** (or **Users and Access**)\n"
-                        "3️⃣ Add your Spotify account email to the allowlist\n\n"
-                        "-# *Tip: You can play any track or playlist directly using `/play <song_name or url>`!*"
-                    ),
-                    color=0xFEE75C
-                )
-            else:
-                embed = discord.Embed(
-                    description=format_discord_emojis(f"### {Emojis.WARNING} No top tracks found on your Spotify profile or listening history."),
-                    color=0xFEE75C
-                )
+            embed = discord.Embed(
+                title=f"{Emojis.SPOTIFY} Your Top Tracks",
+                description=format_discord_emojis(
+                    f"### {Emojis.WARNING} No Top Tracks Available Yet\n\n"
+                    "You haven't played enough tracks yet to build your top tracks list.\n\n"
+                    f"• Play any song or playlist with `/play <song or link>`\n"
+                    f"• Tune into 30,000+ stations with `/radio`\n\n"
+                    "-# As you listen, your personalized top tracks and Audia AI taste profile will appear here automatically!"
+                ),
+                color=SPOTIFY_COLOR
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
@@ -343,15 +330,12 @@ class Spotify(commands.Cog):
             )
 
         if action and action.lower() == "view":
-            footer_note = f"\n\n-# 🎵 Source: {source_label}"
-            if is_dev_mode:
-                footer_note += "\n-# 💡 Tip: To sync live Spotify account data, add your email in Spotify Developer Dashboard > User Management."
             embed = discord.Embed(
                 title=f"{Emojis.SPOTIFY} Your Top Tracks",
-                description="\n".join(track_list_text) + footer_note,
+                description="\n".join(track_list_text) + f"\n\n-# 🎵 Source: {source_label}",
                 color=SPOTIFY_COLOR
             )
-            await interaction.followup.send(embed=embed)
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         vc = await music_cog.ensure_voice(interaction)
@@ -379,7 +363,6 @@ class Spotify(commands.Cog):
         url = "https://api.spotify.com/v1/me/playlists?limit=25"
         headers = {"Authorization": f"Bearer {token}"}
         items = []
-        is_dev_mode = False
 
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
@@ -387,13 +370,9 @@ class Spotify(commands.Cog):
                     data = await resp.json()
                     items = data.get("items", [])
                 else:
-                    if resp.status == 403:
-                        is_dev_mode = True
-                        log.debug(f"[Spotify] /v1/me/playlists returned 403 for {interaction.user.id} (Spotify Dev Mode user allowlist required).")
-                    else:
-                        log.warning(f"[Spotify] /v1/me/playlists returned HTTP {resp.status} for user {interaction.user.id}")
+                    log.debug(f"[Spotify] /v1/me/playlists returned HTTP {resp.status} for user {interaction.user.id}")
 
-        # If Spotify returned empty or was blocked by Dev Mode (HTTP 403), fallback to SyncInk library playlists
+        # If Spotify returned empty or restricted, fallback to SyncInk library playlists
         if not items:
             try:
                 db_playlists = await db.fetch("""
@@ -420,26 +399,17 @@ class Spotify(commands.Cog):
                 pass
 
         if not items:
-            if is_dev_mode:
-                embed = discord.Embed(
-                    title=f"{Emojis.SPOTIFY} SyncInk Spotify Playlists",
-                    description=format_discord_emojis(
-                        f"### {Emojis.WARNING} Private Playlists Restricted (HTTP 403)\n\n"
-                        "Your Spotify Developer App is currently in **Development Mode**.\n"
-                        "To let the bot automatically list your personal Spotify playlists:\n\n"
-                        "1️⃣ Visit [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)\n"
-                        "2️⃣ Open your app ➔ **Settings** ➔ **User Management**\n"
-                        "3️⃣ Add your Spotify email to the allowlist\n\n"
-                        "• **Instant Alternative:** Play any playlist directly with `/play <spotify_playlist_url>`\n"
-                        "• **Custom Library:** Create & import playlists anytime in the [Web Dashboard](https://syncink.site/dashboard/radio/#library)"
-                    ),
-                    color=0xFEE75C
-                )
-            else:
-                embed = discord.Embed(
-                    description=format_discord_emojis(f"### {Emojis.WARNING} No playlists found in your library."),
-                    color=0xFEE75C
-                )
+            embed = discord.Embed(
+                title=f"{Emojis.SPOTIFY} Your Playlists",
+                description=format_discord_emojis(
+                    f"### {Emojis.WARNING} No Playlists Found in Library\n\n"
+                    "You don't have any saved playlists in your library yet.\n\n"
+                    f"• Stream any public Spotify or YouTube playlist directly: `/play <playlist_url>`\n"
+                    f"• Create and manage custom playlists in the [Web Dashboard](https://syncink.site/dashboard/radio/#library)\n\n"
+                    "-# Playlists you create in the dashboard will appear here automatically."
+                ),
+                color=SPOTIFY_COLOR
+            )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
@@ -476,7 +446,7 @@ class Spotify(commands.Cog):
     @cmd_spotify.command(name="connect")
     async def cmd_spotify_connect(self, ctx: commands.Context):
         if not self.client.is_configured:
-            await ctx.send(embed=discord.Embed(description=f"{Emojis.WARNING} Spotify API credentials are not configured in `.env`.", color=0xFEE75C))
+            await ctx.send(embed=discord.Embed(description=f"{Emojis.WARNING} Spotify integration is temporarily unavailable. Please try again later.", color=0xFEE75C))
             return
         auth_url, state = await self.auth_mgr.generate_auth_url(ctx.author.id)
         view = SpotifyConnectView(auth_url)
