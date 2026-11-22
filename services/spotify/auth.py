@@ -42,19 +42,21 @@ class SpotifyUserAuthManager:
     def get_default_redirect_uri(self) -> str:
         """
         Determines the canonical Spotify OAuth2 redirect URI.
-        Safeguards against stale '127.0.0.1' in production environments while
-        respecting explicit custom redirect URIs or falling back to canonical public domain.
+        Safeguards against stale '127.0.0.1' or non-subpath URIs in production environments.
+        Since the radio platform is reverse-proxied under '/dashboard/radio', callbacks
+        MUST route to https://syncink.site/dashboard/radio/callback to prevent 404 from main site.
         """
         env_uri = os.getenv("SPOTIFY_REDIRECT_URI", "").strip()
         discord_redirect = os.getenv("DISCORD_REDIRECT_URI", "").strip()
-        # If running in production (indicated by syncink.site), prevent 127.0.0.1 from breaking remote clients:
+        # If running in production (indicated by syncink.site)
         if "syncink.site" in discord_redirect or "syncink.site" in env_uri:
-            if not env_uri or "127.0.0.1" in env_uri or "localhost" in env_uri:
-                return "https://syncink.site/callback"
+            # If empty, localhost, or unproxied root callback /callback
+            if not env_uri or "127.0.0.1" in env_uri or "localhost" in env_uri or env_uri.rstrip("/").endswith("syncink.site/callback"):
+                return "https://syncink.site/dashboard/radio/callback"
             return env_uri
         if env_uri:
             return env_uri
-        return "https://syncink.site/callback"
+        return "https://syncink.site/dashboard/radio/callback"
 
     @classmethod
     def get_instance(cls) -> 'SpotifyUserAuthManager':

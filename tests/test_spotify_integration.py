@@ -172,16 +172,21 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
         await db.close()
 
     async def test_09_canonical_redirect_uri_resolution(self):
-        """Test that redirect URI resolves to production domain and avoids 127.0.0.1 when in production."""
-        # 1. When SPOTIFY_REDIRECT_URI is public
-        with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "https://syncink.site/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
+        """Test that redirect URI resolves to production subpath and avoids 127.0.0.1 and unproxied root in production."""
+        # 1. When SPOTIFY_REDIRECT_URI is public subpath
+        with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "https://syncink.site/dashboard/radio/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
             uri = self.auth_mgr.get_default_redirect_uri()
-            self.assertEqual(uri, "https://syncink.site/callback")
+            self.assertEqual(uri, "https://syncink.site/dashboard/radio/callback")
 
         # 2. When SPOTIFY_REDIRECT_URI had stale 127.0.0.1 in production
         with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "http://127.0.0.1:8888/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
             uri = self.auth_mgr.get_default_redirect_uri()
-            self.assertEqual(uri, "https://syncink.site/callback", "Should safeguard against 127.0.0.1 in production")
+            self.assertEqual(uri, "https://syncink.site/dashboard/radio/callback", "Should safeguard against 127.0.0.1 in production")
+
+        # 3. When SPOTIFY_REDIRECT_URI had unproxied root /callback in production (which 404s on main website)
+        with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "https://syncink.site/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
+            uri = self.auth_mgr.get_default_redirect_uri()
+            self.assertEqual(uri, "https://syncink.site/dashboard/radio/callback", "Should auto-correct root /callback to /dashboard/radio/callback")
 
     async def test_10_generate_auth_url_stores_redirect_and_target(self):
         """Test that generate_auth_url records redirect_uri and return_to in the database."""
@@ -190,19 +195,19 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
 
         auth_url, state = await self.auth_mgr.generate_auth_url(
             discord_user_id=user_id,
-            redirect_uri="https://syncink.site/callback",
+            redirect_uri="https://syncink.site/dashboard/radio/callback",
             return_to="dashboard"
         )
 
         self.assertIn("client_id=test_spotify_client_id_123", auth_url)
-        self.assertIn("redirect_uri=https%3A%2F%2Fsyncink.site%2Fcallback", auth_url)
+        self.assertIn("redirect_uri=https%3A%2F%2Fsyncink.site%2Fdashboard%2Fradio%2Fcallback", auth_url)
         self.assertIn(f"state={state}", auth_url)
 
         # Verify state row in database
         row = await db.fetchrow("SELECT discord_user_id, code_verifier, redirect_uri, return_to FROM spotify_oauth_states WHERE state = $1;", state)
         self.assertIsNotNone(row)
         self.assertEqual(int(row["discord_user_id"]), user_id)
-        self.assertEqual(row["redirect_uri"], "https://syncink.site/callback")
+        self.assertEqual(row["redirect_uri"], "https://syncink.site/dashboard/radio/callback")
         self.assertEqual(row["return_to"], "dashboard")
 
         # Clean up

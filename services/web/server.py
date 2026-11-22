@@ -150,7 +150,9 @@ class UnifiedWebServer:
             or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
             or "dashboard/radio" in str(request.headers.get("Referer", ""))
         )
-        base_prefix = "/dashboard/radio" if is_subpath else ""
+        # In production on syncink.site, the dashboard is exclusively mounted under /dashboard/radio
+        is_production = "syncink.site" in str(request.host).lower() or "syncink.site" in str(request.headers.get("X-Forwarded-Host", "")).lower()
+        base_prefix = "/dashboard/radio" if (is_subpath or is_production) else ""
 
         if error:
             if state:

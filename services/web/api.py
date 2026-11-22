@@ -2146,11 +2146,11 @@ class DashboardAPI:
         # If on localhost without proxy
         if not is_cf and (host.startswith("localhost") or host.startswith("127.0.0.1")):
             proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "http"
-            effective_redirect = f"{proto}://{host}/callback"
-        elif env_uri and "127.0.0.1" not in env_uri and "localhost" not in env_uri:
+            effective_redirect = f"{proto}://{host}/dashboard/radio/callback"
+        elif env_uri and "127.0.0.1" not in env_uri and "localhost" not in env_uri and not env_uri.rstrip("/").endswith("syncink.site/callback"):
             effective_redirect = env_uri
         else:
-            effective_redirect = "https://syncink.site/callback"
+            effective_redirect = "https://syncink.site/dashboard/radio/callback"
 
         try:
             auth_url, state = await auth_mgr.generate_auth_url(
