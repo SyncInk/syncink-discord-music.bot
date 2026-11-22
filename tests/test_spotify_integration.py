@@ -408,6 +408,60 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(user_auth2)
         self.assertEqual(user_auth2.spotify_user_id, "recovered_user")
 
+    async def test_14_profile_fetch_403_graceful_fallback(self):
+        """Test that HTTP 403 on Spotify /v1/me endpoint does not fail account linking and uses fallback profile."""
+        from database import db
+        user_id = 555444333222111000
+        auth_url, state = await self.auth_mgr.generate_auth_url(
+            discord_user_id=user_id,
+            redirect_uri="https://syncink.site/dashboard/radio/callback",
+            return_to="dashboard"
+        )
+
+        class DevModeSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def post(self, url, data=None, headers=None):
+                class Resp:
+                    status = 200
+                    async def json(self):
+                        return {"access_token": "valid_at_xyz", "refresh_token": "valid_rt_abc", "expires_in": 3600}
+                    async def __aenter__(self):
+                        return self
+                    async def __aexit__(self, *args):
+                        pass
+                return Resp()
+            def get(self, url, headers=None):
+                class Resp:
+                    status = 403
+                    async def text(self):
+                        return json.dumps({"error": {"status": 403, "message": "User not registered in the Developer Dashboard"}})
+                    async def __aenter__(self):
+                        return self
+                    async def __aexit__(self, *args):
+                        pass
+                return Resp()
+
+        with patch("aiohttp.ClientSession", DevModeSession):
+            user_auth, err = await self.auth_mgr.handle_callback_detailed("valid_oauth_code", state)
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(user_auth)
+        self.assertEqual(user_auth.discord_user_id, user_id)
+        self.assertEqual(user_auth.display_name, "Spotify User")
+        self.assertTrue(user_auth.spotify_user_id.startswith("spotify_"))
+        self.assertEqual(user_auth.return_to, "dashboard")
+
+        # Verify record in DB
+        row = await db.fetchrow("SELECT display_name, encrypted_refresh_token FROM spotify_users WHERE discord_user_id = $1;", user_id)
+        self.assertIsNotNone(row)
+        self.assertEqual(row["display_name"], "Spotify User")
+        self.assertTrue(len(row["encrypted_refresh_token"]) > 0)
+
 
 if __name__ == "__main__":
     unittest.main()

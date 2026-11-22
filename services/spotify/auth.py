@@ -25,6 +25,7 @@ class SpotifyUserAuthManager:
 
     DEFAULT_SCOPES = [
         "user-read-private",
+        "user-read-email",
         "playlist-read-private",
         "playlist-read-collaborative",
         "user-top-read",
@@ -220,24 +221,28 @@ class SpotifyUserAuthManager:
             expires_in = int(token_data.get("expires_in", 3600))
             scope = token_data.get("scope", "")
 
-            # Fetch user profile from Spotify
+            # Fetch user profile from Spotify (non-blocking fallback if profile permissions or Dev Mode allowlist restricts /v1/me)
+            profile_data = {}
             profile_headers = {"Authorization": f"Bearer {access_token}"}
-            async with session.get(self.API_ME_ENDPOINT, headers=profile_headers) as p_resp:
-                if p_resp.status != 200:
-                    p_err = await p_resp.text()
-                    log.error(f"[Spotify Auth] Could not fetch profile HTTP {p_resp.status}: {p_err}")
-                    return None, f"Could not fetch Spotify user profile (HTTP {p_resp.status})"
-                profile_data = await p_resp.json()
+            try:
+                async with session.get(self.API_ME_ENDPOINT, headers=profile_headers) as p_resp:
+                    if p_resp.status == 200:
+                        profile_data = await p_resp.json()
+                    else:
+                        p_err = await p_resp.text()
+                        log.warning(f"[Spotify Auth] Could not fetch profile HTTP {p_resp.status}: {p_err}. Using fallback profile.")
+            except Exception as e:
+                log.warning(f"[Spotify Auth] Exception fetching Spotify profile: {e}. Using fallback profile.")
 
-        # Delete state token now that token exchange and profile fetch have succeeded
+        # Delete state token now that token exchange and validation have succeeded
         self._pending_oauth_states.pop(state, None)
         try:
             await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
         except Exception:
             pass
 
-        spotify_user_id = profile_data.get("id") or "unknown"
-        display_name = profile_data.get("display_name") or spotify_user_id
+        spotify_user_id = profile_data.get("id") or f"spotify_{discord_user_id}"
+        display_name = profile_data.get("display_name") or "Spotify User"
         email = profile_data.get("email")
 
         # Encrypt the refresh token before database storage
