@@ -89,6 +89,8 @@ class UnifiedWebServer:
         _route("DELETE", "/api/library/favorites/{id}", DashboardAPI.handle_remove_favorite)
         _route("GET", "/api/playlists", DashboardAPI.handle_get_playlists)
         _route("POST", "/api/playlists", DashboardAPI.handle_create_playlist)
+        _route("POST", "/api/playlists/import", DashboardAPI.handle_import_playlist)
+        _route("POST", "/api/user/playlists/import", DashboardAPI.handle_import_playlist)
         _route("DELETE", "/api/playlists/{id}", DashboardAPI.handle_delete_playlist)
         _route("GET", "/api/playlists/{id}/tracks", DashboardAPI.handle_get_playlist_tracks)
         _route("POST", "/api/playlists/{id}/tracks", DashboardAPI.handle_add_playlist_track)

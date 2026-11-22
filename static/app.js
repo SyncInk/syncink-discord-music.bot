@@ -236,14 +236,30 @@ async function toggleDemoMode() {
   }
 }
 
-async function logout() {
+function openLogoutModal() {
+  const modal = document.getElementById('modal-confirm-logout');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeLogoutModal(e) {
+  if (e && e.target !== e.currentTarget && e.target !== document.getElementById('modal-confirm-logout')) return;
+  const modal = document.getElementById('modal-confirm-logout');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function performLogout() {
   try {
     await fetch('/api/auth/logout', { method: 'POST' });
     state.currentUser = null;
     window.location.reload();
   } catch (e) {
     console.error('Logout error:', e);
+    showToast('Failed to sign out', 'error');
   }
+}
+
+async function logout() {
+  openLogoutModal();
 }
 
 // ------------------- REAL-TIME WEBSOCKET GATEWAY (<1s LATENCY) -------------------
@@ -2152,6 +2168,151 @@ async function deletePlaylist(id) {
     loadCustomPlaylists();
   } catch (e) {
     console.error('Delete playlist error:', e);
+  }
+}
+
+// ------------------- TRANSFERABLE / IMPORT PLAYLIST LOGIC -------------------
+let importDestMode = 'new';
+
+function setImportDestinationMode(mode) {
+  importDestMode = mode;
+  const newBtn = document.getElementById('import-dest-new-btn');
+  const existBtn = document.getElementById('import-dest-exist-btn');
+  const newField = document.getElementById('import-dest-new-field');
+  const existField = document.getElementById('import-dest-exist-field');
+
+  if (mode === 'new') {
+    if (newBtn) newBtn.className = 'py-1.5 px-3 rounded-xl text-xs font-bold bg-brand-primary text-white border border-brand-primary/60 transition-all';
+    if (existBtn) existBtn.className = 'py-1.5 px-3 rounded-xl text-xs font-semibold bg-brand-surface text-[#9E9EAD] hover:text-white border border-brand-border/40 transition-all';
+    if (newField) newField.classList.remove('hidden');
+    if (existField) existField.classList.add('hidden');
+  } else {
+    if (existBtn) existBtn.className = 'py-1.5 px-3 rounded-xl text-xs font-bold bg-brand-primary text-white border border-brand-primary/60 transition-all';
+    if (newBtn) newBtn.className = 'py-1.5 px-3 rounded-xl text-xs font-semibold bg-brand-surface text-[#9E9EAD] hover:text-white border border-brand-border/40 transition-all';
+    if (existField) existField.classList.remove('hidden');
+    if (newField) newField.classList.add('hidden');
+    populateImportPlaylistSelect();
+  }
+}
+
+async function populateImportPlaylistSelect() {
+  const select = document.getElementById('import-target-playlist-select');
+  if (!select) return;
+  try {
+    const res = await fetch('/api/playlists');
+    const data = await res.json();
+    select.innerHTML = '<option value="">Select a playlist...</option>';
+    if (data.playlists && data.playlists.length > 0) {
+      data.playlists.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = `${p.name} (${p.track_count || 0} tracks)`;
+        select.appendChild(opt);
+      });
+    } else {
+      select.innerHTML = '<option value="">No existing playlists found</option>';
+    }
+  } catch (e) {
+    console.error('Error loading playlists for select:', e);
+  }
+}
+
+function openImportPlaylistModal() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord first to manage personal playlists!', 'warning');
+    return;
+  }
+  const modal = document.getElementById('modal-import-playlist');
+  if (modal) {
+    modal.classList.remove('hidden');
+    const urlInput = document.getElementById('import-playlist-url');
+    if (urlInput) urlInput.value = '';
+    const nameInput = document.getElementById('import-playlist-name');
+    if (nameInput) nameInput.value = '';
+    const msg = document.getElementById('import-status-msg');
+    if (msg) {
+      msg.className = 'hidden';
+      msg.textContent = '';
+    }
+    setImportDestinationMode('new');
+    initIcons();
+  }
+}
+
+function closeImportPlaylistModal(e) {
+  if (e && e.target !== e.currentTarget && e.target !== document.getElementById('modal-import-playlist')) return;
+  const modal = document.getElementById('modal-import-playlist');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function submitImportPlaylist() {
+  const url = document.getElementById('import-playlist-url').value.trim();
+  if (!url) {
+    showToast('Please paste a Spotify or YouTube Music playlist link!', 'warning');
+    return;
+  }
+
+  const customName = document.getElementById('import-playlist-name').value.trim();
+  const targetPlaylistId = document.getElementById('import-target-playlist-select') ? document.getElementById('import-target-playlist-select').value : null;
+
+  if (importDestMode === 'existing' && !targetPlaylistId) {
+    showToast('Please select a target playlist to import into!', 'warning');
+    return;
+  }
+
+  const submitBtn = document.getElementById('btn-submit-import-playlist');
+  const statusMsg = document.getElementById('import-status-msg');
+
+  if (submitBtn) {
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader" class="w-3.5 h-3.5 animate-spin"></i><span>Importing tracks...</span>';
+    initIcons();
+  }
+
+  if (statusMsg) {
+    statusMsg.className = 'text-xs py-2 px-3 rounded-xl bg-brand-primary/20 text-brand-secondary border border-brand-primary/40 block';
+    statusMsg.textContent = 'Extracting and importing tracks from playlist source. This may take a few moments...';
+  }
+
+  try {
+    const res = await fetch('/api/playlists/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        url: url,
+        mode: importDestMode,
+        custom_name: customName,
+        playlist_id: targetPlaylistId ? parseInt(targetPlaylistId) : null
+      })
+    });
+
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`Successfully imported ${data.imported_count} tracks into "${data.playlist_name}"!`, 'success');
+      closeImportPlaylistModal();
+      loadCustomPlaylists();
+      switchLibraryTab('playlists');
+    } else {
+      const errMsg = data.error || 'Failed to import playlist.';
+      if (statusMsg) {
+        statusMsg.className = 'text-xs py-2 px-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 block';
+        statusMsg.textContent = errMsg;
+      }
+      showToast(errMsg, 'error');
+    }
+  } catch (err) {
+    console.error('Import playlist error:', err);
+    if (statusMsg) {
+      statusMsg.className = 'text-xs py-2 px-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 block';
+      statusMsg.textContent = 'Network or server error while importing playlist: ' + err.message;
+    }
+    showToast('Error importing playlist: ' + err.message, 'error');
+  } finally {
+    if (submitBtn) {
+      submitBtn.disabled = false;
+      submitBtn.innerHTML = '<i data-lucide="download" class="w-3.5 h-3.5"></i><span>Import Tracks</span>';
+      initIcons();
+    }
   }
 }
 

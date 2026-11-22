@@ -200,16 +200,15 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             return
 
         # 1. Top Section: Track Title, Artist, and Duration with Thumbnail accessory
-        title_text = f"### {Emojis.PLAYING} Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}** `[{current.formatted_duration}]`"
+        title_text = f"### 💿 Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}** `[{current.formatted_duration}]`"
         text_disp = discord.ui.TextDisplay(title_text)
         thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else BRAND_LOGO_URL
         sec = discord.ui.Section(text_disp, accessory=discord.ui.Thumbnail(thumb_url))
 
-        # 2. Controls Action Row
+        # 2. Controls Action Row (Clean, icon-only buttons matching Chip bot reference)
         is_paused = bool(self.queue.voice_client and self.queue.voice_client.is_paused())
         self.btn_pause_resume = discord.ui.Button(
             emoji=EmojiPartials.PLAY_BUTTON if is_paused else EmojiPartials.PAUSE_BUTTON,
-            label="Resume" if is_paused else "Pause",
             style=discord.ButtonStyle.secondary,
             custom_id="m_pause_resume"
         )
@@ -217,7 +216,6 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.btn_prev = discord.ui.Button(
             emoji=EmojiPartials.PREVIOUS,
-            label="Prev",
             style=discord.ButtonStyle.secondary,
             custom_id="m_prev"
         )
@@ -225,7 +223,6 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.btn_skip = discord.ui.Button(
             emoji=EmojiPartials.NEXT,
-            label="Skip",
             style=discord.ButtonStyle.secondary,
             custom_id="m_skip"
         )
@@ -233,7 +230,6 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.btn_stop = discord.ui.Button(
             emoji=EmojiPartials.DELETE,
-            label="Stop",
             style=discord.ButtonStyle.danger,
             custom_id="m_stop"
         )
@@ -241,7 +237,6 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         self.btn_queue = discord.ui.Button(
             emoji=EmojiPartials.QUEUE,
-            label="Queue",
             style=discord.ButtonStyle.secondary,
             custom_id="m_queue"
         )
@@ -249,43 +244,15 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         row = discord.ui.ActionRow(self.btn_pause_resume, self.btn_prev, self.btn_skip, self.btn_stop, self.btn_queue)
 
-        items = [sec, row]
-
-        # 3. Dedicated AutoPlay Rating Row (ONLY when AutoPlay is enabled)
-        if self.queue.autoplay:
-            btn_like = discord.ui.Button(
-                emoji=EmojiPartials.LIKE,
-                label="Like",
-                style=discord.ButtonStyle.secondary,
-                custom_id="m_ap_like"
-            )
-            btn_like.callback = self.on_ap_like
-
-            btn_dislike = discord.ui.Button(
-                emoji=EmojiPartials.DISLIKE,
-                label="Dislike",
-                style=discord.ButtonStyle.secondary,
-                custom_id="m_ap_dislike"
-            )
-            btn_dislike.callback = self.on_ap_dislike
-
-            ap_row = discord.ui.ActionRow(btn_like, btn_dislike)
-            items.append(ap_row)
-
-        # 4. Separator component
+        # 3. Separator component
         sep = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
-        items.append(sep)
 
-        # 5. Requester / AutoPlay footer
+        # 4. Requester footer
         req_id = current.requested_by.id if (current.requested_by and hasattr(current.requested_by, "id")) else 1520522990280769727
-        if self.queue.autoplay and getattr(self.queue, "last_autoplay_meta", None):
-            genre_tag = self.queue.last_autoplay_meta.get("genre", "Smart Selection")
-            footer_text = f"-# {Emojis.AI} AutoPlay Active (`{genre_tag}`) • Rate with {Emojis.LIKE} or {Emojis.DISLIKE}"
-        else:
-            footer_text = f"-# {Emojis.MEMBER} Track requested by <@{req_id}>"
+        footer_text = f"👤 Track requested by <@{req_id}>"
         footer = discord.ui.TextDisplay(footer_text)
-        items.append(footer)
 
+        items = [sec, row, sep, footer]
         cnt = discord.ui.Container(*items, accent_color=BRAND_COLOR)
         self.add_item(cnt)
 

@@ -1266,6 +1266,208 @@ class DashboardAPI:
         return aiohttp.web.json_response({"success": True})
 
     @classmethod
+    async def handle_import_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Transferable playlist importer for Spotify and YouTube Music.
+        Parses external playlist links and inserts all tracks into a personal SyncInk Radio playlist.
+        """
+        user = await cls.get_session_user(request)
+        if not user:
+            return aiohttp.web.json_response({"error": "Authentication required. Please log in with Discord."}, status=401)
+
+        try:
+            body = await request.json()
+        except Exception:
+            return aiohttp.web.json_response({"error": "Invalid request body."}, status=400)
+
+        url = body.get("url", "").strip()
+        mode = body.get("mode", "new").strip().lower()
+        custom_name = body.get("custom_name", "").strip()
+        target_pid = body.get("playlist_id")
+
+        if not url:
+            return aiohttp.web.json_response({"error": "Please provide a playlist URL."}, status=400)
+
+        import re
+        import asyncio
+        import json
+        import urllib.parse
+        from services.spotify.resolver import SpotifyResolver
+
+        extracted_tracks = []
+        source_title = None
+        source_platform = None
+
+        is_spotify = SpotifyResolver.is_spotify_url_or_uri(url) or "open.spotify.com" in url.lower() or "spotify.link" in url.lower()
+        is_youtube = ("youtube.com" in url.lower() or "youtu.be" in url.lower() or "music.youtube.com" in url.lower())
+
+        if not is_spotify and not is_youtube:
+            return aiohttp.web.json_response({
+                "error": "Unsupported playlist URL. Please provide a Spotify playlist/album link or a YouTube/YouTube Music playlist link."
+            }, status=400)
+
+        # 1. SPOTIFY PLAYLIST EXTRACTION
+        if is_spotify:
+            source_platform = "spotify"
+            # Try official Spotify API if configured
+            try:
+                res_type, norm_tracks, meta = await SpotifyResolver.resolve(url, limit=100)
+                if norm_tracks:
+                    source_title = meta.get("name")
+                    for nt in norm_tracks:
+                        extracted_tracks.append({
+                            "title": nt.title,
+                            "author": nt.artist,
+                            "url": nt.original_url or f"https://open.spotify.com/track/{nt.id}",
+                            "duration": int((nt.duration_ms or 0) / 1000),
+                            "thumbnail": nt.artwork or "https://files.catbox.moe/74l9su.png",
+                            "platform": "spotify"
+                        })
+            except Exception as e:
+                log.info(f"[Import Playlist] SpotifyResolver exception (will fallback to embed): {e}")
+
+            # Fallback: Spotify Embed scraper (zero API keys required)
+            if not extracted_tracks:
+                try:
+                    parsed = SpotifyResolver.parse_resource(url)
+                    if parsed:
+                        res_type, res_id = parsed
+                        embed_url = f"https://open.spotify.com/embed/{res_type}/{res_id}"
+                        timeout = aiohttp.ClientTimeout(total=15, connect=5)
+                        async with aiohttp.ClientSession(timeout=timeout) as sess:
+                            async with sess.get(embed_url, headers={
+                                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                            }) as resp:
+                                if resp.status == 200:
+                                    html = await resp.text()
+                                    m = re.search(r'<script id="__NEXT_DATA__"[^>]*>(.*?)</script>', html)
+                                    if m:
+                                        data = json.loads(m.group(1))
+                                        entity = data.get("props", {}).get("pageProps", {}).get("state", {}).get("data", {}).get("entity", {})
+                                        source_title = entity.get("name") or entity.get("title")
+                                        t_list = entity.get("trackList", [])
+                                        for t in t_list:
+                                            t_title = t.get("title")
+                                            if not t_title:
+                                                continue
+                                            t_author = t.get("subtitle") or "Spotify Artist"
+                                            t_dur = int(t.get("duration", 0) / 1000)
+                                            t_uri = t.get("uri", "")
+                                            t_id = t_uri.split(":")[-1] if ":" in t_uri else ""
+                                            t_url = f"https://open.spotify.com/track/{t_id}" if t_id else f"https://www.youtube.com/results?search_query={urllib.parse.quote_plus(f'{t_title} {t_author}')}"
+                                            extracted_tracks.append({
+                                                "title": t_title,
+                                                "author": t_author,
+                                                "url": t_url,
+                                                "duration": t_dur,
+                                                "thumbnail": "https://files.catbox.moe/74l9su.png",
+                                                "platform": "spotify"
+                                            })
+                except Exception as e:
+                    log.warning(f"[Import Playlist] Spotify embed fallback error: {e}")
+
+        # 2. YOUTUBE / YOUTUBE MUSIC PLAYLIST EXTRACTION
+        elif is_youtube:
+            source_platform = "youtube"
+            import yt_dlp
+            loop = asyncio.get_event_loop()
+
+            def _extract_yt():
+                ydl_opts = {
+                    "extract_flat": "in_playlist",
+                    "skip_download": True,
+                    "quiet": True,
+                    "no_warnings": True,
+                    "playlistend": 200,
+                }
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    return ydl.extract_info(url, download=False)
+
+            try:
+                info = await loop.run_in_executor(None, _extract_yt)
+                if info:
+                    source_title = info.get("title")
+                    entries = info.get("entries") or []
+                    for entry in entries:
+                        if not entry or not entry.get("title"):
+                            continue
+                        e_title = entry.get("title")
+                        if e_title in ["[Private video]", "[Deleted video]"]:
+                            continue
+                        e_author = entry.get("uploader") or entry.get("channel") or "YouTube Music"
+                        e_url = entry.get("url") or (f"https://www.youtube.com/watch?v={entry.get('id')}" if entry.get("id") else "")
+                        if not e_url:
+                            continue
+                        e_dur = int(entry.get("duration") or 0)
+                        thumb = "https://files.catbox.moe/74l9su.png"
+                        if entry.get("thumbnails"):
+                            thumb = entry["thumbnails"][-1].get("url", thumb)
+                        extracted_tracks.append({
+                            "title": e_title,
+                            "author": e_author,
+                            "url": e_url,
+                            "duration": e_dur,
+                            "thumbnail": thumb,
+                            "platform": "youtube"
+                        })
+            except Exception as e:
+                log.warning(f"[Import Playlist] YouTube extraction error: {e}")
+                return aiohttp.web.json_response({
+                    "error": f"Failed to extract tracks from YouTube playlist: {str(e)}"
+                }, status=400)
+
+        if not extracted_tracks:
+            return aiohttp.web.json_response({
+                "error": "No tracks could be found or extracted from the provided link. Please ensure the playlist is public."
+            }, status=400)
+
+        uid = user["discord_user_id"]
+        final_pid = None
+        final_name = None
+
+        # 3. SAVE PLAYLIST TO DATABASE
+        if mode == "existing" and target_pid:
+            existing = await db.fetchrow("SELECT id, name FROM user_playlists WHERE id = $1 AND discord_user_id = $2", int(target_pid), uid)
+            if not existing:
+                return aiohttp.web.json_response({"error": "Selected target playlist not found or access denied."}, status=404)
+            final_pid = existing["id"]
+            final_name = existing["name"]
+        else:
+            pl_name = custom_name or source_title or f"Imported {source_platform.capitalize()} Playlist"
+            pl_desc = f"Imported from {source_platform.capitalize()} ({len(extracted_tracks)} tracks)"
+            await db.execute(
+                "INSERT INTO user_playlists (discord_user_id, name, description) VALUES ($1, $2, $3)",
+                uid, pl_name, pl_desc
+            )
+            created_row = await db.fetchrow(
+                "SELECT id, name FROM user_playlists WHERE discord_user_id = $1 ORDER BY id DESC LIMIT 1",
+                uid
+            )
+            final_pid = created_row["id"]
+            final_name = created_row["name"]
+
+        max_pos_row = await db.fetchrow("SELECT COALESCE(MAX(position), 0) as max_pos FROM user_playlist_tracks WHERE playlist_id = $1", final_pid)
+        current_pos = max_pos_row["max_pos"] if max_pos_row else 0
+
+        for idx, t in enumerate(extracted_tracks):
+            pos = current_pos + idx + 1
+            await db.execute(
+                """
+                INSERT INTO user_playlist_tracks (playlist_id, title, author, url, duration, thumbnail, platform, position)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                """,
+                final_pid, t["title"], t["author"], t["url"], t["duration"], t["thumbnail"], t["platform"], pos
+            )
+
+        log.info(f"[Import Playlist] Successfully imported {len(extracted_tracks)} tracks into playlist {final_pid} ('{final_name}') for user {uid}")
+        return aiohttp.web.json_response({
+            "success": True,
+            "playlist_id": final_pid,
+            "playlist_name": final_name,
+            "imported_count": len(extracted_tracks)
+        })
+
+    @classmethod
     async def handle_search_suggestions(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         """Real-time instant autocomplete song search. Strictly returns songs only."""
         q = request.query.get("q", "").strip()

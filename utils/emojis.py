@@ -385,116 +385,85 @@ def format_discord_emojis(text: str) -> str:
     If custom emojis are unverified or cross-application (which Discord would strip to raw text),
     replaces them with clean universal Unicode symbols so raw colons (:name:) NEVER appear in chat.
     Also strips any surrounding backticks (`...`).
+    Uses a strict unified token regex to prevent double-replacing inside existing tags.
     """
     if not text:
         return text
 
-    # 1. Strip backticks around custom emojis <:name:id> or <a:name:id>
+    # 1. Clean up malformed or nested tags from past substitutions
+    text = re.sub(r'<a?<a:([a-zA-Z0-9_~-]+):(\d+)>:?\d*>', r'<a:\1:\2>', text)
+    text = re.sub(r'<a?\s*[:! ]+\s*1520914584012328961>', '<a:syncwarning:1520914584012328961>', text)
+    text = re.sub(r'<a?\s*[:! ]+\s*1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+    text = re.sub(r'<a?:[a-zA-Z0-9_~-]*:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+    text = re.sub(r'<a?:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+
+    # 2. Strip backticks around custom emojis <:name:id> or <a:name:id>
     text = re.sub(r'[`\x60]+\s*(<a?:[a-zA-Z0-9_~-]+:\d+>)\s*[`\x60]+', r'\1', text)
 
-    # 2. Strip backticks around raw :name: emojis
+    # 3. Strip backticks around raw :name: emojis
     text = re.sub(r'[`\x60]+\s*(:[a-zA-Z0-9_~-]+:)\s*[`\x60]+', r'\1', text)
 
-    # 3. Upgrade legacy tags
+    # 4. Upgrade legacy tags
     for old_tag, new_tag in OLD_TAG_MAP.items():
         text = text.replace(old_tag, new_tag)
 
-    # Replace broken or unverified alert tags & replace 🎶 with animated playing
-    text = re.sub(r'<a?:[a-zA-Z0-9_~-]*:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
-    text = re.sub(r'<a?:1573698286941118705>', '<a:syncwarning:1520914584012328961>', text)
+    # Replace 🎶 with animated playing
     text = text.replace("🎶", "<a:playing:1559661648011075664>")
 
-    # 4. Filter unverified custom emojis (<a?:name:id>)
-    # If the bot is not permitted to send this ID, Discord strips it to :name: text.
-    def _replace_custom_tag(match):
-        name = match.group(2)
-        emoji_id = int(match.group(3))
-        name_lower = name.lower().replace("-", "_").replace(" ", "")
+    # 5. Unified single-pass token replacer (custom tags first, standalone colon emojis second)
+    token_pattern = re.compile(
+        r'(?P<custom><(?P<anim>a)?:(?P<cname>[a-zA-Z0-9_~-]+):(?P<cid>\d+)>)|(?P<colon>:(?P<sname>[a-zA-Z0-9_~-]+):)'
+    )
 
-        # If verified accessible, keep as high-res custom emoji
-        if emoji_id in VERIFIED_BOT_EMOJI_IDS:
-            return match.group(0)
+    def _replace_token(match: re.Match) -> str:
+        # Case A: Full Discord custom tag (<a?:name:id>)
+        if match.group('custom'):
+            cid = int(match.group('cid'))
+            # If actively verified for this bot, preserve tag untouched
+            if cid in VERIFIED_BOT_EMOJI_IDS:
+                return match.group('custom')
 
-        # If we have a verified replacement for this emoji under an owned ID, use that
-        if name_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
-            cand = VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
-            c_match = re.search(r':(\d+)>', cand)
-            if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
-                return cand
+            cname_lower = match.group('cname').lower().replace("-", "_").replace(" ", "")
+            # If known under another verified ID, use that verified tag
+            if cname_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
+                cand = VERIFIED_BOT_EMOJIS_BY_NAME[cname_lower]
+                cand_match = re.search(r':(\d+)>', cand)
+                if cand_match and int(cand_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+                    return cand
 
-        # Otherwise fallback to clean Unicode to avoid Discord stripping it to text
-        return UNICODE_FALLBACKS.get(name_lower, "⚠️")
+            # Otherwise fallback to clean Unicode so Discord doesn't strip it to text
+            return UNICODE_FALLBACKS.get(cname_lower, "⚠️")
 
-    text = re.sub(r'<([a]?):([a-zA-Z0-9_~-]+):(\d+)>', _replace_custom_tag, text)
+        # Case B: Standalone :name: emoji
+        sname = match.group('sname')
+        sname_lower = sname.lower().replace("-", "_").replace(" ", "")
 
-    # 5. Convert unformatted :name: emojis
-    def _replace_colon_name(match):
-        name = match.group(1)
-        name_lower = name.lower().replace("-", "_").replace(" ", "")
-
-        # Check verified custom emojis first (only if ID is actively verified)
-        if name_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
-            cand = VERIFIED_BOT_EMOJIS_BY_NAME[name_lower]
-            c_match = re.search(r':(\d+)>', cand)
-            if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+        # Check verified custom emojis
+        if sname_lower in VERIFIED_BOT_EMOJIS_BY_NAME:
+            cand = VERIFIED_BOT_EMOJIS_BY_NAME[sname_lower]
+            cand_match = re.search(r':(\d+)>', cand)
+            if cand_match and int(cand_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
                 return cand
 
         # Check dynamic EMOJI_NAME_MAP
-        if name_lower in EMOJI_NAME_MAP:
-            mapped = EMOJI_NAME_MAP[name_lower]
-            custom_match = re.match(r'<a?:[a-zA-Z0-9_~-]+:(\d+)>', mapped)
-            if custom_match:
-                if int(custom_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
+        if sname_lower in EMOJI_NAME_MAP:
+            mapped = EMOJI_NAME_MAP[sname_lower]
+            c_m = re.match(r'<a?:[a-zA-Z0-9_~-]+:(\d+)>', mapped)
+            if c_m:
+                if int(c_m.group(1)) in VERIFIED_BOT_EMOJI_IDS:
                     return mapped
             else:
                 return mapped
 
         # Fallback to Unicode
-        if name_lower in UNICODE_FALLBACKS:
-            return UNICODE_FALLBACKS[name_lower]
+        if sname_lower in UNICODE_FALLBACKS:
+            return UNICODE_FALLBACKS[sname_lower]
 
-        return match.group(0)
+        return match.group('colon')
 
-    # Matches :name: when NOT part of <:name:id> or <a:name:id>
-    text = re.sub(r'(?<!<a:)(?<!<:):([a-zA-Z0-9_~-]+):(?![\d]+>)', _replace_colon_name, text)
+    text = token_pattern.sub(_replace_token, text)
 
-    # 6. Safety catch for common reported broken emojis to prevent any text leaks
-    safety_replacements = {
-        ":syncwarning:": Emojis.WARNING,
-        ":syncalert:": Emojis.WARNING,
-        ":sync_alert:": Emojis.WARNING,
-        ":sync_warning:": Emojis.WARNING,
-        ":warning:": Emojis.WARNING,
-        ":alert:": Emojis.ALERT,
-        ":SyncInkAI:": Emojis.AI,
-        ":syncinkai:": Emojis.AI,
-        ":s_arrow:": Emojis.S_ARROW,
-        ":sarrow:": Emojis.S_ARROW,
-        ":check_yes:": Emojis.CHECK_YES,
-        ":sync_check_yes:": Emojis.CHECK_YES,
-        ":synccheckyes:": Emojis.CHECK_YES,
-        ":checkyes:": Emojis.CHECK_YES,
-        ":refused:": Emojis.REFUSED,
-        ":cancelled:": Emojis.REFUSED,
-        ":approved:": Emojis.APPROVED,
-        ":syncbot:": Emojis.SYNCBOT,
-        ":syncrobot:": Emojis.SYNCBOT,
-        ":bot:": Emojis.SYNCBOT,
-        ":like:": Emojis.LIKE,
-        ":dislike:": Emojis.DISLIKE,
-    }
-    for colon_name, fallback_symbol in safety_replacements.items():
-        if colon_name in text:
-            name_key = colon_name.strip(":").lower().replace("-", "_")
-            verified_tag = VERIFIED_BOT_EMOJIS_BY_NAME.get(name_key)
-            if verified_tag:
-                c_match = re.search(r':(\d+)>', verified_tag)
-                if c_match and int(c_match.group(1)) in VERIFIED_BOT_EMOJI_IDS:
-                    text = text.replace(colon_name, verified_tag)
-                    continue
-            text = text.replace(colon_name, fallback_symbol)
-
-    # 7. Final strip of backticks around emojis
+    # 6. Final strip of backticks around emojis
     text = re.sub(r'[`\x60]+\s*(<a?:[a-zA-Z0-9_~-]+:\d+>)\s*[`\x60]+', r'\1', text)
 
     return text
