@@ -140,11 +140,11 @@ def build_now_playing_embed(queue: GuildMusicQueue) -> discord.Embed:
     elif queue.autoplay:
         if getattr(queue, "prefetched_autoplay_track", None):
             pref = queue.prefetched_autoplay_track
-            up_next = f"{Emojis.AI} **AI AutoPlay Next:** [{pref.clean_title}]({pref.url}) • *{pref.author}*"
+            up_next = f"{Emojis.AUDIA_AI} **Audia AI AutoPlay Next:** [{pref.clean_title}]({pref.url}) • *{pref.author}*"
         elif getattr(queue, "last_autoplay_meta", None):
-            up_next = f"{Emojis.AI} **AI AutoPlay Active** (`{queue.last_autoplay_meta.get('genre', 'Smart Selection')}`)"
+            up_next = f"{Emojis.AUDIA_AI} **Audia AI AutoPlay Active** (`{queue.last_autoplay_meta.get('genre', 'Smart Selection')}`)"
         else:
-            up_next = f"{Emojis.AI} **AI AutoPlay:** Intelligently matching upcoming tracks..."
+            up_next = f"{Emojis.AUDIA_AI} **Audia AI AutoPlay:** Intelligently matching upcoming tracks..."
     elif (current.is_radio or current.platform == "radio") and queue.active_radio_station:
         up_next = f"{Emojis.RADIO} **24/7 Continuous Radio Station**"
     else:
@@ -1325,7 +1325,7 @@ class AutoPlayFeedbackView(discord.ui.View):
         self.queue.prefetched_autoplay_track = None
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
-        embed = discord.Embed(description=f"### {Emojis.AI} {msg}", color=BRAND_COLOR)
+        embed = discord.Embed(description=f"### {Emojis.AUDIA_AI} {msg}", color=BRAND_COLOR)
         try:
             await interaction.response.edit_message(view=self)
             await interaction.followup.send(embed=embed, ephemeral=True)
@@ -1349,7 +1349,7 @@ class AutoPlayFeedbackView(discord.ui.View):
         self.queue.prefetched_autoplay_meta = None
         AutoPlayService.get_instance().trigger_prefetch(self.queue, self.music_cog.service)
         embed = discord.Embed(
-            description=f"### {Emojis.AI} AutoPlay Discovery mode switched to **{mode_desc}**.",
+            description=f"### {Emojis.AUDIA_AI} Audia AI Discovery mode switched to **{mode_desc}**.",
             color=BRAND_COLOR
         )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -4052,7 +4052,7 @@ class Music(commands.Cog):
             if m in ("on", "true", "enable", "1"):
                 queue.autoplay = True
                 AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-                embed = make_success_embed(f"### {Emojis.AI} Audia AI AutoPlay is now **ENABLED**.")
+                embed = make_success_embed(f"### {Emojis.AUDIA_AI} Audia AI AutoPlay is now **ENABLED**.")
                 await ctx.send(embed=embed, delete_after=5)
             elif m in ("off", "false", "disable", "0"):
                 queue.autoplay = False
@@ -4068,10 +4068,7 @@ class Music(commands.Cog):
                     queue.prefetched_autoplay_track = None
                     queue.prefetched_autoplay_meta = None
                 status = "ENABLED" if queue.autoplay else "DISABLED"
-                embed = make_success_embed(f"### {Emojis.AI} Audia AI AutoPlay is now **{status}**.")
-                await ctx.send(embed=embed, delete_after=5)
-                status = "ENABLED" if queue.autoplay else "DISABLED"
-                embed = make_success_embed(f"### {Emojis.AI} AI AutoPlay is now **{status}**.")
+                embed = make_success_embed(f"### {Emojis.AUDIA_AI} Audia AI AutoPlay is now **{status}**.")
                 await ctx.send(embed=embed, delete_after=5)
             if ctx.message:
                 asyncio.create_task(_delayed_delete_msg(ctx.message, 5))

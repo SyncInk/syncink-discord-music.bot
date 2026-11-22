@@ -212,7 +212,8 @@ class Emojis:
 
     # AI & Core Identity
     AUDIA_AI = "<:Audia_AI:1571879222908031078>"
-    AI = "<:Audia_AI:1571879222908031078>"
+    AI = "<:SyncInkAI:1549154093421826058>"
+    SYNCINK_AI = AI
     CHATGPT = "🤖"
     SYNCBOT = "🤖"
     BOT = "🤖"
@@ -311,7 +312,8 @@ class EmojiPartials:
 
     # AI & Navigation
     AUDIA_AI = discord.PartialEmoji(name="Audia_AI", id=1571879222908031078, animated=False)
-    AI = discord.PartialEmoji(name="Audia_AI", id=1571879222908031078, animated=False)
+    AI = discord.PartialEmoji(name="SyncInkAI", id=1549154093421826058, animated=False)
+    SYNCINK_AI = AI
     CHATGPT = discord.PartialEmoji(name="🤖")
     SYNCBOT = discord.PartialEmoji(name="🤖")
     BOT = discord.PartialEmoji(name="🤖")
