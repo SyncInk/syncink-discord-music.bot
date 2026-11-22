@@ -241,8 +241,17 @@ class SpotifyUserAuthManager:
         except Exception:
             pass
 
-        spotify_user_id = profile_data.get("id") or f"spotify_{discord_user_id}"
-        display_name = profile_data.get("display_name") or "Spotify User"
+        # Resolve real member name for display_name
+        discord_username = None
+        try:
+            u_row = await db.fetchrow("SELECT username, global_name FROM user_sessions WHERE discord_user_id = $1 LIMIT 1;", discord_user_id)
+            if u_row:
+                discord_username = u_row.get("global_name") or u_row.get("username")
+        except Exception:
+            pass
+
+        spotify_user_id = profile_data.get("id") or (f"@{discord_username}" if discord_username else f"user_{discord_user_id}")
+        display_name = profile_data.get("display_name") or discord_username or "Spotify User"
         email = profile_data.get("email")
 
         # Encrypt the refresh token before database storage
@@ -368,10 +377,26 @@ class SpotifyUserAuthManager:
         if not row:
             return None
 
+        display_name = row["display_name"]
+        spotify_user_id = row["spotify_user_id"]
+        # Auto-heal display name if generic 'Spotify User' or raw ID
+        if not display_name or display_name in ("Spotify User", "unknown") or display_name.startswith("spotify_"):
+            try:
+                u_row = await db.fetchrow("SELECT username, global_name FROM user_sessions WHERE discord_user_id = $1 LIMIT 1;", discord_user_id)
+                if u_row:
+                    real_name = u_row.get("global_name") or u_row.get("username")
+                    if real_name:
+                        display_name = real_name
+                        if spotify_user_id.startswith("spotify_") or spotify_user_id.startswith("user_"):
+                            spotify_user_id = f"@{real_name}"
+                        await db.execute("UPDATE spotify_users SET display_name = $1, spotify_user_id = $2 WHERE discord_user_id = $3;", display_name, spotify_user_id, discord_user_id)
+            except Exception:
+                pass
+
         user_auth = SpotifyUserAuth(
             discord_user_id=discord_user_id,
-            spotify_user_id=row["spotify_user_id"],
-            display_name=row["display_name"],
+            spotify_user_id=spotify_user_id,
+            display_name=display_name,
             email=row["email"],
             access_token=None,
             encrypted_refresh_token=row["encrypted_refresh_token"],
@@ -403,14 +428,18 @@ class SpotifyUserAuthManager:
             async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(url, headers=headers) as resp:
                     if resp.status != 200:
-                        log.warning(f"[Spotify Auth] Failed to fetch playlists for user {discord_user_id}: HTTP {resp.status}")
-                        return []
-                    data = await resp.json()
+                        if resp.status == 403:
+                            log.debug(f"[Spotify Auth] User playlists endpoint returned HTTP 403 (Dev Mode user allowlist required for live private playlist sync).")
+                        else:
+                            log.warning(f"[Spotify Auth] Failed to fetch playlists for user {discord_user_id}: HTTP {resp.status}")
+                        items = []
+                    else:
+                        data = await resp.json()
+                        items = data.get("items", [])
         except Exception as e:
             log.error(f"[Spotify Auth] Error fetching user playlists: {e}")
-            return []
+            items = []
 
-        items = data.get("items", [])
         playlists = []
         for p in items:
             if not isinstance(p, dict) or not p.get("id"):
@@ -428,4 +457,30 @@ class SpotifyUserAuthManager:
                 "collaborative": bool(p.get("collaborative", False)),
                 "owner": p.get("owner", {}).get("display_name") or p.get("owner", {}).get("id") or "Spotify User",
             })
+
+        # If Spotify returned empty or was blocked by Dev Mode (HTTP 403), include user's SyncInk Radio library playlists
+        if not playlists:
+            try:
+                db_playlists = await db.fetch("""
+                    SELECT p.id, p.name, p.description, p.is_public,
+                           (SELECT COUNT(*) FROM user_playlist_tracks pt WHERE pt.playlist_id = p.id) as total_tracks
+                    FROM user_playlists p
+                    WHERE p.discord_user_id = $1
+                    ORDER BY p.updated_at DESC;
+                """, discord_user_id)
+                for p in db_playlists:
+                    playlists.append({
+                        "id": str(p["id"]),
+                        "name": p["name"],
+                        "description": p.get("description") or "SyncInk Radio Library Playlist",
+                        "tracks_total": int(p["total_tracks"] or 0),
+                        "image_url": "https://files.catbox.moe/74l9su.png",
+                        "url": "https://syncink.site/dashboard/radio/#library",
+                        "public": bool(p.get("is_public", True)),
+                        "collaborative": False,
+                        "owner": "SyncInk Radio",
+                    })
+            except Exception:
+                pass
+
         return playlists

@@ -453,7 +453,7 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(user_auth)
         self.assertEqual(user_auth.discord_user_id, user_id)
         self.assertEqual(user_auth.display_name, "Spotify User")
-        self.assertTrue(user_auth.spotify_user_id.startswith("spotify_"))
+        self.assertTrue(user_auth.spotify_user_id.startswith("user_") or user_auth.spotify_user_id.startswith("spotify_"))
         self.assertEqual(user_auth.return_to, "dashboard")
 
         # Verify record in DB

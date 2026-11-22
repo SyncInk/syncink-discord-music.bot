@@ -12,6 +12,7 @@ from services.spotify.client import SpotifyClient
 from services.spotify.auth import SpotifyUserAuthManager
 from services.spotify.resolver import SpotifyResolver
 from services.music_service import MusicService, clean_title, Track
+from database import db
 
 BRAND_COLOR = 0x7b2cbf  # SyncInk Cyber Violet
 SPOTIFY_COLOR = 0x1DB954  # Spotify Green
@@ -49,8 +50,6 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
     async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer()
         playlist_id = self.values[0]
-        playlist_data = self.playlist_map.get(playlist_id, {})
-        playlist_url = playlist_data.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{playlist_id}")
 
         vc = await self.music_cog.ensure_voice(interaction)
         if not vc:
@@ -59,6 +58,48 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
         queue = self.music_cog.service.get_queue(interaction.guild_id)
         queue.voice_client = vc
         queue.text_channel = interaction.channel
+
+        if str(playlist_id).startswith("syncink_"):
+            try:
+                raw_pk = int(str(playlist_id).replace("syncink_", ""))
+                rows = await db.fetch("""
+                    SELECT track_title, track_artist, track_url, duration, thumbnail_url, platform
+                    FROM user_playlist_tracks
+                    WHERE playlist_id = $1
+                    ORDER BY position ASC;
+                """, raw_pk)
+                if not rows:
+                    await interaction.followup.send(
+                        embed=discord.Embed(description=f"### {Emojis.WARNING} This library playlist is currently empty.", color=0xFEE75C),
+                        ephemeral=True
+                    )
+                    return
+                tracks = [
+                    Track(
+                        title=r["track_title"],
+                        clean_title=clean_title(r["track_title"]),
+                        author=r["track_artist"] or "Unknown Artist",
+                        duration=int(r["duration"] or 0),
+                        url=r["track_url"],
+                        stream_url="",
+                        thumbnail=r["thumbnail_url"],
+                        platform=r["platform"] or "spotify",
+                        requested_by=interaction.user,
+                        is_live=False
+                    )
+                    for r in rows
+                ]
+                await self.music_cog.enqueue_and_play(interaction, tracks)
+            except Exception as e:
+                log.error(f"[SyncInk Playlist Play Error] {e}")
+                await interaction.followup.send(
+                    embed=discord.Embed(description=f"### {Emojis.REFUSED} Error loading playlist: `{e}`", color=0xED4245),
+                    ephemeral=True
+                )
+            return
+
+        playlist_data = self.playlist_map.get(playlist_id, {})
+        playlist_url = playlist_data.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{playlist_id}")
 
         try:
             tracks = await self.music_cog.service.search_and_extract(playlist_url, interaction.user, platform="spotify", limit=100)
@@ -155,12 +196,23 @@ class Spotify(commands.Cog):
     async def slash_spotify_status(self, interaction: discord.Interaction):
         user_auth = await self.auth_mgr.get_user_auth(interaction.user.id)
         if user_auth and user_auth.spotify_user_id:
+            member_name = interaction.user.display_name or interaction.user.name
+            # If display name was default 'Spotify User' or starts with spotify_, heal to member's real Discord name
+            if not user_auth.display_name or user_auth.display_name in ("Spotify User", "unknown") or user_auth.display_name.startswith("spotify_"):
+                user_auth.display_name = member_name
+                await db.execute("UPDATE spotify_users SET display_name = $1 WHERE discord_user_id = $2;", member_name, interaction.user.id)
+
+            display_name = user_auth.display_name or member_name
+            spotify_id = user_auth.spotify_user_id
+            if spotify_id.startswith("spotify_") or spotify_id.startswith("user_"):
+                spotify_id = f"@{interaction.user.name}"
+
             embed = discord.Embed(
                 title=f"{Emojis.SPOTIFY} Spotify Connection Status",
                 description=format_discord_emojis(
                     f"**Account Status:** Connected {Emojis.CHECK_YES}\n"
-                    f"**Spotify Display Name:** `{user_auth.display_name or 'Unknown'}`\n"
-                    f"**Spotify User ID:** `{user_auth.spotify_user_id}`\n"
+                    f"**Spotify Display Name:** `{display_name}`\n"
+                    f"**Spotify User ID:** `{spotify_id}`\n"
                     f"**Token Storage:** Encrypted Vault {Emojis.LOCK}\n\n"
                     "-# You can disconnect anytime with `/spotify disconnect`."
                 ),
@@ -193,22 +245,69 @@ class Spotify(commands.Cog):
         # Fetch top tracks from Spotify Web API
         url = "https://api.spotify.com/v1/me/top/tracks?limit=10"
         headers = {"Authorization": f"Bearer {token}"}
+        items = []
+        is_dev_mode = False
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send(
-                        embed=discord.Embed(description=format_discord_emojis(f"### {Emojis.REFUSED} Could not fetch your Spotify top tracks (HTTP {resp.status})."), color=0xED4245),
-                        ephemeral=True
-                    )
-                    return
-                data = await resp.json()
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("items", [])
+                else:
+                    if resp.status == 403:
+                        is_dev_mode = True
+                        log.debug(f"[Spotify] /v1/me/top/tracks returned 403 for {interaction.user.id} (Spotify Dev Mode user allowlist required).")
+                    else:
+                        log.warning(f"[Spotify] /v1/me/top/tracks returned HTTP {resp.status} for user {interaction.user.id}")
 
-        items = data.get("items", [])
+        source_label = "Spotify Live Top Tracks"
+        # If Spotify returned empty or blocked by Dev Mode (HTTP 403), fallback to listener history on SyncInk Radio
         if not items:
-            await interaction.followup.send(
-                embed=discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} No top tracks found on your Spotify profile."), color=0xFEE75C),
-                ephemeral=True
-            )
+            try:
+                rows = await db.fetch("""
+                    SELECT track_title, track_author, track_url, duration, thumbnail_url, COUNT(*) as play_count
+                    FROM listening_history
+                    WHERE discord_user_id = $1
+                    GROUP BY track_title, track_author, track_url, duration, thumbnail_url
+                    ORDER BY play_count DESC
+                    LIMIT 10;
+                """, interaction.user.id)
+                if rows:
+                    items = [
+                        {
+                            "name": r["track_title"],
+                            "artists": [{"name": r["track_author"] or "Unknown Artist"}],
+                            "duration_ms": (r["duration"] or 0) * 1000,
+                            "external_urls": {"spotify": r["track_url"]},
+                            "album": {"images": [{"url": r["thumbnail_url"]}] if r["thumbnail_url"] else []}
+                        }
+                        for r in rows
+                    ]
+                    source_label = "SyncInk Radio Listener History"
+            except Exception:
+                pass
+
+        if not items:
+            if is_dev_mode:
+                embed = discord.Embed(
+                    title=f"{Emojis.SPOTIFY} Spotify Developer Mode Setup Required",
+                    description=format_discord_emojis(
+                        f"### {Emojis.WARNING} Top Tracks Restricted (HTTP 403)\n\n"
+                        "Your Spotify Developer App is currently in **Development Mode**.\n"
+                        "In Development Mode, Spotify blocks personal top tracks until your email is added:\n\n"
+                        "1️⃣ Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)\n"
+                        "2️⃣ Open your app ➔ **Settings** ➔ **User Management** (or **Users and Access**)\n"
+                        "3️⃣ Add your Spotify account email to the allowlist\n\n"
+                        "-# *Tip: You can play any track or playlist directly using `/play <song_name or url>`!*"
+                    ),
+                    color=0xFEE75C
+                )
+            else:
+                embed = discord.Embed(
+                    description=format_discord_emojis(f"### {Emojis.WARNING} No top tracks found on your Spotify profile or listening history."),
+                    color=0xFEE75C
+                )
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         music_cog = self.bot.get_cog("Music")
@@ -244,9 +343,12 @@ class Spotify(commands.Cog):
             )
 
         if action and action.lower() == "view":
+            footer_note = f"\n\n-# 🎵 Source: {source_label}"
+            if is_dev_mode:
+                footer_note += "\n-# 💡 Tip: To sync live Spotify account data, add your email in Spotify Developer Dashboard > User Management."
             embed = discord.Embed(
-                title=f"{Emojis.SPOTIFY} Your Top Spotify Tracks",
-                description="\n".join(track_list_text),
+                title=f"{Emojis.SPOTIFY} Your Top Tracks",
+                description="\n".join(track_list_text) + footer_note,
                 color=SPOTIFY_COLOR
             )
             await interaction.followup.send(embed=embed)
@@ -276,22 +378,69 @@ class Spotify(commands.Cog):
         await interaction.response.defer(ephemeral=True)
         url = "https://api.spotify.com/v1/me/playlists?limit=25"
         headers = {"Authorization": f"Bearer {token}"}
+        items = []
+        is_dev_mode = False
+
         async with aiohttp.ClientSession() as session:
             async with session.get(url, headers=headers) as resp:
-                if resp.status != 200:
-                    await interaction.followup.send(
-                        embed=discord.Embed(description=format_discord_emojis(f"### {Emojis.REFUSED} Could not load your Spotify playlists (HTTP {resp.status})."), color=0xED4245),
-                        ephemeral=True
-                    )
-                    return
-                data = await resp.json()
+                if resp.status == 200:
+                    data = await resp.json()
+                    items = data.get("items", [])
+                else:
+                    if resp.status == 403:
+                        is_dev_mode = True
+                        log.debug(f"[Spotify] /v1/me/playlists returned 403 for {interaction.user.id} (Spotify Dev Mode user allowlist required).")
+                    else:
+                        log.warning(f"[Spotify] /v1/me/playlists returned HTTP {resp.status} for user {interaction.user.id}")
 
-        items = data.get("items", [])
+        # If Spotify returned empty or was blocked by Dev Mode (HTTP 403), fallback to SyncInk library playlists
         if not items:
-            await interaction.followup.send(
-                embed=discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} No playlists found in your Spotify library."), color=0xFEE75C),
-                ephemeral=True
-            )
+            try:
+                db_playlists = await db.fetch("""
+                    SELECT p.id, p.name, p.description,
+                           (SELECT COUNT(*) FROM user_playlist_tracks pt WHERE pt.playlist_id = p.id) as total_tracks
+                    FROM user_playlists p
+                    WHERE p.discord_user_id = $1
+                    ORDER BY p.updated_at DESC;
+                """, interaction.user.id)
+                if db_playlists:
+                    items = [
+                        {
+                            "id": f"syncink_{p['id']}",
+                            "name": p["name"],
+                            "description": p.get("description") or "SyncInk Radio Library Playlist",
+                            "tracks": {"total": int(p["total_tracks"] or 0)},
+                            "images": [{"url": "https://files.catbox.moe/74l9su.png"}],
+                            "external_urls": {"spotify": "https://syncink.site/dashboard/radio/#library"},
+                            "owner": {"display_name": "SyncInk Library"}
+                        }
+                        for p in db_playlists
+                    ]
+            except Exception:
+                pass
+
+        if not items:
+            if is_dev_mode:
+                embed = discord.Embed(
+                    title=f"{Emojis.SPOTIFY} SyncInk Spotify Playlists",
+                    description=format_discord_emojis(
+                        f"### {Emojis.WARNING} Private Playlists Restricted (HTTP 403)\n\n"
+                        "Your Spotify Developer App is currently in **Development Mode**.\n"
+                        "To let the bot automatically list your personal Spotify playlists:\n\n"
+                        "1️⃣ Visit [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)\n"
+                        "2️⃣ Open your app ➔ **Settings** ➔ **User Management**\n"
+                        "3️⃣ Add your Spotify email to the allowlist\n\n"
+                        "• **Instant Alternative:** Play any playlist directly with `/play <spotify_playlist_url>`\n"
+                        "• **Custom Library:** Create & import playlists anytime in the [Web Dashboard](https://syncink.site/dashboard/radio/#library)"
+                    ),
+                    color=0xFEE75C
+                )
+            else:
+                embed = discord.Embed(
+                    description=format_discord_emojis(f"### {Emojis.WARNING} No playlists found in your library."),
+                    color=0xFEE75C
+                )
+            await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
         music_cog = self.bot.get_cog("Music")

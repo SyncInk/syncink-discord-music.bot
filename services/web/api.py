@@ -2105,11 +2105,23 @@ class DashboardAPI:
         auth_mgr = SpotifyUserAuthManager.get_instance()
         user_auth = await auth_mgr.get_user_auth(discord_user_id)
         if user_auth and user_auth.spotify_user_id:
+            member_name = (user.get("global_name") or user.get("username")) if user else None
+            user_display = user_auth.display_name
+            if not user_display or user_display in ("Spotify User", "unknown") or user_display.startswith("spotify_"):
+                if member_name:
+                    user_display = member_name
+                    user_auth.display_name = user_display
+                    await db.execute("UPDATE spotify_users SET display_name = $1 WHERE discord_user_id = $2;", user_display, discord_user_id)
+
+            user_id_display = user_auth.spotify_user_id
+            if (user_id_display.startswith("spotify_") or user_id_display.startswith("user_")) and member_name:
+                user_id_display = f"@{member_name}"
+
             return aiohttp.web.json_response({
                 "connected": True,
                 "discord_user_id": discord_user_id,
-                "spotify_user_id": user_auth.spotify_user_id,
-                "display_name": user_auth.display_name or "Spotify User",
+                "spotify_user_id": user_id_display,
+                "display_name": user_display or "Spotify User",
                 "email": user_auth.email,
                 "scope": user_auth.scope,
             })

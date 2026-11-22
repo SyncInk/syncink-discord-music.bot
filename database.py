@@ -84,6 +84,13 @@ class DatabaseManager:
                     async with self.pool.acquire() as conn:
                         await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS redirect_uri TEXT;")
                         await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS return_to TEXT DEFAULT 'discord';")
+                        await conn.execute("""
+                            UPDATE spotify_users
+                            SET display_name = COALESCE(user_sessions.global_name, user_sessions.username)
+                            FROM user_sessions
+                            WHERE spotify_users.discord_user_id = user_sessions.discord_user_id
+                              AND (spotify_users.display_name IS NULL OR spotify_users.display_name = 'Spotify User' OR spotify_users.display_name LIKE 'spotify_%');
+                        """)
                 except Exception:
                     pass
 
@@ -254,6 +261,25 @@ class DatabaseManager:
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_favorites_user ON user_favorites(discord_user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_playlists_user ON user_playlists(discord_user_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_playlist_tracks ON user_playlist_tracks(playlist_id);")
+
+            # Auto-heal display names from user_sessions if available
+            try:
+                cursor.execute("""
+                    UPDATE spotify_users
+                    SET display_name = (
+                        SELECT COALESCE(global_name, username)
+                        FROM user_sessions
+                        WHERE user_sessions.discord_user_id = spotify_users.discord_user_id
+                        LIMIT 1
+                    )
+                    WHERE (display_name IS NULL OR display_name = 'Spotify User' OR display_name LIKE 'spotify_%')
+                      AND EXISTS (
+                        SELECT 1 FROM user_sessions WHERE user_sessions.discord_user_id = spotify_users.discord_user_id
+                      );
+                """)
+            except Exception:
+                pass
+
             conn.commit()
             return conn
 
