@@ -148,7 +148,7 @@ class Help(commands.Cog):
         radio_cmds = [
             ("/radio [country] [station]", "Browse and stream 24/7 world live radio stations by country flag/name."),
             ("/lofi", "Instantly start 24/7 high-fidelity Lo-Fi beats streaming."),
-            ("/audia [on/off]", "Audia AI intelligent music assistant, mood/genre focus, and AutoPlay (Aliases: /dj, /autoplay).")
+            ("/audia [on/off]", "Audia AI intelligent music assistant, mood/genre focus, and AutoPlay (Alias: /autoplay).")
         ]
 
         bot_info_cmds = [

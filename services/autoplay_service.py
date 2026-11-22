@@ -1158,10 +1158,12 @@ class AutoPlayService:
             top_genres = [g for g, _ in sorted(primary_prof.genre_affinity.items(), key=lambda x: x[1], reverse=True)[:3]]
             top_langs = [l for l, _ in sorted(primary_prof.language_affinity.items(), key=lambda x: x[1], reverse=True)[:2]]
 
+            p_name = getattr(primary_user, "display_name", getattr(primary_user, "name", "Listener")) if primary_user else "Listener"
+            p_id = getattr(primary_user, "id", 0) if primary_user else 0
             return {
-                "mode": f"Personal ({primary_user.display_name if primary_user else 'Listener'})",
+                "mode": f"Personal ({p_name})",
                 "listener_count": 1,
-                "requester_id": primary_user.id if primary_user else 0,
+                "requester_id": p_id,
                 "seed_title": seed_title,
                 "seed_artist": seed_artist,
                 "seed_genre": manual_gen or (top_genres[0] if top_genres else seed_cluster.get("genre", "Pop")),

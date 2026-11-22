@@ -232,6 +232,96 @@ class EmojiManager:
             "animated": False,
             "tag": "<:delete:1558918533214380243>",
         },
+        "punjabipop": {
+            "id": 1568327108533551144,
+            "name": "PunjabiPop",
+            "animated": False,
+            "tag": "<:PunjabiPop:1568327108533551144>",
+        },
+        "punjabi_pop": {
+            "id": 1568327108533551144,
+            "name": "PunjabiPop",
+            "animated": False,
+            "tag": "<:PunjabiPop:1568327108533551144>",
+        },
+        "loficoffee": {
+            "id": 1568327227983007864,
+            "name": "LofiCoffee",
+            "animated": False,
+            "tag": "<:LofiCoffee:1568327227983007864>",
+        },
+        "lofi_coffee": {
+            "id": 1568327227983007864,
+            "name": "LofiCoffee",
+            "animated": False,
+            "tag": "<:LofiCoffee:1568327227983007864>",
+        },
+        "kpop": {
+            "id": 1568327830981583039,
+            "name": "Kpop",
+            "animated": False,
+            "tag": "<:Kpop:1568327830981583039>",
+        },
+        "indieacoustic": {
+            "id": 1568327695639650464,
+            "name": "Indieacoustic",
+            "animated": False,
+            "tag": "<:Indieacoustic:1568327695639650464>",
+        },
+        "indie_acoustic": {
+            "id": 1568327695639650464,
+            "name": "Indieacoustic",
+            "animated": False,
+            "tag": "<:Indieacoustic:1568327695639650464>",
+        },
+        "hiphop": {
+            "id": 1568327544279662663,
+            "name": "HipHop",
+            "animated": False,
+            "tag": "<:HipHop:1568327544279662663>",
+        },
+        "hip_hop": {
+            "id": 1568327544279662663,
+            "name": "HipHop",
+            "animated": False,
+            "tag": "<:HipHop:1568327544279662663>",
+        },
+        "energetichighbpm": {
+            "id": 1568327456434430093,
+            "name": "EnergetichighBPM",
+            "animated": False,
+            "tag": "<:EnergetichighBPM:1568327456434430093>",
+        },
+        "energetic_high_bpm": {
+            "id": 1568327456434430093,
+            "name": "EnergetichighBPM",
+            "animated": False,
+            "tag": "<:EnergetichighBPM:1568327456434430093>",
+        },
+        "edm": {
+            "id": 1568327771501895762,
+            "name": "EDM",
+            "animated": False,
+            "tag": "<:EDM:1568327771501895762>",
+        },
+        "romanticsoulful": {
+            "id": 1568327378504130600,
+            "name": "Romanticsoulful",
+            "animated": False,
+            "tag": "<:Romanticsoulful:1568327378504130600>",
+        },
+        "romantic_soulful": {
+            "id": 1568327378504130600,
+            "name": "Romanticsoulful",
+            "animated": False,
+            "tag": "<:Romanticsoulful:1568327378504130600>",
+        },
+        "refresh": {
+            "id": 1568357873224781835,
+            "name": "refresh",
+            "animated": False,
+            "tag": "<:refresh:1568357873224781835>",
+        },
     }
 
     # Essential application emojis and their candidate filenames in assets/emojis

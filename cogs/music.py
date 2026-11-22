@@ -189,6 +189,8 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         self.btn_skip: Optional[discord.ui.Button] = None
         self.btn_stop: Optional[discord.ui.Button] = None
         self.btn_queue: Optional[discord.ui.Button] = None
+        self.btn_like: Optional[discord.ui.Button] = None
+        self.btn_dislike: Optional[discord.ui.Button] = None
         self.build_components()
 
     def build_components(self):
@@ -243,16 +245,60 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         self.btn_queue.callback = self.on_queue
 
         row = discord.ui.ActionRow(self.btn_pause_resume, self.btn_prev, self.btn_skip, self.btn_stop, self.btn_queue)
+        items = [sec, row]
+
+        # 2b. Like & Dislike Action Row (Displayed when AutoPlay is active)
+        if self.queue.autoplay:
+            self.btn_like = discord.ui.Button(
+                label="Like",
+                emoji=EmojiPartials.LIKE,
+                style=discord.ButtonStyle.secondary,
+                custom_id="m_ap_like"
+            )
+            self.btn_like.callback = self.on_ap_like
+
+            self.btn_dislike = discord.ui.Button(
+                label="Dislike",
+                emoji=EmojiPartials.DISLIKE,
+                style=discord.ButtonStyle.secondary,
+                custom_id="m_ap_dislike"
+            )
+            self.btn_dislike.callback = self.on_ap_dislike
+
+            row_ap = discord.ui.ActionRow(self.btn_like, self.btn_dislike)
+            items.append(row_ap)
 
         # 3. Separator component
         sep = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
+        items.append(sep)
 
-        # 4. Requester footer
-        req_id = current.requested_by.id if (current.requested_by and hasattr(current.requested_by, "id")) else 1520522990280769727
-        footer_text = f"{Emojis.MEMBER} Track requested by <@{req_id}>"
+        # 4. Requester / Audia AI Active footer
+        if self.queue.autoplay:
+            genre_info = "Pop/EDM"
+            if getattr(self.queue, "last_autoplay_meta", None) and isinstance(self.queue.last_autoplay_meta, dict):
+                genre_info = self.queue.last_autoplay_meta.get("genre") or self.queue.last_autoplay_meta.get("mood") or "Pop/EDM"
+            else:
+                req = current.requested_by if current and getattr(current, "requested_by", None) else None
+                prof = AutoPlayService.get_instance().get_user_profile(req.id if (req and hasattr(req, "id")) else 0)
+                if prof.manual_genre and prof.manual_mood:
+                    genre_info = f"{prof.manual_genre}/{prof.manual_mood}"
+                elif prof.manual_genre:
+                    genre_info = prof.manual_genre
+                elif prof.manual_mood:
+                    genre_info = prof.manual_mood
+                elif getattr(current, "genre", None):
+                    genre_info = current.genre
+                else:
+                    genre_info = "Pop/EDM"
+
+            footer_text = f"{Emojis.AUDIA_AI} Audia AI Active ({genre_info}) • Rate with {Emojis.LIKE} or {Emojis.DISLIKE}"
+        else:
+            req_id = current.requested_by.id if (current.requested_by and hasattr(current.requested_by, "id")) else 1520522990280769727
+            footer_text = f"{Emojis.MEMBER} Track requested by <@{req_id}>"
+
         footer = discord.ui.TextDisplay(footer_text)
+        items.append(footer)
 
-        items = [sec, row, sep, footer]
         cnt = discord.ui.Container(*items, accent_color=BRAND_COLOR)
         self.add_item(cnt)
 
@@ -268,7 +314,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             return False
 
         # 2. Channel restriction (if configured)
-        if not self.music_cog._is_allowed_channel(interaction.channel_id):
+        if not self.music_cog._is_allowed_channel(interaction.channel_id, interaction.guild):
             chan_id = get_music_command_channel_id()
             embed = discord.Embed(
                 description=f"### {Emojis.WARNING} Music commands can only be used in <#{chan_id}>!",
@@ -411,7 +457,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
     async def on_ap_like(self, interaction: discord.Interaction):
         current = self.queue.current_track
         if not current:
-            embed = discord.Embed(description=f"### {Emojis.WARNING} Nothing is currently playing.", color=0xFEE75C)
+            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} Nothing is currently playing."), color=0xFEE75C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -419,10 +465,10 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             interaction.user.id, current, "like"
         )
         embed = discord.Embed(
-            description=(
-                f"### {Emojis.LIKE} Preference Recorded Successfully\n"
-                f"Thank you for rating! Your positive feedback for **{current.clean_title}** by **{current.author}** has been incorporated into your personal taste profile.\n\n"
-                f"{Emojis.S_ARROW} **Impact:** AutoPlay will prioritize similar melodies, artists, and acoustic vibes for your future recommendations."
+            description=format_discord_emojis(
+                f"### {Emojis.LIKE} Audia AI • Liked Track\n"
+                f"Your positive rating for **{current.clean_title}** by **{current.author}** has been added to your Audia AI taste profile.\n\n"
+                f"{Emojis.S_ARROW} **Impact:** Audia AI will prioritize similar melodies, artists, and acoustic vibes for your future recommendations!"
             ),
             color=BRAND_COLOR
         )
@@ -431,7 +477,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
     async def on_ap_dislike(self, interaction: discord.Interaction):
         current = self.queue.current_track
         if not current:
-            embed = discord.Embed(description=f"### {Emojis.WARNING} Nothing is currently playing.", color=0xFEE75C)
+            embed = discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} Nothing is currently playing."), color=0xFEE75C)
             await interaction.response.send_message(embed=embed, ephemeral=True)
             return
 
@@ -446,10 +492,10 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         # Do NOT stop playback directly; let current song finish smoothly and refine next recommendation
         embed = discord.Embed(
-            description=(
-                f"### {Emojis.DISLIKE} Preference Recorded Successfully\n"
+            description=format_discord_emojis(
+                f"### {Emojis.DISLIKE} Audia AI • Disliked Track\n"
                 f"Your feedback has been noted. We've marked **{current.clean_title}** by **{current.author}** as disliked in your profile.\n\n"
-                f"{Emojis.S_ARROW} **Impact:** Current playback will continue smoothly without interruption, and AutoPlay will refine upcoming selections to avoid this style and deliver better recommendations."
+                f"{Emojis.S_ARROW} **Impact:** Current playback will continue smoothly without interruption, and Audia AI will refine upcoming selections to avoid this style and deliver better recommendations."
             ),
             color=BRAND_COLOR
         )
@@ -1342,7 +1388,7 @@ class AutoPlayControlCenterView(discord.ui.View):
         disc_map = {
             "balanced": f"Balanced {Emojis.SCALE}",
             "familiar": f"Familiar {Emojis.SYNCINK_MUSIC}",
-            "explore": "Explore ✨"
+            "explore": f"Fresh Discoveries {Emojis.REFRESH}"
         }
         disc_str = disc_map.get(prof.discovery_mode, "Balanced")
 
@@ -1358,13 +1404,23 @@ class AutoPlayControlCenterView(discord.ui.View):
             f"{Emojis.S_ARROW} **Style Focus:** {mood_genre_str}\n"
             f"{Emojis.S_ARROW} **Language Focus:** {lang_str}\n"
             f"{Emojis.S_ARROW} **Top Learned Artists:** {fav_str}\n\n"
+            f"**Curation Styles & Moods:**\n"
+            f"• {Emojis.ROMANTIC_SOULFUL} Romantic & Soulful\n"
+            f"• {Emojis.LOFI_COFFEE} Lo-Fi & Chill\n"
+            f"• {Emojis.KPOP} K-Pop & J-Pop\n"
+            f"• {Emojis.INDIE_ACOUSTIC} Indie & Acoustic\n"
+            f"• {Emojis.HIP_HOP} Hip-Hop & Rap\n"
+            f"• {Emojis.ENERGETIC_HIGH_BPM} Energetic & High BPM\n"
+            f"• {Emojis.EDM} EDM & Electronic Club\n"
+            f"• {Emojis.PUNJABI_POP} Punjabi Pop & Urban\n"
+            f"• {Emojis.REFRESH} Fresh Discoveries\n\n"
             f"-# Tune your personalized listening experience using the interactive controls below:"
         )
 
         embed = discord.Embed(description=format_discord_emojis(desc), color=BRAND_COLOR)
         return embed
 
-    def build_components(self):
+    def build_components(self, use_unicode: bool = False):
         self.clear_items()
         prof = AutoPlayService.get_instance().get_user_profile(self.user.id)
 
@@ -1374,55 +1430,55 @@ class AutoPlayControlCenterView(discord.ui.View):
                 label="Romantic & Soulful",
                 value="Romantic|Bollywood Romantic",
                 description="Acoustic melodies, heartfelt love songs",
-                emoji=EmojiPartials.ROMANTIC_SOULFUL
+                emoji="💖" if use_unicode else EmojiPartials.ROMANTIC_SOULFUL
             ),
             discord.SelectOption(
                 label="Lo-Fi & Chill",
                 value="Relaxing|Lo-Fi Beats & Chillhop",
                 description="Relaxing beats, study & chillhop vibes",
-                emoji=EmojiPartials.LOFI_COFFEE
+                emoji="☕" if use_unicode else EmojiPartials.LOFI_COFFEE
             ),
             discord.SelectOption(
                 label="Energetic & High BPM",
                 value="Energetic|Pop & R&B Hits",
                 description="Uplifting pop hits, dance grooves",
-                emoji=EmojiPartials.ENERGETIC_HIGH_BPM
+                emoji="⚡" if use_unicode else EmojiPartials.ENERGETIC_HIGH_BPM
             ),
             discord.SelectOption(
                 label="Punjabi Pop & Urban",
                 value="Energetic|Punjabi Pop & Urban",
                 description="Punjabi folk, urban pop & bass",
-                emoji=EmojiPartials.PUNJABI_POP
+                emoji="🔥" if use_unicode else EmojiPartials.PUNJABI_POP
             ),
             discord.SelectOption(
                 label="Hip-Hop & Rap",
                 value="Energetic|Hip-Hop & Rap",
                 description="Modern hip-hop, trap & rap rhythms",
-                emoji=EmojiPartials.HIP_HOP
+                emoji="🎤" if use_unicode else EmojiPartials.HIP_HOP
             ),
             discord.SelectOption(
                 label="Indie & Acoustic",
                 value="Chill|Hindi Indie & Acoustic",
                 description="Coffeehouse acoustic & indie vibes",
-                emoji=EmojiPartials.INDIE_ACOUSTIC
+                emoji="🎸" if use_unicode else EmojiPartials.INDIE_ACOUSTIC
             ),
             discord.SelectOption(
-                label="EDM & Dance",
-                value="Energetic|EDM & Dance",
-                description="Festival electronic, melodic EDM",
-                emoji=EmojiPartials.EDM
+                label="EDM & Electronic Club",
+                value="Energetic|EDM & Electronic Club",
+                description="Festival electronic club, melodic EDM",
+                emoji="🎧" if use_unicode else EmojiPartials.EDM
             ),
             discord.SelectOption(
-                label="K-Pop & Asian Pop",
+                label="K-Pop & J-Pop",
                 value="Energetic|K-Pop",
-                description="Korean pop & Asian international hits",
-                emoji=EmojiPartials.KPOP
+                description="Korean pop & Japanese anime hits",
+                emoji="✨" if use_unicode else EmojiPartials.KPOP
             ),
             discord.SelectOption(
                 label="↺ Reset Genre & Mood",
                 value="reset",
                 description="Clear focus; let AI dynamically adapt",
-                emoji=EmojiPartials.REFRESH
+                emoji="🔄" if use_unicode else EmojiPartials.REFRESH
             ),
         ]
         mood_select = discord.ui.Select(
@@ -1439,11 +1495,11 @@ class AutoPlayControlCenterView(discord.ui.View):
             discord.SelectOption(label="Hindi + English (Bilingual)", value="Hindi + English", description="Seamless blend of Bollywood, Hindi Indie & English Pop", emoji="🇮🇳"),
             discord.SelectOption(label="Hindi / Bollywood", value="Hindi", description="Bollywood hits, Hindi indie & romantic tracks", emoji="🇮🇳"),
             discord.SelectOption(label="English / International", value="English", description="Global pop, billboard hits & English rock", emoji="🌐"),
-            discord.SelectOption(label="Punjabi", value="Punjabi", description="Punjabi pop, urban beats & bhangra", emoji=EmojiPartials.PUNJABI_POP),
-            discord.SelectOption(label="Korean / K-Pop", value="Korean", description="K-Pop idols, OSTs & Korean R&B", emoji=EmojiPartials.KPOP),
+            discord.SelectOption(label="Punjabi", value="Punjabi", description="Punjabi pop, urban beats & bhangra", emoji="🔥" if use_unicode else EmojiPartials.PUNJABI_POP),
+            discord.SelectOption(label="Korean / K-Pop", value="Korean", description="K-Pop idols, OSTs & Korean R&B", emoji="✨" if use_unicode else EmojiPartials.KPOP),
             discord.SelectOption(label="Japanese / Anime", value="Japanese", description="J-Pop, J-Rock & anime OSTs", emoji="🇯🇵"),
             discord.SelectOption(label="Spanish / Latin", value="Spanish", description="Reggaeton, latin pop & urban latino", emoji="🇪🇸"),
-            discord.SelectOption(label="↺ Any Language (Auto)", value="reset", description="Dynamic language adaptation based on session", emoji=EmojiPartials.REFRESH),
+            discord.SelectOption(label="↺ Any Language (Auto)", value="reset", description="Dynamic language adaptation based on session", emoji="🔄" if use_unicode else EmojiPartials.REFRESH),
         ]
         lang_select = discord.ui.Select(
             placeholder="🌐 Select Preferred Language...",
@@ -1460,21 +1516,21 @@ class AutoPlayControlCenterView(discord.ui.View):
                 label="Balanced (Recommended)",
                 value="balanced",
                 description="Harmonious blend of favorites & new discoveries",
-                emoji=EmojiPartials.SCALE,
+                emoji="⚖️" if use_unicode else EmojiPartials.SCALE,
                 default=(prof.discovery_mode == "balanced")
             ),
             discord.SelectOption(
                 label="Familiar Favorites",
                 value="familiar",
                 description="Stick primarily to songs & artists you love",
-                emoji=EmojiPartials.SYNCINK_MUSIC,
+                emoji="🎵" if use_unicode else EmojiPartials.SYNCINK_MUSIC,
                 default=(prof.discovery_mode == "familiar")
             ),
             discord.SelectOption(
                 label="Fresh Discoveries",
                 value="explore",
                 description="Surfaces exciting new tracks & emerging artists",
-                emoji="✨",
+                emoji="🔄" if use_unicode else EmojiPartials.REFRESH,
                 default=(prof.discovery_mode == "explore")
             ),
         ]
@@ -1593,9 +1649,14 @@ class AutoPlayControlCenterView(discord.ui.View):
         else:
             self.queue.prefetched_autoplay_track = None
             self.queue.prefetched_autoplay_meta = None
+        if self.queue.now_playing_message and self.queue.current_track:
+            try:
+                await self.queue.now_playing_message.edit(view=MusicPlayerLayoutView(self.music_cog, self.queue))
+            except Exception:
+                pass
         self.build_components()
         await interaction.response.edit_message(embed=self.build_embed(), view=self)
-        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.AI} AutoPlay is now **{status}**."), color=BRAND_COLOR)
+        embed_msg = discord.Embed(description=format_discord_emojis(f"### {Emojis.AUDIA_AI} Audia AI AutoPlay is now **{status}**."), color=BRAND_COLOR)
         await interaction.followup.send(embed=embed_msg, ephemeral=True)
 
     async def on_block_artist(self, interaction: discord.Interaction):
@@ -3507,38 +3568,70 @@ class Music(commands.Cog):
         """Audia AI intelligent music assistant."""
         return await self.slash_autoplay(interaction, mode)
 
-    @app_commands.command(name="dj", description="Legacy alias for Audia AI AutoPlay.")
-    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
-    async def slash_dj(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
-        """Legacy /dj alias for Audia AI."""
-        return await self.slash_autoplay(interaction, mode)
-
     @app_commands.command(name="autoplay", description="Audia AI — Continuous song recommendation and AutoPlay.")
     @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
     async def slash_autoplay(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
-        queue = self.service.get_queue(interaction.guild_id)
-        if mode == "on":
-            queue.autoplay = True
-            AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
-            self.notify_dashboard(interaction.guild_id)
-            embed = make_success_embed(
-                f"### {Emojis.AI} Audia AI AutoPlay is now **ENABLED**.\nAudia AI by SyncInk will seamlessly recommend matching tracks as your queue finishes."
+        try:
+            queue = self.service.get_queue(interaction.guild_id)
+            if mode == "on":
+                queue.autoplay = True
+                AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
+                self.notify_dashboard(interaction.guild_id)
+                if queue.now_playing_message and queue.current_track:
+                    try:
+                        await queue.now_playing_message.edit(view=MusicPlayerLayoutView(self, queue))
+                    except Exception:
+                        pass
+                embed = make_success_embed(
+                    f"### {Emojis.AUDIA_AI} Audia AI AutoPlay is now **ENABLED**.\nAudia AI by SyncInk will seamlessly recommend matching tracks as your queue finishes."
+                )
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            elif mode == "off":
+                queue.autoplay = False
+                queue.prefetched_autoplay_track = None
+                queue.prefetched_autoplay_meta = None
+                self.notify_dashboard(interaction.guild_id)
+                if queue.now_playing_message and queue.current_track:
+                    try:
+                        await queue.now_playing_message.edit(view=MusicPlayerLayoutView(self, queue))
+                    except Exception:
+                        pass
+                embed = make_error_embed(
+                    description="Audia AI AutoPlay is now **DISABLED**.",
+                    is_warning=False
+                )
+                if interaction.response.is_done():
+                    await interaction.followup.send(embed=embed, ephemeral=True)
+                else:
+                    await interaction.response.send_message(embed=embed, ephemeral=True)
+            else:
+                view = AutoPlayControlCenterView(self, interaction.user, queue)
+                embed = view.build_embed()
+                try:
+                    if interaction.response.is_done():
+                        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                    else:
+                        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+                except discord.HTTPException as http_err:
+                    log.warning(f"[Audia AI Control Center] HTTPException sending with custom emojis: {http_err}; retrying with unicode options")
+                    view.build_components(use_unicode=True)
+                    if interaction.response.is_done():
+                        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+                    else:
+                        await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+        except Exception as e:
+            log.error(f"[Audia AI Command Error] {e}", exc_info=True)
+            embed_err = discord.Embed(
+                description=format_discord_emojis(f"### {Emojis.WARNING} Error launching Audia AI: `{e}`"),
+                color=0xED4245
             )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        elif mode == "off":
-            queue.autoplay = False
-            queue.prefetched_autoplay_track = None
-            queue.prefetched_autoplay_meta = None
-            self.notify_dashboard(interaction.guild_id)
-            embed = make_error_embed(
-                description="Audia AI AutoPlay is now **DISABLED**.",
-                is_warning=False
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
-        else:
-            view = AutoPlayControlCenterView(self, interaction.user, queue)
-            embed = view.build_embed()
-            await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+            if interaction.response.is_done():
+                await interaction.followup.send(embed=embed_err, ephemeral=True)
+            else:
+                await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
     @app_commands.command(name="247", description="Keep bot in voice channel 24/7.")
     @app_commands.describe(mode="Enable or disable 24/7 mode")
@@ -3951,7 +4044,7 @@ class Music(commands.Cog):
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 10))
 
-    @commands.command(name="audia", aliases=["dj", "autoplay"], description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
+    @commands.command(name="audia", aliases=["autoplay"], description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
     async def cmd_autoplay(self, ctx: commands.Context, mode: Optional[str] = None):
         queue = self.service.get_queue(ctx.guild.id)
         if mode:

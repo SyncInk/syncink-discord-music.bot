@@ -1115,13 +1115,17 @@ class DashboardAPI:
             if artist in prof.blocked_artists:
                 prof.blocked_artists.remove(artist)
         elif action == "like" and track_title:
-            prof.liked_tracks[track_title] = time.time()
-            if artist:
-                prof.artist_affinity[artist] = prof.artist_affinity.get(artist, 1.0) + 1.5
+            AutoPlayService.get_instance().record_explicit_feedback(
+                int(user["discord_user_id"]),
+                type("ObjTrack", (), {"clean_title": track_title, "title": track_title, "author": artist or ""})(),
+                "like"
+            )
         elif action == "dislike" and track_title:
-            prof.disliked_tracks[track_title] = time.time()
-            if artist:
-                prof.artist_affinity[artist] = max(0.1, prof.artist_affinity.get(artist, 1.0) - 1.0)
+            AutoPlayService.get_instance().record_explicit_feedback(
+                int(user["discord_user_id"]),
+                type("ObjTrack", (), {"clean_title": track_title, "title": track_title, "author": artist or ""})(),
+                "dislike"
+            )
 
         AutoPlayService.get_instance().save_profiles()
         return aiohttp.web.json_response({"success": True})

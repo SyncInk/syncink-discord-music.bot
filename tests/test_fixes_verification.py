@@ -146,6 +146,23 @@ class TestFixesVerification(unittest.TestCase):
         self.assertIsInstance(footer, discord.ui.TextDisplay)
         self.assertIn(f"{Emojis.MEMBER} Track requested by <@77777>", footer.content)
 
+        # Now test with AutoPlay active
+        queue.autoplay = True
+        view_ap = MusicPlayerLayoutView(music_cog=None, queue=queue)
+        items_ap = view_ap.children[0].children
+        self.assertEqual(len(items_ap), 5)  # Sec, Row 1, Row 2 (Like/Dislike), Sep, Footer
+        row2 = items_ap[2]
+        self.assertIsInstance(row2, discord.ui.ActionRow)
+        self.assertEqual(len(row2.children), 2)
+        self.assertEqual(row2.children[0].label, "Like")
+        self.assertEqual(row2.children[0].emoji, EmojiPartials.LIKE)
+        self.assertEqual(row2.children[1].label, "Dislike")
+        self.assertEqual(row2.children[1].emoji, EmojiPartials.DISLIKE)
+
+        footer_ap = items_ap[4]
+        self.assertIn("Audia AI Active", footer_ap.content)
+        self.assertIn(Emojis.AUDIA_AI, footer_ap.content)
+
     def test_no_embed_footers(self):
         err_embed = make_error_embed("Something went wrong")
         self.assertIsNone(err_embed.footer.text)
