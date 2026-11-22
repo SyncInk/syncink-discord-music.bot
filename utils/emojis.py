@@ -3,11 +3,28 @@ import re
 from typing import Set, Dict
 
 # Set of emoji IDs verified to belong to this bot's application or accessible guilds
-# Pre-seeded with verified Audia AI and preference emojis; updated dynamically by EmojiManager upon startup.
+# Pre-seeded with verified Audia AI, player controls, and custom bot application emojis.
 VERIFIED_BOT_EMOJI_IDS: Set[int] = {
     1559661648011075664,  # playing (animated)
     1520914584012328961,  # syncwarning (animated)
+    1559185207033077901,  # member
+    1558918719881740490,  # Radio
+    1558918836303044688,  # syncinkmusic
     1571879222908031078,  # Audia_AI
+    1558019502019575918,  # approved (animated)
+    1558019488408932423,  # refused (animated)
+    1559660676853797005,  # like
+    1559660727373930657,  # dislike
+    1558917288621777016,  # NextTrack
+    1558913195119222814,  # PlayButton
+    1558917154294997062,  # Previous
+    1558913299221979289,  # pause
+    1558916019089575936,  # queue
+    1558915041896562860,  # queue_add
+    1558916635866308719,  # repeat
+    1558914298544136192,  # shuffle
+    1568355166913167430,  # scale
+    1558918533214380243,  # delete
     1568327108533551144,  # PunjabiPop
     1568327227983007864,  # LofiCoffee
     1568327830981583039,  # Kpop
@@ -17,8 +34,6 @@ VERIFIED_BOT_EMOJI_IDS: Set[int] = {
     1568327771501895762,  # EDM
     1568327378504130600,  # Romanticsoulful
     1568357873224781835,  # refresh
-    1568355166913167430,  # scale
-    1558918836303044688,  # syncinkmusic
 }
 
 # Map of normalized emoji names -> verified custom Discord emoji tags (<:name:id> or <a:name:id>)
@@ -29,9 +44,33 @@ VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {
     "syncalert": "<a:syncwarning:1520914584012328961>",
     "warning": "<a:syncwarning:1520914584012328961>",
     "alert": "<a:syncwarning:1520914584012328961>",
+    "member": "<:member:1559185207033077901>",
+    "radio": "<:Radio:1558918719881740490>",
+    "syncinkmusic": "<:syncinkmusic:1558918836303044688>",
+    "syncink_music": "<:syncinkmusic:1558918836303044688>",
     "audia_ai": "<:Audia_AI:1571879222908031078>",
     "audia": "<:Audia_AI:1571879222908031078>",
     "audiaai": "<:Audia_AI:1571879222908031078>",
+    "approved": "<a:approved:1558019502019575918>",
+    "refused": "<a:refused:1558019488408932423>",
+    "like": "<:like:1559660676853797005>",
+    "dislike": "<:dislike:1559660727373930657>",
+    "nexttrack": "<:NextTrack:1558917288621777016>",
+    "next": "<:NextTrack:1558917288621777016>",
+    "playbutton": "<:PlayButton:1558913195119222814>",
+    "play": "<:PlayButton:1558913195119222814>",
+    "play_button": "<:PlayButton:1558913195119222814>",
+    "previous": "<:Previous:1558917154294997062>",
+    "pause": "<:pause:1558913299221979289>",
+    "pausebutton": "<:pause:1558913299221979289>",
+    "pause_button": "<:pause:1558913299221979289>",
+    "queue": "<:queue:1558916019089575936>",
+    "queue_add": "<:queue_add:1558915041896562860>",
+    "queueadd": "<:queue_add:1558915041896562860>",
+    "repeat": "<:repeat:1558916635866308719>",
+    "shuffle": "<:shuffle:1558914298544136192>",
+    "scale": "<:scale:1568355166913167430>",
+    "delete": "<:delete:1558918533214380243>",
     "punjabipop": "<:PunjabiPop:1568327108533551144>",
     "loficoffee": "<:LofiCoffee:1568327227983007864>",
     "kpop": "<:Kpop:1568327830981583039>",
@@ -41,8 +80,6 @@ VERIFIED_BOT_EMOJIS_BY_NAME: Dict[str, str] = {
     "edm": "<:EDM:1568327771501895762>",
     "romanticsoulful": "<:Romanticsoulful:1568327378504130600>",
     "refresh": "<:refresh:1568357873224781835>",
-    "scale": "<:scale:1568355166913167430>",
-    "syncinkmusic": "<:syncinkmusic:1558918836303044688>",
 }
 
 # Universal, high-compatibility visual Unicode fallbacks
@@ -167,9 +204,9 @@ class Emojis:
     ALERT = "<a:syncwarning:1520914584012328961>"
     WARNING = "<a:syncwarning:1520914584012328961>"
     SETTINGS = "⚙️"
-    REFUSED = "❌"
-    APPROVED = "✅"
-    CHECK_YES = "✅"
+    REFUSED = "<a:refused:1558019488408932423>"
+    APPROVED = "<a:approved:1558019502019575918>"
+    CHECK_YES = "<a:approved:1558019502019575918>"
     LOADING = "⏳"
     PENDING = "⏳"
 
@@ -186,22 +223,22 @@ class Emojis:
     LOOKING = "🔍"
 
     # Audio Controls
-    PLAY_BUTTON = "▶️"
-    PAUSE_BUTTON = "⏸️"
-    PREVIOUS = "⏮️"
-    NEXT = "⏭️"
-    QUEUE = "📜"
-    QUEUE_ADD = "➕"
-    REPEAT = "🔁"
-    SHUFFLE = "🔀"
-    RADIO = "📻"
-    SYNCINK_RADIO = "📻"
-    DELETE = "🗑️"
-    LIKE = "👍"
-    DISLIKE = "👎"
+    PLAY_BUTTON = "<:PlayButton:1558913195119222814>"
+    PAUSE_BUTTON = "<:pause:1558913299221979289>"
+    PREVIOUS = "<:Previous:1558917154294997062>"
+    NEXT = "<:NextTrack:1558917288621777016>"
+    QUEUE = "<:queue:1558916019089575936>"
+    QUEUE_ADD = "<:queue_add:1558915041896562860>"
+    REPEAT = "<:repeat:1558916635866308719>"
+    SHUFFLE = "<:shuffle:1558914298544136192>"
+    RADIO = "<:Radio:1558918719881740490>"
+    SYNCINK_RADIO = "<:Radio:1558918719881740490>"
+    DELETE = "<:delete:1558918533214380243>"
+    LIKE = "<:like:1559660676853797005>"
+    DISLIKE = "<:dislike:1559660727373930657>"
     PLAYING = "<a:playing:1559661648011075664>"
-    SCALE = "⚖️"
-    REFRESH = "🔄"
+    SCALE = "<:scale:1568355166913167430>"
+    REFRESH = "<:refresh:1568357873224781835>"
     VOLUME = "🔊"
 
     # Platforms
@@ -251,9 +288,9 @@ class Emojis:
     SUGGESTION = "💡"
     QUESTION = "❓"
     SYNCINK_LOGO = "📻"
-    MEMBERS = "👥"
-    MEMBER = "👤"
-    CANCELLED = "❌"
+    MEMBERS = "<:member:1559185207033077901>"
+    MEMBER = "<:member:1559185207033077901>"
+    CANCELLED = "<a:refused:1558019488408932423>"
 
 
 class EmojiPartials:
@@ -266,9 +303,9 @@ class EmojiPartials:
     ALERT = discord.PartialEmoji(name="syncwarning", id=1520914584012328961, animated=True)
     WARNING = discord.PartialEmoji(name="syncwarning", id=1520914584012328961, animated=True)
     SETTINGS = discord.PartialEmoji(name="⚙️")
-    REFUSED = discord.PartialEmoji(name="❌")
-    APPROVED = discord.PartialEmoji(name="✅")
-    CHECK_YES = discord.PartialEmoji(name="✅")
+    REFUSED = discord.PartialEmoji(name="refused", id=1558019488408932423, animated=True)
+    APPROVED = discord.PartialEmoji(name="approved", id=1558019502019575918, animated=True)
+    CHECK_YES = discord.PartialEmoji(name="approved", id=1558019502019575918, animated=True)
     LOADING = discord.PartialEmoji(name="⏳")
     PENDING = discord.PartialEmoji(name="⏳")
 
@@ -285,19 +322,19 @@ class EmojiPartials:
     LOOKING = discord.PartialEmoji(name="🔍")
 
     # Audio Controls
-    PLAY_BUTTON = discord.PartialEmoji(name="▶️")
-    PAUSE_BUTTON = discord.PartialEmoji(name="⏸️")
-    PREVIOUS = discord.PartialEmoji(name="⏮️")
-    NEXT = discord.PartialEmoji(name="⏭️")
-    QUEUE = discord.PartialEmoji(name="📜")
-    QUEUE_ADD = discord.PartialEmoji(name="➕")
-    REPEAT = discord.PartialEmoji(name="🔁")
-    SHUFFLE = discord.PartialEmoji(name="🔀")
-    RADIO = discord.PartialEmoji(name="📻")
-    SYNCINK_RADIO = discord.PartialEmoji(name="📻")
-    DELETE = discord.PartialEmoji(name="🗑️")
-    LIKE = discord.PartialEmoji(name="👍")
-    DISLIKE = discord.PartialEmoji(name="👎")
+    PLAY_BUTTON = discord.PartialEmoji(name="PlayButton", id=1558913195119222814, animated=False)
+    PAUSE_BUTTON = discord.PartialEmoji(name="pause", id=1558913299221979289, animated=False)
+    PREVIOUS = discord.PartialEmoji(name="Previous", id=1558917154294997062, animated=False)
+    NEXT = discord.PartialEmoji(name="NextTrack", id=1558917288621777016, animated=False)
+    QUEUE = discord.PartialEmoji(name="queue", id=1558916019089575936, animated=False)
+    QUEUE_ADD = discord.PartialEmoji(name="queue_add", id=1558915041896562860, animated=False)
+    REPEAT = discord.PartialEmoji(name="repeat", id=1558916635866308719, animated=False)
+    SHUFFLE = discord.PartialEmoji(name="shuffle", id=1558914298544136192, animated=False)
+    RADIO = discord.PartialEmoji(name="Radio", id=1558918719881740490, animated=False)
+    SYNCINK_RADIO = discord.PartialEmoji(name="Radio", id=1558918719881740490, animated=False)
+    DELETE = discord.PartialEmoji(name="delete", id=1558918533214380243, animated=False)
+    LIKE = discord.PartialEmoji(name="like", id=1559660676853797005, animated=False)
+    DISLIKE = discord.PartialEmoji(name="dislike", id=1559660727373930657, animated=False)
     PLAYING = discord.PartialEmoji(name="playing", id=1559661648011075664, animated=True)
     SCALE = discord.PartialEmoji(name="scale", id=1568355166913167430, animated=False)
     REFRESH = discord.PartialEmoji(name="refresh", id=1568357873224781835, animated=False)
@@ -341,9 +378,9 @@ class EmojiPartials:
     LOCK = discord.PartialEmoji(name="🔒")
     SUGGESTION = discord.PartialEmoji(name="💡")
     QUESTION = discord.PartialEmoji(name="❓")
-    MEMBERS = discord.PartialEmoji(name="👥")
-    MEMBER = discord.PartialEmoji(name="👤")
-    CANCELLED = discord.PartialEmoji(name="❌")
+    MEMBERS = discord.PartialEmoji(name="member", id=1559185207033077901, animated=False)
+    MEMBER = discord.PartialEmoji(name="member", id=1559185207033077901, animated=False)
+    CANCELLED = discord.PartialEmoji(name="refused", id=1558019488408932423, animated=True)
 
 
 # Legacy emoji tags map

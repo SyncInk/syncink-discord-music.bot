@@ -470,6 +470,15 @@ async function fetchAnalyticsSilently() {
 
 function updatePlaybackState(data) {
   state.playback = Object.assign({}, state.playback, data);
+  const statLatency = document.getElementById('stat-latency');
+  if (statLatency) {
+    const lat = data.voice_latency || data.latency_ms;
+    if (lat && data.connected) {
+      statLatency.innerText = `${Math.round(lat)} ms`;
+    } else if (data.connected === false) {
+      statLatency.innerText = '-- ms';
+    }
+  }
   renderBottomPlayer();
   renderSpotlightCard();
   renderQueueDrawer();
@@ -1078,6 +1087,13 @@ async function loadServers() {
     if (statRadio) {
       let activeRadioCount = state.servers.filter(s => s.radio_station).length;
       statRadio.innerText = activeRadioCount;
+    }
+
+    const statLatency = document.getElementById('stat-latency');
+    if (statLatency) {
+      const active = state.servers.find(s => String(s.id) === String(state.activeGuildId)) || state.servers[0];
+      const lat = (active && (active.voice_latency || active.latency_ms)) || (state.servers.find(s => s.voice_latency || s.latency_ms)?.voice_latency);
+      statLatency.innerText = (lat && active && active.connected) ? `${Math.round(lat)} ms` : '-- ms';
     }
   } catch (err) {
     console.warn('Servers load error:', err);
@@ -1955,6 +1971,11 @@ async function playPlaylist(id) {
     const data = await res.json();
     if (res.ok) {
       showToast(`Playing playlist "${data.playlist_name}" (${data.enqueued_count} tracks queued)!`, 'success');
+      closePlaylistTracksModal();
+      navigateTo('overview');
+      if (state.activeGuildId) {
+        subscribeToGuild(state.activeGuildId);
+      }
     } else {
       showToast(data.error || 'Failed to start playlist', 'error');
     }
@@ -2706,10 +2727,20 @@ function formatDuration(seconds) {
 }
 
 function formatRelativeTime(dateStr) {
+  if (!dateStr) return '';
+  if (dateStr === 'Now Playing') return 'Now Playing';
   try {
-    const d = new Date(dateStr);
+    let s = String(dateStr).trim();
+    if (s.includes(' ') && !s.includes('T')) {
+      s = s.replace(' ', 'T') + 'Z';
+    } else if (!s.endsWith('Z') && !s.includes('+') && !s.includes('-')) {
+      s += 'Z';
+    }
+    const d = new Date(s);
+    if (isNaN(d.getTime())) return dateStr;
     const now = new Date();
     const diffSec = Math.floor((now - d) / 1000);
+    if (diffSec < 0) return 'Just now';
     if (diffSec < 60) return 'Just now';
     if (diffSec < 3600) return `${Math.floor(diffSec / 60)}m ago`;
     if (diffSec < 86400) return `${Math.floor(diffSec / 3600)}h ago`;

@@ -200,7 +200,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             return
 
         # 1. Top Section: Track Title, Artist, and Duration with Thumbnail accessory
-        title_text = f"### 💿 Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}** `[{current.formatted_duration}]`"
+        title_text = f"### {Emojis.PLAYING} Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}** `[{current.formatted_duration}]`"
         text_disp = discord.ui.TextDisplay(title_text)
         thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else BRAND_LOGO_URL
         sec = discord.ui.Section(text_disp, accessory=discord.ui.Thumbnail(thumb_url))
@@ -249,7 +249,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
 
         # 4. Requester footer
         req_id = current.requested_by.id if (current.requested_by and hasattr(current.requested_by, "id")) else 1520522990280769727
-        footer_text = f"👤 Track requested by <@{req_id}>"
+        footer_text = f"{Emojis.MEMBER} Track requested by <@{req_id}>"
         footer = discord.ui.TextDisplay(footer_text)
 
         items = [sec, row, sep, footer]

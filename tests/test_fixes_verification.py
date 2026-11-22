@@ -11,17 +11,64 @@ class DummyUser:
 
 class TestFixesVerification(unittest.TestCase):
     def test_verified_emojis(self):
-        self.assertIn(1559661648011075664, VERIFIED_BOT_EMOJI_IDS)
-        self.assertIn(1520914584012328961, VERIFIED_BOT_EMOJI_IDS)
+        # All 19 user-specified emojis + syncwarning
+        expected_emojis = {
+            1559661648011075664,  # playing (animated)
+            1559185207033077901,  # member
+            1558918719881740490,  # Radio
+            1558918836303044688,  # syncinkmusic
+            1571879222908031078,  # Audia_AI
+            1558019502019575918,  # approved (animated)
+            1558019488408932423,  # refused (animated)
+            1559660676853797005,  # like
+            1559660727373930657,  # dislike
+            1558917288621777016,  # NextTrack
+            1558913195119222814,  # PlayButton
+            1558917154294997062,  # Previous
+            1558913299221979289,  # pause
+            1558916019089575936,  # queue
+            1558915041896562860,  # queue_add
+            1558916635866308719,  # repeat
+            1558914298544136192,  # shuffle
+            1568355166913167430,  # scale
+            1558918533214380243,  # delete
+            1520914584012328961,  # syncwarning (animated)
+        }
+        for eid in expected_emojis:
+            self.assertIn(eid, VERIFIED_BOT_EMOJI_IDS, f"Missing verified emoji ID: {eid}")
 
         self.assertEqual(Emojis.PLAYING, "<a:playing:1559661648011075664>")
         self.assertEqual(Emojis.WARNING, "<a:syncwarning:1520914584012328961>")
         self.assertEqual(Emojis.ALERT, "<a:syncwarning:1520914584012328961>")
+        self.assertEqual(Emojis.MEMBER, "<:member:1559185207033077901>")
+        self.assertEqual(Emojis.RADIO, "<:Radio:1558918719881740490>")
+        self.assertEqual(Emojis.SYNCINK_MUSIC, "<:syncinkmusic:1558918836303044688>")
+        self.assertEqual(Emojis.AUDIA_AI, "<:Audia_AI:1571879222908031078>")
+        self.assertEqual(Emojis.APPROVED, "<a:approved:1558019502019575918>")
+        self.assertEqual(Emojis.REFUSED, "<a:refused:1558019488408932423>")
+        self.assertEqual(Emojis.LIKE, "<:like:1559660676853797005>")
+        self.assertEqual(Emojis.DISLIKE, "<:dislike:1559660727373930657>")
+        self.assertEqual(Emojis.NEXT, "<:NextTrack:1558917288621777016>")
+        self.assertEqual(Emojis.PLAY_BUTTON, "<:PlayButton:1558913195119222814>")
+        self.assertEqual(Emojis.PREVIOUS, "<:Previous:1558917154294997062>")
+        self.assertEqual(Emojis.PAUSE_BUTTON, "<:pause:1558913299221979289>")
+        self.assertEqual(Emojis.QUEUE, "<:queue:1558916019089575936>")
+        self.assertEqual(Emojis.QUEUE_ADD, "<:queue_add:1558915041896562860>")
+        self.assertEqual(Emojis.REPEAT, "<:repeat:1558916635866308719>")
+        self.assertEqual(Emojis.SHUFFLE, "<:shuffle:1558914298544136192>")
+        self.assertEqual(Emojis.SCALE, "<:scale:1568355166913167430>")
+        self.assertEqual(Emojis.DELETE, "<:delete:1558918533214380243>")
 
         self.assertEqual(EmojiPartials.PLAYING.id, 1559661648011075664)
         self.assertTrue(EmojiPartials.PLAYING.animated)
         self.assertEqual(EmojiPartials.WARNING.id, 1520914584012328961)
         self.assertTrue(EmojiPartials.WARNING.animated)
+        self.assertEqual(EmojiPartials.PLAY_BUTTON.id, 1558913195119222814)
+        self.assertEqual(EmojiPartials.PAUSE_BUTTON.id, 1558913299221979289)
+        self.assertEqual(EmojiPartials.PREVIOUS.id, 1558917154294997062)
+        self.assertEqual(EmojiPartials.NEXT.id, 1558917288621777016)
+        self.assertEqual(EmojiPartials.DELETE.id, 1558918533214380243)
+        self.assertEqual(EmojiPartials.QUEUE.id, 1558916019089575936)
 
     def test_format_discord_emojis_replacements(self):
         # Broken emoji replaced
@@ -80,7 +127,7 @@ class TestFixesVerification(unittest.TestCase):
 
         sec = items[0]
         self.assertIsInstance(sec, discord.ui.Section)
-        self.assertIn("💿 Now Playing", sec.children[0].content)
+        self.assertIn(f"{Emojis.PLAYING} Now Playing", sec.children[0].content)
 
         row = items[1]
         self.assertIsInstance(row, discord.ui.ActionRow)
@@ -97,7 +144,7 @@ class TestFixesVerification(unittest.TestCase):
 
         footer = items[3]
         self.assertIsInstance(footer, discord.ui.TextDisplay)
-        self.assertIn("👤 Track requested by <@77777>", footer.content)
+        self.assertIn(f"{Emojis.MEMBER} Track requested by <@77777>", footer.content)
 
     def test_no_embed_footers(self):
         err_embed = make_error_embed("Something went wrong")
@@ -115,6 +162,19 @@ class TestFixesVerification(unittest.TestCase):
         self.assertEqual(len(view.children), 6)  # mood_select, lang_select, disc_select, toggle, block, profile
         embed = view.build_embed()
         self.assertIsNone(embed.footer.text)
+
+    def test_emoji_manager_preserves_verified_emojis(self):
+        from utils.emoji_manager import EmojiManager
+        for norm, d in EmojiManager.DEFAULT_KNOWN_EMOJIS.items():
+            self.assertIn(d["id"], VERIFIED_BOT_EMOJI_IDS)
+
+    def test_server_voice_latency_serialization(self):
+        from services.web.websocket import DashboardWebSocketManager
+        mgr = DashboardWebSocketManager.get_instance()
+        data = mgr.serialize_guild_playback(110000000000000001, None)
+        self.assertIn("voice_latency", data)
+        self.assertIn("latency_ms", data)
+        self.assertEqual(data["voice_latency"], 18.5)
 
 if __name__ == "__main__":
     unittest.main()

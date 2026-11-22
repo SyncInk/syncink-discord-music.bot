@@ -159,6 +159,8 @@ class DashboardWebSocketManager:
                     "thumbnail": "https://images.unsplash.com/photo-1501386761578-eac5c94b800a?w=400"
                 },
                 "listeners": 5,
+                "voice_latency": 18.5,
+                "latency_ms": 18.5,
                 "server_time": time.time()
             }
 
@@ -202,6 +204,8 @@ class DashboardWebSocketManager:
                 "autoplay_meta": None,
                 "prefetched_track": None,
                 "listeners": 12,
+                "voice_latency": 22.1,
+                "latency_ms": 22.1,
                 "server_time": time.time()
             }
 
@@ -274,6 +278,16 @@ class DashboardWebSocketManager:
                 "thumbnail": prefetched.thumbnail
             }
 
+        latency_ms = None
+        if vc and is_connected:
+            lat = getattr(vc, 'latency', None) or getattr(vc, 'average_latency', None)
+            if isinstance(lat, (int, float)) and lat > 0:
+                latency_ms = round(float(lat) * 1000, 1)
+            elif bot and hasattr(bot, 'latency') and isinstance(bot.latency, (int, float)) and bot.latency > 0:
+                latency_ms = round(float(bot.latency) * 1000, 1)
+        elif bot and hasattr(bot, 'latency') and isinstance(bot.latency, (int, float)) and bot.latency > 0:
+            latency_ms = round(float(bot.latency) * 1000, 1)
+
         return {
             "guild_id": str(guild_id),
             "server_name": server_name,
@@ -297,6 +311,8 @@ class DashboardWebSocketManager:
             "queue_size": len(queue.tracks),
             "autoplay_meta": autoplay_meta,
             "prefetched_track": prefetched_data,
+            "voice_latency": latency_ms,
+            "latency_ms": latency_ms,
             "server_time": time.time()
         }
 

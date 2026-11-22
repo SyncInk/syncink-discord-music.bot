@@ -248,7 +248,7 @@
       <!-- ==================== VIEW 1: HOME OVERVIEW ==================== -->
       <section id="view-overview" class="view-panel space-y-6 max-w-7xl mx-auto pb-16">
         <!-- Hero Banner with Cyber Violet Glow -->
-        <div class="relative z-0 rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1e1533] via-[#161224] to-[#101014] shadow-2xl">
+        <div class="relative z-30 rounded-3xl p-6 sm:p-8 border border-brand-primary/30 bg-gradient-to-br from-[#1e1533] via-[#161224] to-[#101014] shadow-2xl">
           <!-- Ambient Glow Background Overflow Container -->
           <div class="absolute inset-0 rounded-3xl overflow-hidden pointer-events-none">
             <div class="absolute -right-20 -top-20 w-80 h-80 rounded-full bg-brand-primary/20 blur-3xl"></div>
@@ -263,7 +263,7 @@
             <p class="text-[#9E9EAD] text-xs sm:text-sm leading-relaxed mb-6">Explore 30,000+ live worldwide radio stations, high-fidelity music streaming, and personalized continuous AutoPlay powered by Audia AI.</p>
             
             <!-- Quick Search Bar with Real-time Song Autocomplete -->
-            <div class="relative max-w-lg">
+            <div class="relative z-40 max-w-lg">
               <div class="flex items-center gap-2 bg-brand-surface/90 border border-brand-primary/40 rounded-2xl p-1.5 focus-within:border-brand-secondary shadow-xl transition-all">
                 <i data-lucide="search" class="w-5 h-5 text-[#9E9EAD] ml-3 shrink-0"></i>
                 <input type="text" id="overview-quick-play-input" oninput="handleSearchInput(this.value)" onfocus="handleSearchFocus()" placeholder="Search track, artist, or YouTube/Spotify URL..." class="bg-transparent border-none outline-none text-xs sm:text-sm text-white px-2 py-1 flex-1 placeholder-[#6B6A78]">
@@ -281,7 +281,7 @@
         </div>
 
         <!-- Live Status Spotlight Card (Active Listening Session) -->
-        <div id="overview-spotlight" class="glass-panel p-5 sm:p-6 rounded-3xl border border-brand-primary/30 flex flex-col md:flex-row items-center justify-between gap-5">
+        <div id="overview-spotlight" class="relative z-0 glass-panel p-5 sm:p-6 rounded-3xl border border-brand-primary/30 flex flex-col md:flex-row items-center justify-between gap-5">
           <div class="flex items-center gap-4 w-full md:w-auto min-w-0">
             <img id="spotlight-track-img" src="https://files.catbox.moe/74l9su.png" alt="Cover" class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-brand-border/40 shrink-0 shadow-lg">
             <div class="min-w-0 flex-1">

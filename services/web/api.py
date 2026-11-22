@@ -371,6 +371,16 @@ class DashboardAPI:
                         perm = "dj"
                         can_manage = True
 
+                latency_ms = None
+                if vc and vc.is_connected():
+                    lat = getattr(vc, 'latency', None) or getattr(vc, 'average_latency', None)
+                    if isinstance(lat, (int, float)) and lat > 0:
+                        latency_ms = round(float(lat) * 1000, 1)
+                    elif bot and hasattr(bot, 'latency') and isinstance(bot.latency, (int, float)) and bot.latency > 0:
+                        latency_ms = round(float(bot.latency) * 1000, 1)
+                elif bot and hasattr(bot, 'latency') and isinstance(bot.latency, (int, float)) and bot.latency > 0:
+                    latency_ms = round(float(bot.latency) * 1000, 1)
+
                 server_list.append({
                     "id": str(g.id),
                     "name": g.name,
@@ -384,7 +394,9 @@ class DashboardAPI:
                     "radio_station": queue.active_radio_station_info.get("name") if queue.active_radio_station_info else queue.active_radio_station,
                     "is_playing": bool(vc and vc.is_playing()),
                     "permission": perm,
-                    "can_manage": can_manage
+                    "can_manage": can_manage,
+                    "latency_ms": latency_ms,
+                    "voice_latency": latency_ms
                 })
 
         return aiohttp.web.json_response({"authenticated": True, "servers": server_list})
@@ -1514,10 +1526,12 @@ class DashboardAPI:
 
         itunes_results = []
         seen_titles = set()
+        q_tokens = [w for w in re.findall(r'\w+', q.lower()) if len(w) >= 2]
+        tk_tokens = [w for w in re.findall(r'\w+', (top_keyword or "").lower()) if len(w) >= 2]
 
         for term in terms_to_search[:2]:
             try:
-                itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(term)}&entity=song&limit=4"
+                itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(term)}&entity=song&limit=5"
                 async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
                     async with session.get(itunes_url) as resp:
                         if resp.status == 200:
@@ -1526,7 +1540,18 @@ class DashboardAPI:
                                 track_name = item.get("trackName")
                                 artist_name = item.get("artistName")
                                 if track_name and artist_name:
-                                    k = (track_name.lower(), artist_name.lower())
+                                    t_low = track_name.lower()
+                                    a_low = artist_name.lower()
+                                    # Strictly verify query matches track title or artist to prevent unrelated songs (e.g. Stand Tall)
+                                    matches = (
+                                        any(tok in t_low or tok in a_low for tok in q_tokens)
+                                        or (q.lower() in t_low or q.lower() in a_low)
+                                        or any(tok in t_low or tok in a_low for tok in tk_tokens)
+                                    )
+                                    if not matches:
+                                        continue
+
+                                    k = (t_low, a_low)
                                     if k not in seen_titles:
                                         seen_titles.add(k)
                                         duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
@@ -1541,19 +1566,20 @@ class DashboardAPI:
             except Exception as it_err:
                 log.debug(f"[Search Suggestions iTunes Error] {it_err}")
 
-        # Combine iTunes results first (accurate song & artist metadata)
-        suggestions.extend(itunes_results)
-
-        # Append clean YouTube candidates that aren't already represented
+        # Prioritize matching YouTube candidates (e.g. "Yalgaar") when available
         for cand in clean_yt_candidates:
-            if not any(cand.lower() == s["title"].lower() for s in suggestions):
+            cand_title = cand.title()
+            if not any(cand.lower() == s["title"].lower() for s in suggestions) and not any(cand.lower() == s["title"].lower() for s in itunes_results):
                 suggestions.append({
-                    "title": cand.title(),
-                    "artist": "Song Result",
+                    "title": cand_title,
+                    "artist": "Song",
                     "duration": 0,
                     "thumbnail": "https://files.catbox.moe/74l9su.png",
                     "source": "youtube"
                 })
+
+        # Combine with verified iTunes results
+        suggestions.extend(itunes_results)
 
         return aiohttp.web.json_response({"suggestions": suggestions[:8]})
 
@@ -1691,12 +1717,15 @@ class DashboardAPI:
                 accessible_guild_ids = {g.id for g in bot.guilds}
 
         if target_guild_id:
-            user_clause = f"WHERE (guild_id = {target_guild_id} OR discord_user_id = $1)"
+            user_clause = "WHERE guild_id = $1"
+            param1 = target_guild_id
         elif accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
             user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
+            param1 = uid
         else:
             user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
+            param1 = uid
 
         query = f"""
             SELECT * FROM listening_history
@@ -1706,11 +1735,18 @@ class DashboardAPI:
             ORDER BY played_at DESC
             LIMIT $2
         """
-        rows = await db.fetch(query, uid, limit)
+        rows = await db.fetch(query, param1, limit)
         history = [dict(r) for r in rows]
         for h in history:
-            if isinstance(h.get("played_at"), datetime):
-                h["played_at"] = h["played_at"].isoformat()
+            p_at = h.get("played_at")
+            if isinstance(p_at, datetime):
+                h["played_at"] = p_at.strftime("%Y-%m-%dT%H:%M:%SZ")
+            elif isinstance(p_at, str):
+                p_str = p_at.strip()
+                if " " in p_str and "T" not in p_str:
+                    h["played_at"] = p_str.replace(" ", "T") + "Z"
+                elif not p_str.endswith("Z"):
+                    h["played_at"] = p_str + "Z"
             h["is_live_now"] = False
 
         # 1. Synthesize live currently playing track at the top of history (ALWAYS, not just when empty)
@@ -1755,7 +1791,7 @@ class DashboardAPI:
                             "duration": int(trk.duration or 0),
                             "platform": trk.platform or "youtube",
                             "thumbnail_url": trk.thumbnail or "https://files.catbox.moe/74l9su.png",
-                            "played_at": datetime.utcnow().isoformat(),
+                            "played_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "is_live_now": False
                         })
 
@@ -1849,17 +1885,20 @@ class DashboardAPI:
                 accessible_guild_ids = {g.id for g in bot.guilds}
 
         if target_guild_id:
-            user_clause = f"WHERE (guild_id = {target_guild_id} OR discord_user_id = $1)"
+            user_clause = "WHERE guild_id = $1"
+            param1 = target_guild_id
         elif accessible_guild_ids:
             guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
             user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
+            param1 = uid
         else:
             user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
+            param1 = uid
 
         # Totals
         total_songs_row = await db.fetchrow(
             f"SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_seconds FROM listening_history {user_clause} {time_clause}",
-            uid
+            param1
         )
         total_songs = total_songs_row["count"] if total_songs_row else 0
         total_seconds = total_songs_row["total_seconds"] if total_songs_row else 0
@@ -1867,21 +1906,21 @@ class DashboardAPI:
         # Top Artists
         top_artists_rows = await db.fetch(
             f"SELECT track_author, COUNT(*) as play_count FROM listening_history {user_clause} AND track_author IS NOT NULL {time_clause} GROUP BY track_author ORDER BY play_count DESC LIMIT 8",
-            uid
+            param1
         )
         top_artists = [dict(r) for r in top_artists_rows]
 
         # Top Tracks
         top_tracks_rows = await db.fetch(
             f"SELECT track_title, track_author, thumbnail_url, COUNT(*) as play_count FROM listening_history {user_clause} {time_clause} GROUP BY track_title, track_author, thumbnail_url ORDER BY play_count DESC LIMIT 8",
-            uid
+            param1
         )
         top_tracks = [dict(r) for r in top_tracks_rows]
 
         # Hourly Distribution (0-23 hours for peak listening activity)
         history_rows = await db.fetch(
             f"SELECT played_at FROM listening_history {user_clause} {time_clause} ORDER BY played_at DESC LIMIT 500",
-            uid
+            param1
         )
         hourly_counts = [0] * 24
         for r in history_rows:
@@ -1901,6 +1940,9 @@ class DashboardAPI:
         live_guild_name = None
         live_channel_name = None
         live_elapsed = 0
+        live_latency = None
+        if bot and hasattr(bot, "latency") and isinstance(bot.latency, (int, float)) and bot.latency > 0:
+            live_latency = round(float(bot.latency) * 1000, 1)
 
         if bot:
             music_service = MusicService.get_instance()
@@ -1911,6 +1953,11 @@ class DashboardAPI:
                 q = music_service.get_queue(gid)
                 g = bot.get_guild(gid)
                 vc = (g.voice_client if g else None) or q.voice_client
+                if vc:
+                    v_lat = getattr(vc, 'latency', None) or getattr(vc, 'average_latency', None)
+                    if isinstance(v_lat, (int, float)) and v_lat > 0:
+                        live_latency = round(float(v_lat) * 1000, 1)
+
                 if q.current_track and vc and (vc.is_playing() or vc.is_paused()):
                     live_active = True
                     live_track = {
@@ -1941,7 +1988,7 @@ class DashboardAPI:
         # Platform distribution
         platform_rows = await db.fetch(
             f"SELECT platform, COUNT(*) as count FROM listening_history {user_clause} {time_clause} GROUP BY platform",
-            uid
+            param1
         )
         platforms = {dict(r)["platform"]: dict(r)["count"] for r in platform_rows}
         if not platforms and live_active:
@@ -1963,6 +2010,8 @@ class DashboardAPI:
             "live_guild_name": live_guild_name,
             "live_channel_name": live_channel_name,
             "live_elapsed": live_elapsed,
+            "voice_latency": live_latency,
+            "latency_ms": live_latency,
             "server_timestamp": time.time()
         })
 
