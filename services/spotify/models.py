@@ -93,3 +93,4 @@ class SpotifyUserAuth:
     encrypted_refresh_token: Optional[str]
     expires_at: float = 0.0
     scope: Optional[str] = None
+    return_to: str = "discord"

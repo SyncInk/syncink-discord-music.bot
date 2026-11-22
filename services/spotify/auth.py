@@ -35,10 +35,26 @@ class SpotifyUserAuthManager:
     def __init__(self):
         self.client_id = os.getenv("SPOTIFY_CLIENT_ID", "").strip()
         self.client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
-        # Default to local 127.0.0.1:8888 or production redirect URI
-        self.redirect_uri = os.getenv("SPOTIFY_REDIRECT_URI", "http://127.0.0.1:8888/callback").strip()
+        self.redirect_uri = self.get_default_redirect_uri()
         self._user_tokens: Dict[int, SpotifyUserAuth] = {}
         self._lock = asyncio.Lock()
+
+    def get_default_redirect_uri(self) -> str:
+        """
+        Determines the canonical Spotify OAuth2 redirect URI.
+        Safeguards against stale '127.0.0.1' in production environments while
+        respecting explicit custom redirect URIs or falling back to canonical public domain.
+        """
+        env_uri = os.getenv("SPOTIFY_REDIRECT_URI", "").strip()
+        discord_redirect = os.getenv("DISCORD_REDIRECT_URI", "").strip()
+        # If running in production (indicated by syncink.site), prevent 127.0.0.1 from breaking remote clients:
+        if "syncink.site" in discord_redirect or "syncink.site" in env_uri:
+            if not env_uri or "127.0.0.1" in env_uri or "localhost" in env_uri:
+                return "https://syncink.site/callback"
+            return env_uri
+        if env_uri:
+            return env_uri
+        return "https://syncink.site/callback"
 
     @classmethod
     def get_instance(cls) -> 'SpotifyUserAuthManager':
@@ -57,7 +73,12 @@ class SpotifyUserAuthManager:
         digest = hashlib.sha256(verifier.encode("ascii")).digest()
         return base64.urlsafe_b64encode(digest).decode("ascii").rstrip("=")
 
-    async def generate_auth_url(self, discord_user_id: int) -> Tuple[str, str]:
+    async def generate_auth_url(
+        self,
+        discord_user_id: int,
+        redirect_uri: Optional[str] = None,
+        return_to: str = "discord"
+    ) -> Tuple[str, str]:
         """
         Creates an authorization URL with PKCE S256 and stores state in database.
         Returns (authorization_url, state).
@@ -65,24 +86,29 @@ class SpotifyUserAuthManager:
         if not self.client_id:
             raise RuntimeError("SPOTIFY_CLIENT_ID is not configured in environment variables.")
 
+        effective_redirect = (redirect_uri or self.get_default_redirect_uri()).strip()
         state = secrets.token_urlsafe(32)
         code_verifier = self._generate_code_verifier()
         code_challenge = self._generate_code_challenge(code_verifier)
 
-        # Store state in DB with TTL (15 minutes)
+        # Store state in DB with TTL (15 minutes), specific redirect_uri and return_to target
         await db.execute(
             """
-            INSERT INTO spotify_oauth_states (state, discord_user_id, code_verifier)
-            VALUES ($1, $2, $3)
-            ON CONFLICT (state) DO UPDATE SET code_verifier = $3;
+            INSERT INTO spotify_oauth_states (state, discord_user_id, code_verifier, redirect_uri, return_to)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (state) DO UPDATE SET
+                discord_user_id = $2,
+                code_verifier = $3,
+                redirect_uri = $4,
+                return_to = $5;
             """,
-            state, discord_user_id, code_verifier
+            state, discord_user_id, code_verifier, effective_redirect, return_to
         )
 
         params = {
             "client_id": self.client_id,
             "response_type": "code",
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": effective_redirect,
             "state": state,
             "scope": " ".join(self.DEFAULT_SCOPES),
             "code_challenge_method": "S256",
@@ -98,7 +124,7 @@ class SpotifyUserAuthManager:
         fetches user profile, encrypts refresh token, and stores in database.
         """
         row = await db.fetchrow(
-            "SELECT discord_user_id, code_verifier FROM spotify_oauth_states WHERE state = $1;",
+            "SELECT discord_user_id, code_verifier, redirect_uri, return_to FROM spotify_oauth_states WHERE state = $1;",
             state
         )
         if not row:
@@ -107,15 +133,17 @@ class SpotifyUserAuthManager:
 
         discord_user_id = int(row["discord_user_id"])
         code_verifier = row["code_verifier"]
+        redirect_uri = (row.get("redirect_uri") if isinstance(row, dict) else row["redirect_uri"]) or self.get_default_redirect_uri()
+        return_to = (row.get("return_to") if isinstance(row, dict) else row["return_to"]) or "discord"
 
         # Consume state immediately (one-time CSRF protection)
         await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
 
-        # Exchange authorization code for tokens
+        # Exchange authorization code for tokens with the EXACT redirect_uri used during authorize
         data = {
             "grant_type": "authorization_code",
             "code": code,
-            "redirect_uri": self.redirect_uri,
+            "redirect_uri": redirect_uri,
             "client_id": self.client_id,
             "code_verifier": code_verifier,
         }
@@ -181,6 +209,7 @@ class SpotifyUserAuthManager:
             encrypted_refresh_token=encrypted_rt,
             expires_at=time.time() + expires_in,
             scope=scope,
+            return_to=return_to,
         )
         self._user_tokens[discord_user_id] = user_auth
         log.info(f"[Spotify Auth] Successfully linked Discord user {discord_user_id} with Spotify user '{display_name}' ({spotify_user_id}).")
@@ -272,3 +301,45 @@ class SpotifyUserAuthManager:
         res = await db.execute("DELETE FROM spotify_users WHERE discord_user_id = $1;", discord_user_id)
         log.info(f"[Spotify Auth] Unlinked Spotify account for Discord user {discord_user_id}.")
         return res != "0"
+
+    async def get_user_playlists(self, discord_user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
+        """
+        Fetches the user's Spotify playlists (including private and collaborative playlists).
+        """
+        token = await self.get_valid_user_token(discord_user_id)
+        if not token:
+            return []
+
+        url = f"https://api.spotify.com/v1/me/playlists?limit={min(max(1, limit), 50)}"
+        headers = {"Authorization": f"Bearer {token}"}
+        try:
+            timeout = aiohttp.ClientTimeout(total=15, connect=5)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.get(url, headers=headers) as resp:
+                    if resp.status != 200:
+                        log.warning(f"[Spotify Auth] Failed to fetch playlists for user {discord_user_id}: HTTP {resp.status}")
+                        return []
+                    data = await resp.json()
+        except Exception as e:
+            log.error(f"[Spotify Auth] Error fetching user playlists: {e}")
+            return []
+
+        items = data.get("items", [])
+        playlists = []
+        for p in items:
+            if not isinstance(p, dict) or not p.get("id"):
+                continue
+            images = p.get("images", [])
+            img_url = images[0].get("url") if images else "https://files.catbox.moe/74l9su.png"
+            playlists.append({
+                "id": p["id"],
+                "name": p.get("name") or "Untitled Playlist",
+                "description": p.get("description") or "",
+                "tracks_total": int(p.get("tracks", {}).get("total", 0)),
+                "image_url": img_url,
+                "url": p.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{p['id']}"),
+                "public": bool(p.get("public", False)),
+                "collaborative": bool(p.get("collaborative", False)),
+                "owner": p.get("owner", {}).get("display_name") or p.get("owner", {}).get("id") or "Spotify User",
+            })
+        return playlists

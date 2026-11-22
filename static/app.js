@@ -72,6 +72,8 @@ window.addEventListener('DOMContentLoaded', async () => {
   initRouting();
   initWebSocket();
   startLocalPlaybackTicker();
+  checkUrlParams();
+  await checkSpotifyStatus();
 
   // Close search suggestions on outside click
   document.addEventListener('click', (e) => {
@@ -2256,6 +2258,17 @@ function openImportPlaylistModal() {
       msg.textContent = '';
     }
     setImportDestinationMode('new');
+
+    const quickImportWrap = document.getElementById('spotify-quick-import-wrap');
+    if (quickImportWrap) {
+      if (state.spotify && state.spotify.connected) {
+        quickImportWrap.classList.remove('hidden');
+        loadUserSpotifyPlaylists();
+      } else {
+        quickImportWrap.classList.add('hidden');
+      }
+    }
+
     initIcons();
   }
 }
@@ -2778,4 +2791,191 @@ function showToast(message, type = 'info') {
     toast.style.transition = 'opacity 0.3s ease';
     setTimeout(() => toast.remove(), 300);
   }, 3500);
+}
+
+// ------------------- URL QUERY PARAMETER HANDLING -------------------
+function checkUrlParams() {
+  const fullSearch = window.location.search || (window.location.hash.includes('?') ? '?' + window.location.hash.split('?')[1] : '');
+  const urlParams = new URLSearchParams(fullSearch);
+  if (urlParams.get('spotify_connected') === 'true') {
+    showToast('Spotify account successfully connected to SyncInk Radio!', 'success');
+    cleanUrlParam('spotify_connected');
+  } else if (urlParams.get('spotify_error')) {
+    showToast('Spotify connection failed: ' + decodeURIComponent(urlParams.get('spotify_error')), 'error');
+    cleanUrlParam('spotify_error');
+  }
+}
+
+function cleanUrlParam(param) {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(param);
+    let hash = window.location.hash;
+    if (hash.includes(param)) {
+      const parts = hash.split('?');
+      if (parts[1]) {
+        const hp = new URLSearchParams(parts[1]);
+        hp.delete(param);
+        const rest = hp.toString();
+        hash = parts[0] + (rest ? '?' + rest : '');
+      }
+    }
+    const cleanUrl = url.pathname + (url.search ? url.search : '') + hash;
+    window.history.replaceState({}, document.title, cleanUrl);
+  } catch (e) {
+    // Ignore error
+  }
+}
+
+// ------------------- SPOTIFY ACCOUNT DASHBOARD INTEGRATION -------------------
+async function checkSpotifyStatus() {
+  try {
+    const res = await fetch('/api/spotify/status');
+    const data = await res.json();
+    state.spotify = data;
+
+    const badge = document.getElementById('spotify-lib-badge');
+    const desc = document.getElementById('spotify-lib-desc');
+    const actions = document.getElementById('spotify-lib-actions');
+    const prefDesc = document.getElementById('pref-spotify-status-desc');
+    const prefBtnWrap = document.getElementById('pref-spotify-btn-container');
+    const quickImportWrap = document.getElementById('spotify-quick-import-wrap');
+
+    if (data.connected) {
+      const displayName = escapeHtml(data.display_name || 'Spotify User');
+      if (badge) {
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30';
+        badge.textContent = 'Connected';
+      }
+      if (desc) {
+        desc.innerHTML = `Linked as <strong class="text-white">@${displayName}</strong> • Stream private playlists and sync taste profiles with Audia AI.`;
+      }
+      if (actions) {
+        actions.innerHTML = `
+          <button onclick="openImportPlaylistModal()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#1db954] hover:bg-[#1ed760] text-black transition-all flex items-center gap-1.5 shadow-md shadow-[#1db954]/20">
+            <i data-lucide="folder-down" class="w-3.5 h-3.5"></i> My Playlists
+          </button>
+          <button onclick="openSpotifyDisconnectModal()" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1">
+            <i data-lucide="unlink" class="w-3.5 h-3.5"></i> Unlink
+          </button>
+        `;
+      }
+      if (prefDesc) {
+        prefDesc.innerHTML = `Connected as <span class="text-white font-semibold">${displayName}</span>`;
+      }
+      if (prefBtnWrap) {
+        prefBtnWrap.innerHTML = `
+          <button type="button" onclick="openSpotifyDisconnectModal()" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all">
+            Disconnect
+          </button>
+        `;
+      }
+      if (quickImportWrap) {
+        quickImportWrap.classList.remove('hidden');
+        loadUserSpotifyPlaylists();
+      }
+    } else {
+      if (badge) {
+        badge.className = 'px-2 py-0.5 rounded-full text-[10px] font-semibold bg-white/10 text-[#9E9EAD]';
+        badge.textContent = 'Not Connected';
+      }
+      if (desc) {
+        desc.textContent = 'Connect your Spotify account to import personal playlists and sync taste profiles with Audia AI.';
+      }
+      if (actions) {
+        actions.innerHTML = `
+          <button id="btn-spotify-connect" onclick="connectSpotify()" class="px-4 py-2 rounded-xl text-xs font-bold bg-[#1db954] hover:bg-[#1ed760] text-black transition-all flex items-center gap-1.5 shadow-lg shadow-[#1db954]/20">
+            <i data-lucide="link" class="w-3.5 h-3.5"></i> Connect Spotify
+          </button>
+        `;
+      }
+      if (prefDesc) {
+        prefDesc.textContent = 'Not connected';
+      }
+      if (prefBtnWrap) {
+        prefBtnWrap.innerHTML = `
+          <button type="button" onclick="connectSpotify()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#1db954] hover:bg-[#1ed760] text-black transition-all flex items-center gap-1 shadow-md shadow-[#1db954]/20">
+            <i data-lucide="link" class="w-3 h-3"></i> Connect
+          </button>
+        `;
+      }
+      if (quickImportWrap) {
+        quickImportWrap.classList.add('hidden');
+      }
+    }
+    initIcons();
+  } catch (err) {
+    console.warn('[Spotify Status Check Error]', err);
+  }
+}
+
+function connectSpotify() {
+  if (!state.currentUser) {
+    showToast('Please log in with Discord first to connect your Spotify account!', 'warning');
+    return;
+  }
+  window.location.href = `${BASE_PATH}/api/spotify/connect`;
+}
+
+function openSpotifyDisconnectModal() {
+  const modal = document.getElementById('modal-confirm-spotify-disconnect');
+  if (modal) modal.classList.remove('hidden');
+}
+
+function closeSpotifyDisconnectModal(e) {
+  if (e && e.target !== e.currentTarget && e.target !== document.getElementById('modal-confirm-spotify-disconnect')) return;
+  const modal = document.getElementById('modal-confirm-spotify-disconnect');
+  if (modal) modal.classList.add('hidden');
+}
+
+async function performSpotifyDisconnect() {
+  try {
+    const res = await fetch('/api/spotify/disconnect', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast('Spotify account disconnected successfully.', 'info');
+      closeSpotifyDisconnectModal();
+      await checkSpotifyStatus();
+    } else {
+      showToast(data.error || 'Failed to disconnect Spotify.', 'error');
+    }
+  } catch (err) {
+    showToast('Error disconnecting Spotify: ' + err, 'error');
+  }
+}
+
+async function loadUserSpotifyPlaylists() {
+  const select = document.getElementById('spotify-quick-playlist-select');
+  if (!select) return;
+
+  try {
+    const res = await fetch('/api/spotify/playlists');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.playlists && Array.isArray(data.playlists)) {
+      state.spotifyPlaylists = data.playlists;
+      let html = '<option value="">Select a playlist to auto-fill...</option>';
+      data.playlists.forEach((p) => {
+        html += `<option value="${escapeHtml(p.url)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.tracks_total} tracks)</option>`;
+      });
+      select.innerHTML = html;
+    }
+  } catch (e) {
+    console.warn('[Load Spotify Playlists Error]', e);
+  }
+}
+
+function onSelectSpotifyQuickPlaylist(url) {
+  if (!url) return;
+  const select = document.getElementById('spotify-quick-playlist-select');
+  const opt = select ? select.options[select.selectedIndex] : null;
+  const pName = opt ? opt.getAttribute('data-name') : '';
+
+  const urlInput = document.getElementById('import-playlist-url');
+  if (urlInput) urlInput.value = url;
+
+  const nameInput = document.getElementById('import-playlist-name');
+  if (nameInput && (!nameInput.value.trim() || importDestMode === 'new')) {
+    nameInput.value = pName;
+  }
 }

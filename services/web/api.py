@@ -14,6 +14,7 @@ from services.music_service import MusicService, Track
 from services.radio_service import RadioService
 from services.autoplay_service import AutoPlayService
 from services.settings_service import SettingsService
+from services.spotify.auth import SpotifyUserAuthManager
 
 class DashboardAPI:
     """Production REST API powering the SyncInk Radio Unified Web Platform."""
@@ -2071,4 +2072,144 @@ class DashboardAPI:
             "python_version": platform.python_version(),
             "memory": memory_info,
             "timestamp": time.time(),
+        })
+
+    # ------------------ 8. Spotify Dashboard Integration ------------------
+
+    @classmethod
+    async def handle_spotify_status(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Returns the Spotify connection status for the authenticated user or queried user_id.
+        """
+        discord_user_id = None
+        user = await cls.get_session_user(request)
+        if user:
+            raw_id = user.get("discord_user_id") or user.get("id")
+            if raw_id:
+                try:
+                    discord_user_id = int(raw_id)
+                except (ValueError, TypeError):
+                    pass
+
+        if not discord_user_id:
+            user_id_raw = request.query.get("user_id")
+            if user_id_raw and user_id_raw.isdigit():
+                discord_user_id = int(user_id_raw)
+
+        if not discord_user_id:
+            return aiohttp.web.json_response({
+                "connected": False,
+                "error": "Not authenticated. Log in to check your Spotify connection."
+            }, status=200)
+
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        user_auth = await auth_mgr.get_user_auth(discord_user_id)
+        if user_auth and user_auth.spotify_user_id:
+            return aiohttp.web.json_response({
+                "connected": True,
+                "discord_user_id": discord_user_id,
+                "spotify_user_id": user_auth.spotify_user_id,
+                "display_name": user_auth.display_name or "Spotify User",
+                "email": user_auth.email,
+                "scope": user_auth.scope,
+            })
+        return aiohttp.web.json_response({"connected": False, "discord_user_id": discord_user_id})
+
+    @classmethod
+    async def handle_spotify_connect(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Initiates the Spotify PKCE OAuth2 flow for the logged-in dashboard user.
+        Redirects directly to Spotify authorization page or returns {auth_url}.
+        """
+        user = await cls.get_session_user(request)
+        is_subpath = (
+            request.path.startswith("/dashboard/radio")
+            or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
+            or "dashboard/radio" in str(request.headers.get("Referer", ""))
+        )
+        base_prefix = "/dashboard/radio" if is_subpath else ""
+
+        raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
+        if not user or not raw_id:
+            if request.query.get("json") == "true" or "application/json" in request.headers.get("Accept", ""):
+                return aiohttp.web.json_response({"error": "Authentication required. Please log in with Discord first."}, status=401)
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/api/auth/discord/login")
+
+        discord_user_id = int(raw_id)
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+
+        # Determine effective redirect URI matching registered Spotify Developer Settings
+        env_uri = os.getenv("SPOTIFY_REDIRECT_URI", "").strip()
+        is_cf = bool(request.headers.get("CF-Ray") or request.headers.get("CF-Connecting-IP") or request.headers.get("X-Forwarded-Host"))
+        host = (request.headers.get("X-Forwarded-Host") or request.host or "").lower()
+
+        # If on localhost without proxy
+        if not is_cf and (host.startswith("localhost") or host.startswith("127.0.0.1")):
+            proto = request.headers.get("X-Forwarded-Proto") or request.scheme or "http"
+            effective_redirect = f"{proto}://{host}/callback"
+        elif env_uri and "127.0.0.1" not in env_uri and "localhost" not in env_uri:
+            effective_redirect = env_uri
+        else:
+            effective_redirect = "https://syncink.site/callback"
+
+        try:
+            auth_url, state = await auth_mgr.generate_auth_url(
+                discord_user_id=discord_user_id,
+                redirect_uri=effective_redirect,
+                return_to="dashboard"
+            )
+        except Exception as e:
+            log.error(f"[Spotify Connect Error] {e}")
+            return aiohttp.web.json_response({"error": f"Failed to generate Spotify authorization: {e}"}, status=500)
+
+        if request.query.get("json") == "true" or "application/json" in request.headers.get("Accept", ""):
+            return aiohttp.web.json_response({"auth_url": auth_url, "state": state})
+
+        raise aiohttp.web.HTTPFound(auth_url)
+
+    @classmethod
+    async def handle_spotify_disconnect(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Unlinks the Spotify account for the authenticated dashboard user.
+        """
+        user = await cls.get_session_user(request)
+        raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
+        if not user or not raw_id:
+            return aiohttp.web.json_response({"error": "Authentication required."}, status=401)
+
+        discord_user_id = int(raw_id)
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        unlinked = await auth_mgr.unlink_user(discord_user_id)
+        return aiohttp.web.json_response({
+            "success": True,
+            "unlinked": unlinked,
+            "message": "Spotify account disconnected successfully."
+        })
+
+    @classmethod
+    async def handle_spotify_playlists(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Returns playlists from the authenticated user's connected Spotify account.
+        """
+        user = await cls.get_session_user(request)
+        raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
+        if not user or not raw_id:
+            return aiohttp.web.json_response({"error": "Authentication required."}, status=401)
+
+        discord_user_id = int(raw_id)
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        user_auth = await auth_mgr.get_user_auth(discord_user_id)
+        if not user_auth:
+            return aiohttp.web.json_response({
+                "connected": False,
+                "playlists": [],
+                "error": "Spotify account is not connected. Connect your Spotify account first."
+            }, status=400)
+
+        playlists = await auth_mgr.get_user_playlists(discord_user_id, limit=50)
+        return aiohttp.web.json_response({
+            "connected": True,
+            "display_name": user_auth.display_name,
+            "playlists": playlists,
+            "total": len(playlists),
         })

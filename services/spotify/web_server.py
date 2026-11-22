@@ -100,6 +100,9 @@ CALLBACK_HTML_SUCCESS = """<!DOCTYPE html>
     <p>Your Spotify account is now linked to SyncInk Radio. You can now control personal playlists and access tailored Audia AI recommendations.</p>
     <div class="user-pill">Connected as: {display_name}</div>
     <button class="btn" onclick="window.close();">Return to Discord</button>
+    <div style="margin-top: 14px;">
+      <a href="/dashboard/radio/#library" style="color: #c77dff; font-size: 13px; text-decoration: none; font-weight: 600; display: inline-flex; items-center; gap: 4px;">Open Web Dashboard &rarr;</a>
+    </div>
     <div class="footer">SyncInk Radio Platform • Protected with PKCE & Token Encryption</div>
   </div>
 </body>

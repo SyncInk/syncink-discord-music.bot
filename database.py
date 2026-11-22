@@ -126,6 +126,8 @@ class DatabaseManager:
                     state TEXT PRIMARY KEY,
                     discord_user_id INTEGER NOT NULL,
                     code_verifier TEXT NOT NULL,
+                    redirect_uri TEXT,
+                    return_to TEXT DEFAULT 'discord',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
             """)
@@ -224,6 +226,16 @@ class DatabaseManager:
                 if col_name not in existing_cols:
                     try:
                         cursor.execute(f"ALTER TABLE guild_settings ADD COLUMN {col_name} {col_type};")
+                    except Exception:
+                        pass
+
+            # Upgrade spotify_oauth_states if columns are missing
+            cursor.execute("PRAGMA table_info(spotify_oauth_states);")
+            oauth_cols = {col[1] for col in cursor.fetchall()}
+            for col_name, col_type in [("redirect_uri", "TEXT"), ("return_to", "TEXT DEFAULT 'discord'")]:
+                if col_name not in oauth_cols:
+                    try:
+                        cursor.execute(f"ALTER TABLE spotify_oauth_states ADD COLUMN {col_name} {col_type};")
                     except Exception:
                         pass
 

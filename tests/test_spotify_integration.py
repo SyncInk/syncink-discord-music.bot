@@ -3,6 +3,8 @@ import asyncio
 import os
 import sys
 import time
+import json
+from unittest.mock import patch, MagicMock
 
 # Ensure project root is in sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -154,6 +156,112 @@ class TestSpotifyIntegration(unittest.TestCase):
         )
         self.assertEqual(playlist.owner_name, "User123")
         self.assertEqual(len(playlist.tracks), 1)
+
+
+class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
+
+    async def asyncSetUp(self):
+        from database import db
+        await db.connect()
+        self.auth_mgr = SpotifyUserAuthManager.get_instance()
+        self.auth_mgr.client_id = "test_spotify_client_id_123"
+        self.auth_mgr.client_secret = "test_spotify_client_secret_456"
+
+    async def asyncTearDown(self):
+        from database import db
+        await db.close()
+
+    async def test_09_canonical_redirect_uri_resolution(self):
+        """Test that redirect URI resolves to production domain and avoids 127.0.0.1 when in production."""
+        # 1. When SPOTIFY_REDIRECT_URI is public
+        with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "https://syncink.site/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
+            uri = self.auth_mgr.get_default_redirect_uri()
+            self.assertEqual(uri, "https://syncink.site/callback")
+
+        # 2. When SPOTIFY_REDIRECT_URI had stale 127.0.0.1 in production
+        with patch.dict(os.environ, {"SPOTIFY_REDIRECT_URI": "http://127.0.0.1:8888/callback", "DISCORD_REDIRECT_URI": "https://syncink.site/dashboard/radio/api/auth/discord/callback"}):
+            uri = self.auth_mgr.get_default_redirect_uri()
+            self.assertEqual(uri, "https://syncink.site/callback", "Should safeguard against 127.0.0.1 in production")
+
+    async def test_10_generate_auth_url_stores_redirect_and_target(self):
+        """Test that generate_auth_url records redirect_uri and return_to in the database."""
+        from database import db
+        user_id = 987654321012345678
+
+        auth_url, state = await self.auth_mgr.generate_auth_url(
+            discord_user_id=user_id,
+            redirect_uri="https://syncink.site/callback",
+            return_to="dashboard"
+        )
+
+        self.assertIn("client_id=test_spotify_client_id_123", auth_url)
+        self.assertIn("redirect_uri=https%3A%2F%2Fsyncink.site%2Fcallback", auth_url)
+        self.assertIn(f"state={state}", auth_url)
+
+        # Verify state row in database
+        row = await db.fetchrow("SELECT discord_user_id, code_verifier, redirect_uri, return_to FROM spotify_oauth_states WHERE state = $1;", state)
+        self.assertIsNotNone(row)
+        self.assertEqual(int(row["discord_user_id"]), user_id)
+        self.assertEqual(row["redirect_uri"], "https://syncink.site/callback")
+        self.assertEqual(row["return_to"], "dashboard")
+
+        # Clean up
+        await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
+
+    async def test_11_dashboard_spotify_status_and_disconnect(self):
+        """Test /api/spotify/status and /api/spotify/disconnect handlers."""
+        from aiohttp.test_utils import make_mocked_request
+        from services.web.api import DashboardAPI
+        from services.web.auth import DashboardAuthManager
+        from database import db
+
+        user_id = 888888888888888888
+        await db.execute("DELETE FROM spotify_users WHERE discord_user_id = $1", user_id)
+        self.auth_mgr._user_tokens.pop(user_id, None)
+
+        # Mock session
+        auth_mgr = DashboardAuthManager.get_instance()
+        session_id = await auth_mgr.create_session({
+            "id": str(user_id),
+            "username": "SpotifyTester",
+            "discriminator": "0001",
+            "avatar": None
+        }, {"access_token": "mock_token"})
+
+        # Check status when not connected
+        req = make_mocked_request("GET", "/api/spotify/status", headers={"Authorization": f"Bearer {session_id}"})
+        resp = await DashboardAPI.handle_spotify_status(req)
+        data = json.loads(resp.text)
+        self.assertFalse(data["connected"])
+
+        # Insert linked Spotify user
+        await db.execute(
+            """
+            INSERT INTO spotify_users (discord_user_id, spotify_user_id, display_name, email, encrypted_refresh_token, scope)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            ON CONFLICT (discord_user_id) DO UPDATE SET display_name = $3;
+            """,
+            user_id, "spotify_user_999", "SpotifyRockstar", "rockstar@spotify.com", "enc_token", "user-read-private"
+        )
+        self.auth_mgr._user_tokens.pop(user_id, None)
+
+        req2 = make_mocked_request("GET", "/api/spotify/status", headers={"Authorization": f"Bearer {session_id}"})
+        resp2 = await DashboardAPI.handle_spotify_status(req2)
+        data2 = json.loads(resp2.text)
+        self.assertTrue(data2["connected"])
+        self.assertEqual(data2["display_name"], "SpotifyRockstar")
+
+        # Test disconnect
+        disc_req = make_mocked_request("POST", "/api/spotify/disconnect", headers={"Authorization": f"Bearer {session_id}"})
+        disc_resp = await DashboardAPI.handle_spotify_disconnect(disc_req)
+        disc_data = json.loads(disc_resp.text)
+        self.assertTrue(disc_data["success"])
+
+        # Check status again -> should be disconnected
+        req3 = make_mocked_request("GET", "/api/spotify/status", headers={"Authorization": f"Bearer {session_id}"})
+        resp3 = await DashboardAPI.handle_spotify_status(req3)
+        data3 = json.loads(resp3.text)
+        self.assertFalse(data3["connected"])
 
 
 if __name__ == "__main__":

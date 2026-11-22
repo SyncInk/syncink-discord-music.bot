@@ -103,10 +103,15 @@ class UnifiedWebServer:
         _route("GET", "/api/analytics", DashboardAPI.handle_get_analytics)
         _route("GET", "/api/admin/status", DashboardAPI.handle_admin_status)
 
-        # 7. Spotify Web API Legacy Endpoints (Kept 100% backward compatible)
+        # 7. Spotify Web API Endpoints & Callbacks
         _route("GET", "/callback", self.handle_spotify_callback)
+        _route("GET", "/api/spotify/callback", self.handle_spotify_callback)
+        _route("GET", "/spotify/callback", self.handle_spotify_callback)
+        _route("GET", "/api/spotify/status", DashboardAPI.handle_spotify_status)
+        _route("GET", "/api/spotify/connect", DashboardAPI.handle_spotify_connect)
+        _route("POST", "/api/spotify/disconnect", DashboardAPI.handle_spotify_disconnect)
+        _route("GET", "/api/spotify/playlists", DashboardAPI.handle_spotify_playlists)
         _route("GET", "/health", self.handle_health)
-        _route("GET", "/api/spotify/status", self.handle_spotify_status)
 
         # 8. Static Assets (Both root and mounted subpath)
         static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
@@ -140,7 +145,18 @@ class UnifiedWebServer:
         state = request.query.get("state")
         error = request.query.get("error")
 
+        is_subpath = (
+            request.path.startswith("/dashboard/radio")
+            or request.headers.get("X-Forwarded-Prefix") == "/dashboard/radio"
+            or "dashboard/radio" in str(request.headers.get("Referer", ""))
+        )
+        base_prefix = "/dashboard/radio" if is_subpath else ""
+
         if error:
+            if state:
+                row = await db.fetchrow("SELECT return_to FROM spotify_oauth_states WHERE state = $1;", state)
+                if row and row.get("return_to") == "dashboard":
+                    raise aiohttp.web.HTTPFound(f"{base_prefix}/#library?spotify_error=" + aiohttp.helpers.quote(error, safe=""))
             html = CALLBACK_HTML_ERROR.replace("{error_message}", f"Spotify authorization was canceled or failed: {error}")
             return aiohttp.web.Response(text=html, content_type="text/html", status=400)
 
@@ -155,6 +171,9 @@ class UnifiedWebServer:
             html = CALLBACK_HTML_ERROR.replace("{error_message}", "OAuth verification failed or your session expired. Please type <code>/spotify connect</code> in Discord to try again.")
             return aiohttp.web.Response(text=html, content_type="text/html", status=403)
 
+        if getattr(user_auth, "return_to", "discord") == "dashboard":
+            raise aiohttp.web.HTTPFound(f"{base_prefix}/#library?spotify_connected=true")
+
         html = CALLBACK_HTML_SUCCESS.replace("{display_name}", user_auth.display_name or "Spotify User")
         return aiohttp.web.Response(text=html, content_type="text/html", status=200)
 
@@ -162,20 +181,7 @@ class UnifiedWebServer:
         return aiohttp.web.json_response({"status": "ok", "service": "SyncInk Radio Unified Platform", "version": "2.5.0"})
 
     async def handle_spotify_status(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
-        user_id_raw = request.query.get("user_id")
-        if not user_id_raw or not user_id_raw.isdigit():
-            return aiohttp.web.json_response({"error": "Missing or invalid 'user_id' query parameter."}, status=400)
-
-        auth_mgr = SpotifyUserAuthManager.get_instance()
-        user_auth = await auth_mgr.get_user_auth(int(user_id_raw))
-        if user_auth:
-            return aiohttp.web.json_response({
-                "connected": True,
-                "spotify_user_id": user_auth.spotify_user_id,
-                "display_name": user_auth.display_name,
-                "email": user_auth.email,
-            })
-        return aiohttp.web.json_response({"connected": False})
+        return await DashboardAPI.handle_spotify_status(request)
 
     async def start(self):
         try:
