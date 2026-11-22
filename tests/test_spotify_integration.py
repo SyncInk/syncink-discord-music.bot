@@ -268,6 +268,146 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
         data3 = json.loads(resp3.text)
         self.assertFalse(data3["connected"])
 
+    async def test_12_pure_pkce_callback_exchange(self):
+        """Test handle_callback_detailed uses pure PKCE without Basic Auth header."""
+        from database import db
+        user_id = 777666555444333222
+        auth_url, state = await self.auth_mgr.generate_auth_url(
+            discord_user_id=user_id,
+            redirect_uri="https://syncink.site/dashboard/radio/callback",
+            return_to="dashboard"
+        )
+
+        captured_requests = []
+
+        class MockResponse:
+            def __init__(self, status, json_data=None, text_data=""):
+                self.status = status
+                self._json = json_data or {}
+                self._text = text_data
+            async def json(self):
+                return self._json
+            async def text(self):
+                return self._text
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+
+        class MockSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def post(self, url, data=None, headers=None):
+                captured_requests.append(("POST", url, data, headers))
+                return MockResponse(200, {
+                    "access_token": "mock_access_token_123",
+                    "refresh_token": "mock_refresh_token_456",
+                    "expires_in": 3600,
+                    "scope": "user-read-private"
+                })
+            def get(self, url, headers=None):
+                captured_requests.append(("GET", url, None, headers))
+                return MockResponse(200, {
+                    "id": "spotify_user_test",
+                    "display_name": "Test Dancer",
+                    "email": "test@spotify.com"
+                })
+
+        with patch("aiohttp.ClientSession", MockSession):
+            user_auth, err = await self.auth_mgr.handle_callback_detailed("mock_auth_code_999", state)
+
+        self.assertIsNone(err)
+        self.assertIsNotNone(user_auth)
+        self.assertEqual(user_auth.spotify_user_id, "spotify_user_test")
+        self.assertEqual(user_auth.display_name, "Test Dancer")
+        self.assertEqual(user_auth.return_to, "dashboard")
+
+        # Verify that pure PKCE request was sent WITHOUT Authorization header
+        token_post = next(r for r in captured_requests if r[0] == "POST")
+        self.assertNotIn("Authorization", token_post[3], "Pure PKCE token request must NOT contain Authorization header")
+        self.assertEqual(token_post[2]["client_id"], self.auth_mgr.client_id)
+
+    async def test_13_state_preservation_and_memory_fallback(self):
+        """Test state preservation on failed token exchange and memory fallback if DB is deleted."""
+        from database import db
+        user_id = 111222333444555666
+        auth_url, state = await self.auth_mgr.generate_auth_url(
+            discord_user_id=user_id,
+            redirect_uri="https://syncink.site/dashboard/radio/callback",
+            return_to="discord"
+        )
+
+        class FailingSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def post(self, url, data=None, headers=None):
+                class Resp:
+                    status = 400
+                    async def text(self):
+                        return json.dumps({"error": "invalid_grant", "error_description": "Invalid authorization code"})
+                    async def __aenter__(self):
+                        return self
+                    async def __aexit__(self, *args):
+                        pass
+                return Resp()
+
+        # 1. First attempt fails due to invalid_grant
+        with patch("aiohttp.ClientSession", FailingSession):
+            user_auth, err = await self.auth_mgr.handle_callback_detailed("expired_code", state)
+
+        self.assertIsNone(user_auth)
+        self.assertIn("Invalid authorization code", err)
+
+        # 2. Verify state was NOT prematurely deleted from memory on failure
+        self.assertIn(state, self.auth_mgr._pending_oauth_states)
+
+        # 3. Simulate DB wiped out while memory cache persists
+        await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
+
+        # 4. Verify that state can still be resolved from in-memory cache
+        class SucceedingSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                pass
+            def post(self, url, data=None, headers=None):
+                class Resp:
+                    status = 200
+                    async def json(self):
+                        return {"access_token": "ok_tok", "refresh_token": "ok_rt", "expires_in": 3600}
+                    async def __aenter__(self):
+                        return self
+                    async def __aexit__(self, *args):
+                        pass
+                return Resp()
+            def get(self, url, headers=None):
+                class Resp:
+                    status = 200
+                    async def json(self):
+                        return {"id": "recovered_user", "display_name": "Recovered"}
+                    async def __aenter__(self):
+                        return self
+                    async def __aexit__(self, *args):
+                        pass
+                return Resp()
+
+        with patch("aiohttp.ClientSession", SucceedingSession):
+            user_auth2, err2 = await self.auth_mgr.handle_callback_detailed("good_code", state)
+
+        self.assertIsNone(err2)
+        self.assertIsNotNone(user_auth2)
+        self.assertEqual(user_auth2.spotify_user_id, "recovered_user")
+
 
 if __name__ == "__main__":
     unittest.main()

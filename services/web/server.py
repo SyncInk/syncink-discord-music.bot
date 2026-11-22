@@ -167,10 +167,11 @@ class UnifiedWebServer:
             return aiohttp.web.Response(text=html, content_type="text/html", status=400)
 
         auth_mgr = SpotifyUserAuthManager.get_instance()
-        user_auth = await auth_mgr.handle_callback(code, state)
+        user_auth, err_detail = await auth_mgr.handle_callback_detailed(code, state)
 
         if not user_auth:
-            html = CALLBACK_HTML_ERROR.replace("{error_message}", "OAuth verification failed or your session expired. Please type <code>/spotify connect</code> in Discord to try again.")
+            err_msg = err_detail or "OAuth verification failed or your session expired. Please type <code>/spotify connect</code> in Discord to try again."
+            html = CALLBACK_HTML_ERROR.replace("{error_message}", err_msg)
             return aiohttp.web.Response(text=html, content_type="text/html", status=403)
 
         if getattr(user_auth, "return_to", "discord") == "dashboard":

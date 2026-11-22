@@ -78,6 +78,15 @@ class DatabaseManager:
                 from migrations import MigrationManager
                 migration_manager = MigrationManager(self.pool)
                 await migration_manager.run_migrations()
+
+                # Defensive check for spotify_oauth_states columns on PostgreSQL
+                try:
+                    async with self.pool.acquire() as conn:
+                        await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS redirect_uri TEXT;")
+                        await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS return_to TEXT DEFAULT 'discord';")
+                except Exception:
+                    pass
+
                 return
             except Exception as e:
                 redacted_err = _redact_sensitive(str(e))

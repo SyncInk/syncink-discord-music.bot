@@ -172,6 +172,9 @@ CALLBACK_HTML_ERROR = """<!DOCTYPE html>
     <h1>Connection Failed</h1>
     <p>{error_message}</p>
     <button class="btn" onclick="window.close();">Close Window</button>
+    <div style="margin-top: 14px;">
+      <a href="/dashboard/radio/#library" style="color: #c77dff; font-size: 13px; text-decoration: none; font-weight: 600;">Open Web Dashboard &rarr;</a>
+    </div>
   </div>
 </body>
 </html>
@@ -210,10 +213,11 @@ class SpotifyWebServer:
             return aiohttp.web.Response(text=html, content_type="text/html", status=400)
 
         auth_mgr = SpotifyUserAuthManager.get_instance()
-        user_auth = await auth_mgr.handle_callback(code, state)
+        user_auth, err_detail = await auth_mgr.handle_callback_detailed(code, state)
 
         if not user_auth:
-            html = CALLBACK_HTML_ERROR.replace("{error_message}", "OAuth verification failed or your session expired. Please type <code>/spotify connect</code> in Discord to try again.")
+            err_msg = err_detail or "OAuth verification failed or your session expired. Please type <code>/spotify connect</code> in Discord to try again."
+            html = CALLBACK_HTML_ERROR.replace("{error_message}", err_msg)
             return aiohttp.web.Response(text=html, content_type="text/html", status=403)
 
         html = CALLBACK_HTML_SUCCESS.replace("{display_name}", user_auth.display_name or "Spotify User")

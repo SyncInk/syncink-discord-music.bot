@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import hashlib
+import json
 import os
 import secrets
 import time
@@ -37,7 +38,14 @@ class SpotifyUserAuthManager:
         self.client_secret = os.getenv("SPOTIFY_CLIENT_SECRET", "").strip()
         self.redirect_uri = self.get_default_redirect_uri()
         self._user_tokens: Dict[int, SpotifyUserAuth] = {}
+        self._pending_oauth_states: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
+
+    def _cleanup_expired_states(self):
+        now = time.time()
+        expired = [s for s, data in self._pending_oauth_states.items() if now - data.get("created_at", 0) > 900]
+        for s in expired:
+            self._pending_oauth_states.pop(s, None)
 
     def get_default_redirect_uri(self) -> str:
         """
@@ -93,19 +101,32 @@ class SpotifyUserAuthManager:
         code_verifier = self._generate_code_verifier()
         code_challenge = self._generate_code_challenge(code_verifier)
 
+        # Record state in in-memory cache for ultra-reliable CSRF resolution
+        self._cleanup_expired_states()
+        self._pending_oauth_states[state] = {
+            "discord_user_id": discord_user_id,
+            "code_verifier": code_verifier,
+            "redirect_uri": effective_redirect,
+            "return_to": return_to,
+            "created_at": time.time(),
+        }
+
         # Store state in DB with TTL (15 minutes), specific redirect_uri and return_to target
-        await db.execute(
-            """
-            INSERT INTO spotify_oauth_states (state, discord_user_id, code_verifier, redirect_uri, return_to)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (state) DO UPDATE SET
-                discord_user_id = $2,
-                code_verifier = $3,
-                redirect_uri = $4,
-                return_to = $5;
-            """,
-            state, discord_user_id, code_verifier, effective_redirect, return_to
-        )
+        try:
+            await db.execute(
+                """
+                INSERT INTO spotify_oauth_states (state, discord_user_id, code_verifier, redirect_uri, return_to)
+                VALUES ($1, $2, $3, $4, $5)
+                ON CONFLICT (state) DO UPDATE SET
+                    discord_user_id = $2,
+                    code_verifier = $3,
+                    redirect_uri = $4,
+                    return_to = $5;
+                """,
+                state, discord_user_id, code_verifier, effective_redirect, return_to
+            )
+        except Exception as e:
+            log.warning(f"[Spotify Auth] Could not persist oauth state to DB (falling back to memory): {e}")
 
         params = {
             "client_id": self.client_id,
@@ -120,28 +141,39 @@ class SpotifyUserAuthManager:
         auth_url = f"{self.AUTH_ENDPOINT}?{query_string}"
         return auth_url, state
 
-    async def handle_callback(self, code: str, state: str) -> Optional[SpotifyUserAuth]:
+    async def handle_callback_detailed(self, code: str, state: str) -> Tuple[Optional[SpotifyUserAuth], Optional[str]]:
         """
         Validates state token, exchanges code + PKCE verifier for tokens,
         fetches user profile, encrypts refresh token, and stores in database.
+        Returns (user_auth, error_message).
         """
-        row = await db.fetchrow(
-            "SELECT discord_user_id, code_verifier, redirect_uri, return_to FROM spotify_oauth_states WHERE state = $1;",
-            state
-        )
+        row = None
+        try:
+            row = await db.fetchrow(
+                "SELECT discord_user_id, code_verifier, redirect_uri, return_to FROM spotify_oauth_states WHERE state = $1;",
+                state
+            )
+        except Exception as e:
+            log.warning(f"[Spotify Auth] DB lookup failed for state: {e}")
+
+        # Fallback to in-memory pending states if not found or DB error
+        mem_state = self._pending_oauth_states.get(state)
+        if not row and mem_state:
+            # Check 15-minute TTL
+            if time.time() - mem_state.get("created_at", 0) <= 900:
+                row = mem_state
+
         if not row:
             log.warning(f"[Spotify Auth] Rejected callback with invalid/expired state: {state}")
-            return None
+            return None, "Authorization session is invalid or expired (15-minute timeout). Please initiate a new connection."
 
         discord_user_id = int(row["discord_user_id"])
         code_verifier = row["code_verifier"]
         redirect_uri = (row.get("redirect_uri") if isinstance(row, dict) else row["redirect_uri"]) or self.get_default_redirect_uri()
         return_to = (row.get("return_to") if isinstance(row, dict) else row["return_to"]) or "discord"
 
-        # Consume state immediately (one-time CSRF protection)
-        await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
-
-        # Exchange authorization code for tokens with the EXACT redirect_uri used during authorize
+        # Exchange authorization code for tokens using pure PKCE (RFC 7636).
+        # Per Spotify documentation: do NOT send client_secret or Authorization: Basic in PKCE flow.
         data = {
             "grant_type": "authorization_code",
             "code": code,
@@ -151,18 +183,37 @@ class SpotifyUserAuthManager:
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
 
-        # If client_secret is configured, include Basic Auth header as permitted by Spotify
-        if self.client_secret:
-            auth_str = f"{self.client_id}:{self.client_secret}".encode("utf-8")
-            headers["Authorization"] = f"Basic {base64.b64encode(auth_str).decode('ascii')}"
-
         async with aiohttp.ClientSession() as session:
             async with session.post(self.TOKEN_ENDPOINT, data=data, headers=headers) as resp:
-                if resp.status != 200:
+                token_data = None
+                if resp.status == 200:
+                    token_data = await resp.json()
+                else:
                     err_text = await resp.text()
-                    log.error(f"[Spotify Auth] Token exchange failed HTTP {resp.status}: {err_text}")
-                    return None
-                token_data = await resp.json()
+                    log.error(f"[Spotify Auth] Pure PKCE token exchange failed HTTP {resp.status}: {err_text}")
+                    # If Spotify rejected pure PKCE and client_secret is configured, attempt fallback with Basic Auth header
+                    if self.client_secret:
+                        log.info("[Spotify Auth] Retrying token exchange with Basic Auth header fallback...")
+                        auth_str = f"{self.client_id}:{self.client_secret}".encode("utf-8")
+                        fb_headers = {
+                            "Content-Type": "application/x-www-form-urlencoded",
+                            "Authorization": f"Basic {base64.b64encode(auth_str).decode('ascii')}"
+                        }
+                        async with session.post(self.TOKEN_ENDPOINT, data=data, headers=fb_headers) as fb_resp:
+                            if fb_resp.status == 200:
+                                token_data = await fb_resp.json()
+                            else:
+                                fb_err = await fb_resp.text()
+                                log.error(f"[Spotify Auth] Fallback token exchange also failed HTTP {fb_resp.status}: {fb_err}")
+
+                    if not token_data:
+                        desc = err_text
+                        try:
+                            parsed_err = json.loads(err_text)
+                            desc = parsed_err.get("error_description") or parsed_err.get("error") or err_text
+                        except Exception:
+                            pass
+                        return None, f"Spotify token exchange failed (HTTP {resp.status}): {desc}"
 
             access_token = token_data.get("access_token")
             refresh_token = token_data.get("refresh_token")
@@ -173,9 +224,17 @@ class SpotifyUserAuthManager:
             profile_headers = {"Authorization": f"Bearer {access_token}"}
             async with session.get(self.API_ME_ENDPOINT, headers=profile_headers) as p_resp:
                 if p_resp.status != 200:
-                    log.error(f"[Spotify Auth] Could not fetch profile HTTP {p_resp.status}")
-                    return None
+                    p_err = await p_resp.text()
+                    log.error(f"[Spotify Auth] Could not fetch profile HTTP {p_resp.status}: {p_err}")
+                    return None, f"Could not fetch Spotify user profile (HTTP {p_resp.status})"
                 profile_data = await p_resp.json()
+
+        # Delete state token now that token exchange and profile fetch have succeeded
+        self._pending_oauth_states.pop(state, None)
+        try:
+            await db.execute("DELETE FROM spotify_oauth_states WHERE state = $1;", state)
+        except Exception:
+            pass
 
         spotify_user_id = profile_data.get("id") or "unknown"
         display_name = profile_data.get("display_name") or spotify_user_id
@@ -215,6 +274,14 @@ class SpotifyUserAuthManager:
         )
         self._user_tokens[discord_user_id] = user_auth
         log.info(f"[Spotify Auth] Successfully linked Discord user {discord_user_id} with Spotify user '{display_name}' ({spotify_user_id}).")
+        return user_auth, None
+
+    async def handle_callback(self, code: str, state: str) -> Optional[SpotifyUserAuth]:
+        """
+        Validates state token, exchanges code + PKCE verifier for tokens,
+        fetches user profile, encrypts refresh token, and stores in database.
+        """
+        user_auth, _ = await self.handle_callback_detailed(code, state)
         return user_auth
 
     async def get_valid_user_token(self, discord_user_id: int) -> Optional[str]:
@@ -243,16 +310,28 @@ class SpotifyUserAuthManager:
             "client_id": self.client_id,
         }
         headers = {"Content-Type": "application/x-www-form-urlencoded"}
-        if self.client_secret:
-            auth_str = f"{self.client_id}:{self.client_secret}".encode("utf-8")
-            headers["Authorization"] = f"Basic {base64.b64encode(auth_str).decode('ascii')}"
 
         async with aiohttp.ClientSession() as session:
             async with session.post(self.TOKEN_ENDPOINT, data=data, headers=headers) as resp:
-                if resp.status != 200:
+                token_data = None
+                if resp.status == 200:
+                    token_data = await resp.json()
+                elif self.client_secret:
+                    # Retry with Basic Auth header if required
+                    auth_str = f"{self.client_id}:{self.client_secret}".encode("utf-8")
+                    fb_headers = {
+                        "Content-Type": "application/x-www-form-urlencoded",
+                        "Authorization": f"Basic {base64.b64encode(auth_str).decode('ascii')}"
+                    }
+                    async with session.post(self.TOKEN_ENDPOINT, data=data, headers=fb_headers) as fb_resp:
+                        if fb_resp.status == 200:
+                            token_data = await fb_resp.json()
+                        else:
+                            log.warning(f"[Spotify Auth] Token refresh failed HTTP {fb_resp.status} for user {discord_user_id}")
+                            return None
+                else:
                     log.warning(f"[Spotify Auth] Token refresh failed HTTP {resp.status} for user {discord_user_id}")
                     return None
-                token_data = await resp.json()
 
         new_access = token_data.get("access_token")
         new_refresh = token_data.get("refresh_token")
