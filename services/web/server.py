@@ -111,6 +111,8 @@ class UnifiedWebServer:
         _route("GET", "/api/spotify/connect", DashboardAPI.handle_spotify_connect)
         _route("POST", "/api/spotify/disconnect", DashboardAPI.handle_spotify_disconnect)
         _route("GET", "/api/spotify/playlists", DashboardAPI.handle_spotify_playlists)
+        _route("POST", "/api/spotify/playlists/add", DashboardAPI.handle_spotify_add_playlist)
+        _route("DELETE", "/api/spotify/playlists/{id}", DashboardAPI.handle_spotify_remove_playlist)
         _route("GET", "/health", self.handle_health)
 
         # 8. Static Assets (Both root and mounted subpath)

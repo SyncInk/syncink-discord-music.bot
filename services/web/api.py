@@ -1476,6 +1476,26 @@ class DashboardAPI:
                 final_pid, t["title"], t["author"], t["url"], t["duration"], t["thumbnail"], t["platform"], pos
             )
 
+        if is_spotify:
+            try:
+                parsed_sp = SpotifyResolver.parse_resource(url)
+                if parsed_sp:
+                    _, res_id = parsed_sp
+                    first_thumb = extracted_tracks[0].get("thumbnail") if extracted_tracks else "https://files.catbox.moe/74l9su.png"
+                    await db.execute("""
+                        INSERT INTO user_spotify_playlists (
+                            discord_user_id, spotify_playlist_id, name, description, url, image_url, tracks_total, updated_at
+                        ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+                        ON CONFLICT (discord_user_id, spotify_playlist_id) DO UPDATE SET
+                            name = $3,
+                            description = $4,
+                            url = $5,
+                            tracks_total = $7,
+                            updated_at = CURRENT_TIMESTAMP;
+                    """, uid, res_id, final_name, f"Imported Spotify Playlist ({len(extracted_tracks)} tracks)", url, first_thumb, len(extracted_tracks))
+            except Exception as e:
+                log.warning(f"[Import Playlist] user_spotify_playlists sync error: {e}")
+
         log.info(f"[Import Playlist] Successfully imported {len(extracted_tracks)} tracks into playlist {final_pid} ('{final_name}') for user {uid}")
         return aiohttp.web.json_response({
             "success": True,
@@ -2205,7 +2225,8 @@ class DashboardAPI:
     @classmethod
     async def handle_spotify_playlists(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
         """
-        Returns playlists from the authenticated user's connected Spotify account.
+        Returns playlists from the authenticated user's connected Spotify account,
+        saved public playlists, and library playlists.
         """
         user = await cls.get_session_user(request)
         raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
@@ -2215,17 +2236,65 @@ class DashboardAPI:
         discord_user_id = int(raw_id)
         auth_mgr = SpotifyUserAuthManager.get_instance()
         user_auth = await auth_mgr.get_user_auth(discord_user_id)
-        if not user_auth:
-            return aiohttp.web.json_response({
-                "connected": False,
-                "playlists": [],
-                "error": "Spotify account is not connected. Connect your Spotify account first."
-            }, status=400)
-
         playlists = await auth_mgr.get_user_playlists(discord_user_id, limit=50)
+
         return aiohttp.web.json_response({
-            "connected": True,
-            "display_name": user_auth.display_name,
+            "connected": bool(user_auth and user_auth.spotify_user_id),
+            "display_name": (user_auth.display_name if user_auth else user.get("username", "Spotify User")),
             "playlists": playlists,
             "total": len(playlists),
         })
+
+    @classmethod
+    async def handle_spotify_add_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Adds a public Spotify playlist or album to the user's Spotify library.
+        """
+        user = await cls.get_session_user(request)
+        raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
+        if not user or not raw_id:
+            return aiohttp.web.json_response({"error": "Authentication required."}, status=401)
+
+        try:
+            body = await request.json()
+        except Exception:
+            return aiohttp.web.json_response({"error": "Invalid JSON body."}, status=400)
+
+        url = (body.get("url") or "").strip()
+        if not url:
+            return aiohttp.web.json_response({"error": "Please provide a valid Spotify playlist link."}, status=400)
+
+        from services.spotify.resolver import SpotifyResolver
+        if not SpotifyResolver.is_spotify_url_or_uri(url):
+            return aiohttp.web.json_response({"error": "Please provide a valid open.spotify.com playlist or album link."}, status=400)
+
+        discord_user_id = int(raw_id)
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        pl = await auth_mgr.add_user_spotify_playlist(discord_user_id, url)
+        if not pl:
+            return aiohttp.web.json_response({"error": "Could not extract or save Spotify playlist. Please ensure the link is public."}, status=400)
+
+        return aiohttp.web.json_response({
+            "success": True,
+            "playlist": pl,
+            "message": f"Successfully added '{pl['name']}' ({pl['tracks_total']} tracks) to your Spotify library!"
+        })
+
+    @classmethod
+    async def handle_spotify_remove_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Removes a saved Spotify playlist from the user's Spotify library.
+        """
+        user = await cls.get_session_user(request)
+        raw_id = (user.get("discord_user_id") or user.get("id")) if user else None
+        if not user or not raw_id:
+            return aiohttp.web.json_response({"error": "Authentication required."}, status=401)
+
+        pid = request.match_info.get("id")
+        if not pid:
+            return aiohttp.web.json_response({"error": "Missing playlist ID."}, status=400)
+
+        discord_user_id = int(raw_id)
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        success = await auth_mgr.remove_user_spotify_playlist(discord_user_id, pid)
+        return aiohttp.web.json_response({"success": success})

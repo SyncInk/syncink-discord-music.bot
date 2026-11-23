@@ -415,72 +415,183 @@ class SpotifyUserAuthManager:
 
     async def get_user_playlists(self, discord_user_id: int, limit: int = 50) -> List[Dict[str, Any]]:
         """
-        Fetches the user's Spotify playlists (including private and collaborative playlists).
+        Fetches the user's Spotify playlists (including private/collaborative live playlists,
+        saved public Spotify playlists, and personal SyncInk library playlists).
         """
-        token = await self.get_valid_user_token(discord_user_id)
-        if not token:
-            return []
+        playlists: List[Dict[str, Any]] = []
+        seen_ids = set()
 
-        url = f"https://api.spotify.com/v1/me/playlists?limit={min(max(1, limit), 50)}"
-        headers = {"Authorization": f"Bearer {token}"}
-        try:
-            timeout = aiohttp.ClientTimeout(total=15, connect=5)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(url, headers=headers) as resp:
-                    if resp.status != 200:
-                        if resp.status == 403:
-                            log.debug(f"[Spotify Auth] User playlists endpoint returned HTTP 403 (Dev Mode user allowlist required for live private playlist sync).")
+        # 1. Fetch live Spotify playlists via user token (if connected and authorized)
+        token = await self.get_valid_user_token(discord_user_id)
+        if token:
+            url = f"https://api.spotify.com/v1/me/playlists?limit={min(max(1, limit), 50)}"
+            headers = {"Authorization": f"Bearer {token}"}
+            try:
+                timeout = aiohttp.ClientTimeout(total=15, connect=5)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.get(url, headers=headers) as resp:
+                        if resp.status == 200:
+                            data = await resp.json()
+                            items = data.get("items", [])
+                            for p in items:
+                                if not isinstance(p, dict) or not p.get("id"):
+                                    continue
+                                pid = p["id"]
+                                seen_ids.add(pid)
+                                images = p.get("images", [])
+                                img_url = images[0].get("url") if images else "https://files.catbox.moe/74l9su.png"
+                                playlists.append({
+                                    "id": pid,
+                                    "name": p.get("name") or "Untitled Playlist",
+                                    "description": p.get("description") or "",
+                                    "tracks_total": int(p.get("tracks", {}).get("total", 0)),
+                                    "image_url": img_url,
+                                    "url": p.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{pid}"),
+                                    "public": bool(p.get("public", False)),
+                                    "collaborative": bool(p.get("collaborative", False)),
+                                    "owner": p.get("owner", {}).get("display_name") or p.get("owner", {}).get("id") or "Spotify User",
+                                })
+                        elif resp.status == 403:
+                            log.debug(f"[Spotify Auth] User playlists endpoint returned HTTP 403 (Dev Mode user allowlist). Using saved public playlists.")
                         else:
                             log.warning(f"[Spotify Auth] Failed to fetch playlists for user {discord_user_id}: HTTP {resp.status}")
-                        items = []
-                    else:
-                        data = await resp.json()
-                        items = data.get("items", [])
+            except Exception as e:
+                log.error(f"[Spotify Auth] Error fetching user playlists: {e}")
+
+        # 2. Fetch saved public Spotify playlists from user_spotify_playlists
+        try:
+            saved_rows = await db.fetch("""
+                SELECT spotify_playlist_id, name, description, url, image_url, tracks_total
+                FROM user_spotify_playlists
+                WHERE discord_user_id = $1
+                ORDER BY updated_at DESC;
+            """, discord_user_id)
+            for row in saved_rows:
+                sp_id = row["spotify_playlist_id"]
+                if sp_id in seen_ids:
+                    continue
+                seen_ids.add(sp_id)
+                playlists.append({
+                    "id": sp_id,
+                    "name": row["name"],
+                    "description": row.get("description") or "Saved Spotify Playlist",
+                    "tracks_total": int(row.get("tracks_total") or 0),
+                    "image_url": row.get("image_url") or "https://files.catbox.moe/74l9su.png",
+                    "url": row.get("url") or f"https://open.spotify.com/playlist/{sp_id}",
+                    "public": True,
+                    "collaborative": False,
+                    "owner": "Spotify Playlist",
+                })
         except Exception as e:
-            log.error(f"[Spotify Auth] Error fetching user playlists: {e}")
-            items = []
+            log.warning(f"[Spotify Auth] Error querying user_spotify_playlists: {e}")
 
-        playlists = []
-        for p in items:
-            if not isinstance(p, dict) or not p.get("id"):
-                continue
-            images = p.get("images", [])
-            img_url = images[0].get("url") if images else "https://files.catbox.moe/74l9su.png"
-            playlists.append({
-                "id": p["id"],
-                "name": p.get("name") or "Untitled Playlist",
-                "description": p.get("description") or "",
-                "tracks_total": int(p.get("tracks", {}).get("total", 0)),
-                "image_url": img_url,
-                "url": p.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{p['id']}"),
-                "public": bool(p.get("public", False)),
-                "collaborative": bool(p.get("collaborative", False)),
-                "owner": p.get("owner", {}).get("display_name") or p.get("owner", {}).get("id") or "Spotify User",
-            })
-
-        # If Spotify returned empty or was blocked by Dev Mode (HTTP 403), include user's SyncInk Radio library playlists
-        if not playlists:
-            try:
-                db_playlists = await db.fetch("""
-                    SELECT p.id, p.name, p.description, p.is_public,
-                           (SELECT COUNT(*) FROM user_playlist_tracks pt WHERE pt.playlist_id = p.id) as total_tracks
-                    FROM user_playlists p
-                    WHERE p.discord_user_id = $1
-                    ORDER BY p.updated_at DESC;
-                """, discord_user_id)
-                for p in db_playlists:
-                    playlists.append({
-                        "id": str(p["id"]),
-                        "name": p["name"],
-                        "description": p.get("description") or "SyncInk Radio Library Playlist",
-                        "tracks_total": int(p["total_tracks"] or 0),
-                        "image_url": "https://files.catbox.moe/74l9su.png",
-                        "url": "https://syncink.site/dashboard/radio/#library",
-                        "public": bool(p.get("is_public", True)),
-                        "collaborative": False,
-                        "owner": "SyncInk Radio",
-                    })
-            except Exception:
-                pass
+        # 3. Include user's custom SyncInk Radio personal playlists
+        try:
+            db_playlists = await db.fetch("""
+                SELECT p.id, p.name, p.description,
+                       (SELECT COUNT(*) FROM user_playlist_tracks pt WHERE pt.playlist_id = p.id) as total_tracks
+                FROM user_playlists p
+                WHERE p.discord_user_id = $1
+                ORDER BY p.created_at DESC;
+            """, discord_user_id)
+            for p in db_playlists:
+                syn_id = f"syncink_{p['id']}"
+                if syn_id in seen_ids:
+                    continue
+                seen_ids.add(syn_id)
+                playlists.append({
+                    "id": syn_id,
+                    "name": p["name"],
+                    "description": p.get("description") or "SyncInk Radio Library Playlist",
+                    "tracks_total": int(p["total_tracks"] or 0),
+                    "image_url": "https://files.catbox.moe/74l9su.png",
+                    "url": "https://syncink.site/dashboard/radio/#library",
+                    "public": True,
+                    "collaborative": False,
+                    "owner": "SyncInk Radio",
+                })
+        except Exception as e:
+            log.warning(f"[Spotify Auth] Error querying user_playlists fallback: {e}")
 
         return playlists
+
+    async def add_user_spotify_playlist(self, discord_user_id: int, url_or_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Resolves a public Spotify playlist or album and persists it to the user's
+        Spotify library (user_spotify_playlists) and custom playlists (user_playlists).
+        """
+        from services.spotify.resolver import SpotifyResolver
+        parsed = SpotifyResolver.parse_resource(url_or_id)
+        if not parsed:
+            return None
+
+        res_type, res_id = parsed
+        res_type, norm_tracks, meta = await SpotifyResolver.resolve(url_or_id, limit=200)
+        if not meta or not meta.get("name"):
+            return None
+
+        name = meta.get("name") or "Spotify Playlist"
+        desc = meta.get("description") or f"Imported Spotify {res_type.capitalize()} by {meta.get('owner', 'Spotify')}"
+        playlist_url = meta.get("open_url") or f"https://open.spotify.com/{res_type}/{res_id}"
+        artwork = meta.get("artwork") or "https://files.catbox.moe/74l9su.png"
+        tracks_total = len(norm_tracks) if norm_tracks else int(meta.get("total", 0))
+
+        # 1. Upsert into user_spotify_playlists
+        await db.execute("""
+            INSERT INTO user_spotify_playlists (
+                discord_user_id, spotify_playlist_id, name, description, url, image_url, tracks_total, updated_at
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)
+            ON CONFLICT (discord_user_id, spotify_playlist_id) DO UPDATE SET
+                name = $3,
+                description = $4,
+                url = $5,
+                image_url = $6,
+                tracks_total = $7,
+                updated_at = CURRENT_TIMESTAMP;
+        """, discord_user_id, res_id, name, desc, playlist_url, artwork, tracks_total)
+
+        # 2. Sync to user_playlists and user_playlist_tracks for unified access
+        try:
+            existing_pl = await db.fetchrow(
+                "SELECT id FROM user_playlists WHERE discord_user_id = $1 AND name = $2 LIMIT 1;",
+                discord_user_id, name
+            )
+            if existing_pl:
+                pl_id = existing_pl["id"]
+                await db.execute("DELETE FROM user_playlist_tracks WHERE playlist_id = $1;", pl_id)
+            else:
+                row = await db.fetchrow(
+                    "INSERT INTO user_playlists (discord_user_id, name, description) VALUES ($1, $2, $3) RETURNING id;",
+                    discord_user_id, name, desc
+                )
+                pl_id = row["id"] if row else None
+
+            if pl_id and norm_tracks:
+                for pos, t in enumerate(norm_tracks, start=1):
+                    await db.execute("""
+                        INSERT INTO user_playlist_tracks (
+                            playlist_id, title, author, url, duration, thumbnail, platform, position
+                        ) VALUES ($1, $2, $3, $4, $5, $6, 'spotify', $7);
+                    """, pl_id, t.title, t.artist, t.original_url or f"https://open.spotify.com/track/{t.id}", int((t.duration_ms or 0) / 1000), t.artwork or artwork, pos)
+        except Exception as e:
+            log.warning(f"[Spotify Auth] Sync to user_playlists: {e}")
+
+        return {
+            "id": res_id,
+            "name": name,
+            "description": desc,
+            "tracks_total": tracks_total,
+            "image_url": artwork,
+            "url": playlist_url,
+            "public": True,
+            "collaborative": False,
+            "owner": meta.get("owner") or "Spotify User",
+        }
+
+    async def remove_user_spotify_playlist(self, discord_user_id: int, spotify_playlist_id: str) -> bool:
+        """Removes a saved Spotify playlist from user's library."""
+        res = await db.execute(
+            "DELETE FROM user_spotify_playlists WHERE discord_user_id = $1 AND spotify_playlist_id = $2;",
+            discord_user_id, spotify_playlist_id
+        )
+        return res != "0"

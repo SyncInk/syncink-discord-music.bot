@@ -85,6 +85,22 @@ class DatabaseManager:
                         await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS redirect_uri TEXT;")
                         await conn.execute("ALTER TABLE spotify_oauth_states ADD COLUMN IF NOT EXISTS return_to TEXT DEFAULT 'discord';")
                         await conn.execute("""
+                            CREATE TABLE IF NOT EXISTS user_spotify_playlists (
+                                id SERIAL PRIMARY KEY,
+                                discord_user_id BIGINT NOT NULL,
+                                spotify_playlist_id TEXT NOT NULL,
+                                name TEXT NOT NULL,
+                                description TEXT,
+                                url TEXT NOT NULL,
+                                image_url TEXT,
+                                tracks_total INTEGER DEFAULT 0,
+                                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                                UNIQUE(discord_user_id, spotify_playlist_id)
+                            );
+                        """)
+                        await conn.execute("CREATE INDEX IF NOT EXISTS idx_spotify_playlists_user ON user_spotify_playlists(discord_user_id);")
+                        await conn.execute("""
                             UPDATE spotify_users
                             SET display_name = COALESCE(user_sessions.global_name, user_sessions.username)
                             FROM user_sessions
@@ -222,6 +238,22 @@ class DatabaseManager:
                     FOREIGN KEY(playlist_id) REFERENCES user_playlists(id) ON DELETE CASCADE
                 );
             """)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_spotify_playlists (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    discord_user_id INTEGER NOT NULL,
+                    spotify_playlist_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    description TEXT,
+                    url TEXT NOT NULL,
+                    image_url TEXT,
+                    tracks_total INTEGER DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(discord_user_id, spotify_playlist_id)
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_spotify_playlists_user ON user_spotify_playlists(discord_user_id);")
 
             # Ensure all columns exist on guild_settings
             cursor.execute("PRAGMA table_info(guild_settings);")

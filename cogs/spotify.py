@@ -63,7 +63,7 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
             try:
                 raw_pk = int(str(playlist_id).replace("syncink_", ""))
                 rows = await db.fetch("""
-                    SELECT track_title, track_artist, track_url, duration, thumbnail_url, platform
+                    SELECT title, author, url, duration, thumbnail, platform
                     FROM user_playlist_tracks
                     WHERE playlist_id = $1
                     ORDER BY position ASC;
@@ -76,13 +76,13 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
                     return
                 tracks = [
                     Track(
-                        title=r["track_title"],
-                        clean_title=clean_title(r["track_title"]),
-                        author=r["track_artist"] or "Unknown Artist",
+                        title=r["title"],
+                        clean_title=clean_title(r["title"]),
+                        author=r["author"] or "Unknown Artist",
                         duration=int(r["duration"] or 0),
-                        url=r["track_url"],
+                        url=r["url"],
                         stream_url="",
-                        thumbnail=r["thumbnail_url"],
+                        thumbnail=r["thumbnail"],
                         platform=r["platform"] or "spotify",
                         requested_by=interaction.user,
                         is_live=False
@@ -99,7 +99,7 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
             return
 
         playlist_data = self.playlist_map.get(playlist_id, {})
-        playlist_url = playlist_data.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{playlist_id}")
+        playlist_url = playlist_data.get("url") or playlist_data.get("external_urls", {}).get("spotify", f"https://open.spotify.com/playlist/{playlist_id}")
 
         try:
             tracks = await self.music_cog.service.search_and_extract(playlist_url, interaction.user, platform="spotify", limit=100)
@@ -118,10 +118,57 @@ class SpotifyPlaylistsSelect(discord.ui.Select):
                 ephemeral=True
             )
 
+class SpotifyAddPlaylistModal(discord.ui.Modal, title="Add Public Spotify Playlist"):
+    url_input = discord.ui.TextInput(
+        label="Spotify Playlist Link",
+        placeholder="https://open.spotify.com/playlist/...",
+        required=True,
+        max_length=300
+    )
+
+    def __init__(self, music_cog: Any):
+        super().__init__()
+        self.music_cog = music_cog
+
+    async def on_submit(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True)
+        url = self.url_input.value.strip()
+        auth_mgr = SpotifyUserAuthManager.get_instance()
+        pl = await auth_mgr.add_user_spotify_playlist(interaction.user.id, url)
+        if not pl:
+            await interaction.followup.send(
+                embed=discord.Embed(
+                    description=format_discord_emojis(f"### {Emojis.WARNING} Could not load Spotify playlist. Please ensure the playlist link is public and valid."),
+                    color=0xFEE75C
+                ),
+                ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title=f"{Emojis.CHECK_YES} Added Spotify Playlist to Library",
+            description=format_discord_emojis(
+                f"**[{pl['name']}]({pl['url']})**\n\n"
+                f"• Tracks: **{pl['tracks_total']}**\n"
+                f"• Platform: Spotify\n\n"
+                f"-# You can now stream it anytime with `/spotify playlists` or from the Web Dashboard!"
+            ),
+            color=SPOTIFY_COLOR
+        )
+        if pl.get("image_url"):
+            embed.set_thumbnail(url=pl["image_url"])
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 class SpotifyPlaylistsView(discord.ui.View):
     def __init__(self, playlists: List[Dict[str, Any]], music_cog: Any):
         super().__init__(timeout=180)
-        self.add_item(SpotifyPlaylistsSelect(playlists, music_cog))
+        self.music_cog = music_cog
+        if playlists:
+            self.add_item(SpotifyPlaylistsSelect(playlists, music_cog))
+
+    @discord.ui.button(label="Add Public Playlist", emoji=EmojiPartials.QUEUE_ADD, style=discord.ButtonStyle.secondary, row=1)
+    async def add_playlist_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        await interaction.response.send_modal(SpotifyAddPlaylistModal(self.music_cog))
 
 
 class Spotify(commands.Cog):
@@ -350,77 +397,80 @@ class Spotify(commands.Cog):
 
     @spotify_group.command(name="playlists", description="View and stream playlists from your linked Spotify library.")
     async def slash_spotify_playlists(self, interaction: discord.Interaction):
-        token = await self.auth_mgr.get_valid_user_token(interaction.user.id)
-        if not token:
-            embed = discord.Embed(
-                description=format_discord_emojis(f"### {Emojis.WARNING} Please connect your Spotify account first using `/spotify connect`."),
-                color=0xFEE75C
-            )
-            await interaction.response.send_message(embed=embed, ephemeral=True)
+        await interaction.response.defer(ephemeral=True)
+        music_cog = self.bot.get_cog("Music")
+        if not music_cog:
+            await interaction.followup.send("Music system is currently loading.", ephemeral=True)
             return
 
-        await interaction.response.defer(ephemeral=True)
-        url = "https://api.spotify.com/v1/me/playlists?limit=25"
-        headers = {"Authorization": f"Bearer {token}"}
-        items = []
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    items = data.get("items", [])
-                else:
-                    log.debug(f"[Spotify] /v1/me/playlists returned HTTP {resp.status} for user {interaction.user.id}")
-
-        # If Spotify returned empty or restricted, fallback to SyncInk library playlists
-        if not items:
-            try:
-                db_playlists = await db.fetch("""
-                    SELECT p.id, p.name, p.description,
-                           (SELECT COUNT(*) FROM user_playlist_tracks pt WHERE pt.playlist_id = p.id) as total_tracks
-                    FROM user_playlists p
-                    WHERE p.discord_user_id = $1
-                    ORDER BY p.updated_at DESC;
-                """, interaction.user.id)
-                if db_playlists:
-                    items = [
-                        {
-                            "id": f"syncink_{p['id']}",
-                            "name": p["name"],
-                            "description": p.get("description") or "SyncInk Radio Library Playlist",
-                            "tracks": {"total": int(p["total_tracks"] or 0)},
-                            "images": [{"url": "https://files.catbox.moe/74l9su.png"}],
-                            "external_urls": {"spotify": "https://syncink.site/dashboard/radio/#library"},
-                            "owner": {"display_name": "SyncInk Library"}
-                        }
-                        for p in db_playlists
-                    ]
-            except Exception:
-                pass
+        items = await self.auth_mgr.get_user_playlists(interaction.user.id, limit=25)
 
         if not items:
+            view = discord.ui.View(timeout=180)
+            btn = discord.ui.Button(label="Add Public Playlist", emoji=EmojiPartials.QUEUE_ADD, style=discord.ButtonStyle.success)
+            async def _open_modal(btn_interaction: discord.Interaction):
+                await btn_interaction.response.send_modal(SpotifyAddPlaylistModal(music_cog))
+            btn.callback = _open_modal
+            view.add_item(btn)
+
             embed = discord.Embed(
-                title=f"{Emojis.SPOTIFY} Your Playlists",
+                title=f"{Emojis.SPOTIFY} Your Spotify Playlists",
                 description=format_discord_emojis(
                     f"### {Emojis.WARNING} No Playlists Found in Library\n\n"
                     "You don't have any saved playlists in your library yet.\n\n"
-                    f"• Stream any public Spotify or YouTube playlist directly: `/play <playlist_url>`\n"
-                    f"• Create and manage custom playlists in the [Web Dashboard](https://syncink.site/dashboard/radio/#library)\n\n"
-                    "-# Playlists you create in the dashboard will appear here automatically."
+                    f"• Click **Add Public Playlist** below to save your public Spotify playlist link!\n"
+                    f"• Or paste any playlist link directly: `/play <playlist_url>`\n"
+                    f"• You can also add playlists anytime with `/spotify add <url>`\n\n"
+                    "-# Saved playlists sync across Discord and the Web Dashboard automatically."
                 ),
                 color=SPOTIFY_COLOR
+            )
+            await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+            return
+
+        view = SpotifyPlaylistsView(items, music_cog)
+        embed = discord.Embed(
+            title=f"{Emojis.SPOTIFY} Select a Playlist to Stream",
+            description=f"Found **{len(items)}** playlists in your library. Select one below to begin streaming or click **Add Public Playlist** to add another:",
+            color=SPOTIFY_COLOR
+        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+
+    @spotify_group.command(name="add", description="Add a public Spotify playlist or album to your SyncInk library.")
+    @app_commands.describe(url="Public Spotify playlist or album URL (open.spotify.com/playlist/...)")
+    async def slash_spotify_add(self, interaction: discord.Interaction, url: str):
+        await interaction.response.defer(ephemeral=True)
+        from services.spotify.resolver import SpotifyResolver
+        if not SpotifyResolver.is_spotify_url_or_uri(url):
+            embed = discord.Embed(
+                description=format_discord_emojis(f"### {Emojis.WARNING} Please provide a valid Spotify playlist or album link (`open.spotify.com/playlist/...`)."),
+                color=0xFEE75C
             )
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 
-        music_cog = self.bot.get_cog("Music")
-        view = SpotifyPlaylistsView(items, music_cog)
+        pl = await self.auth_mgr.add_user_spotify_playlist(interaction.user.id, url)
+        if not pl:
+            embed = discord.Embed(
+                description=format_discord_emojis(f"### {Emojis.REFUSED} Could not extract tracks from the provided link. Please ensure the playlist is public."),
+                color=0xED4245
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+            return
+
         embed = discord.Embed(
-            title=f"{Emojis.SPOTIFY} Select a Playlist to Stream",
-            description=f"Found **{len(items)}** playlists in your library. Select one below to begin streaming:",
+            title=f"{Emojis.CHECK_YES} Added Spotify Playlist to Library",
+            description=format_discord_emojis(
+                f"**[{pl['name']}]({pl['url']})**\n\n"
+                f"• Tracks: **{pl['tracks_total']}**\n"
+                f"• Platform: Spotify\n\n"
+                f"-# You can now stream it anytime with `/spotify playlists` or in the [Web Dashboard](https://syncink.site/dashboard/radio/#library)!"
+            ),
             color=SPOTIFY_COLOR
         )
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
+        if pl.get("image_url"):
+            embed.set_thumbnail(url=pl["image_url"])
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     # ─────────────────────────────────────────────────────────────
     # Text Prefix Commands: ?spotify connect / ?spotify status / ?spotify disconnect
@@ -469,6 +519,18 @@ class Spotify(commands.Cog):
             await ctx.send(embed=discord.Embed(description=f"{Emojis.CHECK_YES} Unlinked your Spotify account successfully.", color=BRAND_COLOR))
         else:
             await ctx.send(embed=discord.Embed(description=f"{Emojis.WARNING} No linked Spotify account found.", color=0xFEE75C))
+
+    @cmd_spotify.command(name="add")
+    async def cmd_spotify_add(self, ctx: commands.Context, url: str):
+        from services.spotify.resolver import SpotifyResolver
+        if not SpotifyResolver.is_spotify_url_or_uri(url):
+            await ctx.send(embed=discord.Embed(description=f"{Emojis.WARNING} Please provide a valid Spotify playlist link (`open.spotify.com/playlist/...`).", color=0xFEE75C))
+            return
+        pl = await self.auth_mgr.add_user_spotify_playlist(ctx.author.id, url)
+        if pl:
+            await ctx.send(embed=discord.Embed(description=f"{Emojis.CHECK_YES} Added **{pl['name']}** ({pl['tracks_total']} tracks) to your Spotify library!", color=SPOTIFY_COLOR))
+        else:
+            await ctx.send(embed=discord.Embed(description=f"{Emojis.REFUSED} Could not load public Spotify playlist.", color=0xED4245))
 
     @cmd_spotify.command(name="status")
     async def cmd_spotify_status(self, ctx: commands.Context):

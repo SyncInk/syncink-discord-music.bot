@@ -20,6 +20,7 @@ from services.spotify.resolver import SpotifyResolver
 from services.spotify.crypto import TokenEncryptor
 from services.spotify.auth import SpotifyUserAuthManager
 from services.spotify.client import SpotifyClient
+from database import db
 
 
 class TestSpotifyIntegration(unittest.TestCase):
@@ -461,6 +462,36 @@ class TestSpotifyAuthAndDashboardIntegration(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(row)
         self.assertEqual(row["display_name"], "Spotify User")
         self.assertTrue(len(row["encrypted_refresh_token"]) > 0)
+
+    async def test_18_public_spotify_playlist_resolver_fallback(self):
+        """Test that SpotifyResolver.resolve safely resolves public playlists using embed scraper fallback."""
+        url = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+        res_type, tracks, meta = await SpotifyResolver.resolve(url, limit=10)
+        self.assertEqual(res_type, "playlist")
+        self.assertTrue(len(tracks) > 0)
+        self.assertIsNotNone(meta.get("name"))
+        self.assertTrue(tracks[0].title != "")
+        self.assertTrue(tracks[0].artist != "")
+
+    async def test_19_saved_spotify_playlists_library(self):
+        """Test saving a public Spotify playlist into user_spotify_playlists and retrieving via get_user_playlists."""
+        test_uid = 999888777666555444
+        url = "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
+
+        pl = await self.auth_mgr.add_user_spotify_playlist(test_uid, url)
+        self.assertIsNotNone(pl)
+        self.assertEqual(pl["id"], "37i9dQZF1DXcBWIGoYBM5M")
+        self.assertTrue(pl["tracks_total"] > 0)
+
+        # Retrieve playlists for this user
+        playlists = await self.auth_mgr.get_user_playlists(test_uid)
+        self.assertTrue(len(playlists) > 0)
+        saved_pl = next((p for p in playlists if p["id"] == "37i9dQZF1DXcBWIGoYBM5M"), None)
+        self.assertIsNotNone(saved_pl)
+        self.assertEqual(saved_pl["name"], pl["name"])
+
+        # Clean up
+        await self.auth_mgr.remove_user_spotify_playlist(test_uid, "37i9dQZF1DXcBWIGoYBM5M")
 
 
 if __name__ == "__main__":

@@ -1430,7 +1430,7 @@
       </div>
 
       <!-- Quick select from linked Spotify library -->
-      <div id="spotify-quick-import-wrap" class="hidden p-3 rounded-xl bg-[#102a1c]/40 border border-[#1db954]/30 space-y-1.5">
+      <div id="spotify-quick-import-wrap" class="hidden p-3 rounded-xl bg-[#102a1c]/40 border border-[#1db954]/30 space-y-2">
         <div class="flex items-center justify-between text-[11px]">
           <span class="font-bold text-[#1db954] flex items-center gap-1.5">
             <svg class="w-3.5 h-3.5 fill-[#1db954]" viewBox="0 0 24 24">
@@ -1443,6 +1443,12 @@
         <select id="spotify-quick-playlist-select" onchange="onSelectSpotifyQuickPlaylist(this.value)" class="w-full bg-[#14131a] border border-[#1db954]/40 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-[#1db954]">
           <option value="">Select a playlist to auto-fill...</option>
         </select>
+        <div class="flex items-center gap-1.5 pt-1">
+          <input type="text" id="spotify-quick-add-url" placeholder="Sync public Spotify playlist link..." class="flex-1 bg-[#14131a] border border-[#1db954]/30 rounded-xl px-2.5 py-1 text-[11px] text-white outline-none focus:border-[#1db954] transition-all">
+          <button type="button" onclick="quickAddSpotifyPlaylist()" id="btn-quick-add-spotify" class="px-2.5 py-1 rounded-xl text-[11px] font-bold bg-[#1db954] hover:bg-[#1ed760] text-black transition-all flex items-center gap-1 shrink-0">
+            <i data-lucide="plus" class="w-3 h-3"></i> Sync Link
+          </button>
+        </div>
       </div>
 
       <div class="space-y-3">

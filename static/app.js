@@ -2240,7 +2240,7 @@ async function populateImportPlaylistSelect() {
   }
 }
 
-function openImportPlaylistModal() {
+function openImportPlaylistModal(focusQuickAdd = false) {
   if (!state.currentUser) {
     showToast('Please log in with Discord first to manage personal playlists!', 'warning');
     return;
@@ -2261,15 +2261,18 @@ function openImportPlaylistModal() {
 
     const quickImportWrap = document.getElementById('spotify-quick-import-wrap');
     if (quickImportWrap) {
-      if (state.spotify && state.spotify.connected) {
-        quickImportWrap.classList.remove('hidden');
-        loadUserSpotifyPlaylists();
-      } else {
-        quickImportWrap.classList.add('hidden');
-      }
+      quickImportWrap.classList.remove('hidden');
+      loadUserSpotifyPlaylists();
     }
 
     initIcons();
+
+    if (focusQuickAdd) {
+      setTimeout(() => {
+        const qa = document.getElementById('spotify-quick-add-url');
+        if (qa) qa.focus();
+      }, 100);
+    }
   }
 }
 
@@ -2855,6 +2858,9 @@ async function checkSpotifyStatus() {
           <button onclick="openImportPlaylistModal()" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-[#1db954] hover:bg-[#1ed760] text-black transition-all flex items-center gap-1.5 shadow-md shadow-[#1db954]/20">
             <i data-lucide="folder-down" class="w-3.5 h-3.5"></i> My Playlists
           </button>
+          <button onclick="openImportPlaylistModal(true)" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 hover:bg-emerald-500/20 transition-all flex items-center gap-1">
+            <i data-lucide="plus" class="w-3.5 h-3.5"></i> Add Public Playlist
+          </button>
           <button onclick="openSpotifyDisconnectModal()" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1">
             <i data-lucide="unlink" class="w-3.5 h-3.5"></i> Unlink
           </button>
@@ -2954,14 +2960,64 @@ async function loadUserSpotifyPlaylists() {
     const data = await res.json();
     if (data.playlists && Array.isArray(data.playlists)) {
       state.spotifyPlaylists = data.playlists;
-      let html = '<option value="">Select a playlist to auto-fill...</option>';
-      data.playlists.forEach((p) => {
-        html += `<option value="${escapeHtml(p.url)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.tracks_total} tracks)</option>`;
-      });
-      select.innerHTML = html;
+      if (data.playlists.length > 0) {
+        let html = '<option value="">Select a playlist to auto-fill...</option>';
+        data.playlists.forEach((p) => {
+          html += `<option value="${escapeHtml(p.url)}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)} (${p.tracks_total} tracks)</option>`;
+        });
+        select.innerHTML = html;
+      } else {
+        select.innerHTML = '<option value="">No playlists saved yet — paste a link below!</option>';
+      }
     }
   } catch (e) {
     console.warn('[Load Spotify Playlists Error]', e);
+  }
+}
+
+async function quickAddSpotifyPlaylist() {
+  const input = document.getElementById('spotify-quick-add-url');
+  if (!input) return;
+  const url = input.value.trim();
+  if (!url) {
+    showToast('Please paste a public Spotify playlist link!', 'warning');
+    return;
+  }
+
+  const btn = document.getElementById('btn-quick-add-spotify');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader" class="w-3 h-3 animate-spin"></i><span>Syncing...</span>';
+    initIcons();
+  }
+
+  try {
+    const res = await fetch('/api/spotify/playlists/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: url })
+    });
+    const data = await res.json();
+    if (res.ok && data.success && data.playlist) {
+      showToast(`Added "${data.playlist.name}" (${data.playlist.tracks_total} tracks) to your Spotify library!`, 'success');
+      input.value = '';
+      await loadUserSpotifyPlaylists();
+      onSelectSpotifyQuickPlaylist(data.playlist.url);
+      const urlInput = document.getElementById('import-playlist-url');
+      if (urlInput) urlInput.value = data.playlist.url;
+      const nameInput = document.getElementById('import-playlist-name');
+      if (nameInput) nameInput.value = data.playlist.name;
+    } else {
+      showToast(data.error || 'Failed to sync Spotify playlist. Please ensure the link is public.', 'error');
+    }
+  } catch (err) {
+    showToast('Error syncing playlist: ' + err.message, 'error');
+  } finally {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i data-lucide="plus" class="w-3 h-3"></i><span>Sync Link</span>';
+      initIcons();
+    }
   }
 }
 
