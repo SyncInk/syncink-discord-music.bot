@@ -36,8 +36,8 @@ class Updater(commands.Cog):
         self.updater = UpdaterService.get_instance()
         self.is_updating = False
 
-        # Read configuration from environment
-        enabled_raw = os.getenv("AUTO_UPDATE_ENABLED", "true").lower().strip()
+        # Read configuration from environment (defaults to false to prevent auto-killing running bot)
+        enabled_raw = os.getenv("AUTO_UPDATE_ENABLED", "false").lower().strip()
         self.auto_update_enabled = enabled_raw in ("true", "1", "yes", "on")
 
         interval_raw = os.getenv("AUTO_UPDATE_INTERVAL", "60").strip()
