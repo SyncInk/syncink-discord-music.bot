@@ -209,25 +209,46 @@ class UpdaterService:
         Gracefully closes active voice clients, database connections,
         and re-launches the bot process.
         """
+        import threading
         log.info("[Updater] Initiating graceful process restart...")
+
+        # Watchdog thread: Guarantees process re-launch even if asyncio tasks are cancelled during bot.close()
+        def _execv_watchdog():
+            time.sleep(delay + 0.5)
+            try:
+                if sys.platform == "win32":
+                    subprocess.Popen([sys.executable] + sys.argv)
+                    os._exit(0)
+                else:
+                    os.execv(sys.executable, [sys.executable] + sys.argv)
+            except Exception as e:
+                log.critical(f"[Updater] Watchdog failed to re-launch: {e}")
+                os._exit(0)
+
+        watchdog = threading.Thread(target=_execv_watchdog, daemon=True, name="RestartWatchdog")
+        watchdog.start()
+
         if bot:
             try:
                 for vc in list(getattr(bot, "voice_clients", [])):
                     try:
                         await vc.disconnect(force=True)
-                    except Exception:
+                    except BaseException:
                         pass
-            except Exception:
+            except BaseException:
                 pass
 
             try:
                 await bot.close()
-            except Exception:
+            except BaseException:
                 pass
 
-        await asyncio.sleep(delay)
+        try:
+            await asyncio.sleep(delay)
+        except BaseException:
+            pass
 
-        # Re-launch current Python process
+        # Re-launch current Python process immediately if watchdog hasn't fired yet
         try:
             if sys.platform == "win32":
                 subprocess.Popen([sys.executable] + sys.argv)
