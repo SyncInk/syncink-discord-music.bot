@@ -59,30 +59,57 @@ html, body {
 
 /* Glassmorphic Panels */
 .glass-panel {
-  background: rgba(25, 24, 32, 0.8);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(25, 24, 32, 0.84);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
   border-radius: 16px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s cubic-bezier(0.16, 1, 0.3, 1), background-color 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 .glass-panel:hover {
   border-color: var(--border-active);
 }
 
 .glass-card-interactive {
-  background: rgba(25, 24, 32, 0.7);
+  background: rgba(25, 24, 32, 0.72);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   border: 1px solid var(--border-subtle);
   border-radius: 14px;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: transform 0.22s cubic-bezier(0.16, 1, 0.3, 1), border-color 0.18s ease, background-color 0.18s ease, box-shadow 0.22s ease;
 }
 .glass-card-interactive:hover {
   transform: translateY(-2px);
-  border-color: var(--accent-primary);
-  box-shadow: 0 8px 24px -4px var(--accent-glow);
+  border-color: var(--border-active);
+  box-shadow: 0 10px 24px -8px rgba(0, 0, 0, 0.55);
   background: rgba(34, 32, 44, 0.9);
+}
+.glass-card-interactive:active {
+  transform: scale(0.99);
+}
+
+/* Smooth View Section Transitions */
+.view-section {
+  will-change: opacity, transform;
+}
+.view-section:not(.hidden) {
+  animation: viewFadeSlide 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes viewFadeSlide {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
+/* Smooth Mobile Drawer & Tabular Numbers */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+#mobile-drawer {
+  will-change: transform, opacity;
+  transition: opacity 0.22s ease;
+}
+#mobile-drawer > aside {
+  transition: transform 0.26s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Animated Equalizer Visualizer */
@@ -315,6 +342,29 @@ body.is-authenticated #demo-mode-btn {
 @media (max-width: 767px) {
   #bottom-player {
     height: 64px !important;
+  }
+  main, #main-scroll, .view-section {
+    scroll-padding-bottom: 96px;
+  }
+  #toast-container {
+    bottom: 80px;
+    right: 12px;
+    left: 12px;
+    max-width: calc(100vw - 24px);
+  }
+  .glass-panel {
+    border-radius: 14px;
+  }
+  .modal-content {
+    max-height: 86vh;
+    border-radius: 20px;
+  }
+}
+
+/* Prevent accidental horizontal overflow on narrow mobile screens */
+@media (hover: none) {
+  .glass-card-interactive:hover {
+    transform: none;
   }
 }
 

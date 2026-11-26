@@ -56,7 +56,7 @@ const state = {
   activeRadioGenre: '',
   libraryTab: 'all',
   historyTimeframe: 'all',
-  analyticsTimeframe: '7d',
+  analyticsTimeframe: 'all',
   ws: null,
   wsReconnectAttempts: 0,
   localTicker: null,
@@ -67,6 +67,7 @@ const state = {
 // ------------------- INITIALIZATION -------------------
 window.addEventListener('DOMContentLoaded', async () => {
   initIcons();
+  resolveStaticRouteLinks();
   await checkAuthStatus();
   await loadServers();
   initRouting();
@@ -74,6 +75,18 @@ window.addEventListener('DOMContentLoaded', async () => {
   startLocalPlaybackTicker();
   checkUrlParams();
   await checkSpotifyStatus();
+  refreshSidebarStatus();
+  setInterval(refreshSidebarStatus, 15000);
+
+  const blockInput = document.getElementById('audia-block-input');
+  if (blockInput) {
+    blockInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        blockArtistFromInput();
+      }
+    });
+  }
 
   // Close search suggestions on outside click
   document.addEventListener('click', (e) => {
@@ -121,13 +134,21 @@ function navigateTo(viewId) {
     activePanel.classList.remove('hidden');
   }
 
-  // Update navigation items active state (desktop)
-  document.querySelectorAll('#sidebar .nav-item').forEach(item => {
+  // Update navigation items active state (desktop + mobile drawer)
+  document.querySelectorAll('#sidebar .nav-item, #mobile-drawer .nav-item').forEach(item => {
     const isCurrent = item.getAttribute('data-view') === viewId;
+    const isHidden = item.classList.contains('hidden');
+    const baseCls = 'nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border transition-[background-color,color,border-color] duration-150';
     if (isCurrent) {
-      item.className = 'nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-white bg-brand-primary/20 border border-brand-primary/30';
+      item.className = `${baseCls} text-white bg-brand-primary/20 border-brand-primary/35${isHidden ? ' hidden' : ''}`;
     } else {
-      item.className = 'nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface';
+      item.className = `${baseCls} border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface${isHidden ? ' hidden' : ''}`;
+    }
+    const iconBox = item.querySelector('.nav-icon');
+    if (iconBox) {
+      iconBox.className = isCurrent
+        ? 'nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary transition-colors'
+        : 'nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors';
     }
   });
 
@@ -276,8 +297,8 @@ function initWebSocket() {
       state.wsReconnectAttempts = 0;
       const dot = document.getElementById('gateway-dot');
       const status = document.getElementById('gateway-status');
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-500 animate-pulse';
-      if (status) status.innerText = 'Live Gateway';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shrink-0';
+      if (status) status.innerText = 'Live Status';
 
       // Resubscribe to currently selected server
       if (state.activeGuildId) {
@@ -303,8 +324,8 @@ function initWebSocket() {
     state.ws.onclose = () => {
       const dot = document.getElementById('gateway-dot');
       const status = document.getElementById('gateway-status');
-      if (dot) dot.className = 'w-2 h-2 rounded-full bg-amber-500';
-      if (status) status.innerText = 'Reconnecting...';
+      if (dot) dot.className = 'w-2 h-2 rounded-full bg-brand-secondary shrink-0';
+      if (status) status.innerText = 'Reconnecting…';
 
       const delay = Math.min(8000, 1000 * Math.pow(1.5, state.wsReconnectAttempts++));
       setTimeout(initWebSocket, delay);
@@ -687,15 +708,15 @@ function renderQueueDrawer() {
     const pref = state.playback.prefetched_track;
     const meta = state.playback.autoplay_meta;
     const apDiv = document.createElement('div');
-    apDiv.className = 'p-3 rounded-2xl bg-[#1b1926] border border-amber-500/30 mb-2';
+    apDiv.className = 'p-3 rounded-2xl bg-[#1b1926] border border-brand-primary/35 mb-2';
     apDiv.innerHTML = `
       <div class="flex items-center gap-2 mb-1.5">
-        <i data-lucide="sparkles" class="w-3.5 h-3.5 text-amber-400"></i>
-        <span class="text-[10px] font-bold text-amber-300 uppercase tracking-wider">Audia AI AutoPlay Up Next</span>
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#B9A2F2" stroke-width="1.75" stroke-linecap="round"><path d="M3 10v0M6.5 7v6M10 4v12M13.5 6.5v7M17 8.5v3"/></svg>
+        <span class="text-[10px] font-semibold text-brand-secondary uppercase tracking-wider">Audia AI AutoPlay Up Next</span>
       </div>
       <p class="font-bold text-xs text-white truncate">${pref ? escapeHtml(pref.title) : 'Smart Selection'}</p>
       <p class="text-[11px] text-[#9E9EAD] truncate">${pref ? escapeHtml(pref.author) : 'Diverse Match'}</p>
-      ${meta && meta.reason ? `<p class="text-[10px] text-amber-200/80 mt-1 italic leading-tight">"${escapeHtml(meta.reason)}"</p>` : ''}
+      ${meta && meta.reason ? `<p class="text-[10px] text-brand-secondary/80 mt-1 italic leading-tight">"${escapeHtml(meta.reason)}"</p>` : ''}
     `;
     listEl.appendChild(apDiv);
   }
@@ -1366,8 +1387,8 @@ async function loadOverviewData() {
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-[10px] font-bold px-2 py-0.5 rounded-full badge-violet uppercase">${escapeHtml(rec.genre || 'Pop')}</span>
-              <span class="text-[10px] text-amber-400 font-semibold flex items-center gap-1 font-mono">
-                <i data-lucide="sparkles" class="w-3 h-3"></i> ${Math.round((rec.confidence || 0.9) * 100)}% match
+              <span class="text-[10px] text-brand-secondary font-medium flex items-center gap-1 font-mono tabular-nums">
+                ${Math.round((rec.confidence || 0.9) * 100)}% match
               </span>
             </div>
             <h4 class="font-bold text-sm text-white truncate">${escapeHtml(rec.title)}</h4>
@@ -1705,19 +1726,64 @@ async function loadAudiaProfile() {
     if (artistsList) {
       artistsList.innerHTML = '';
       if (!data.top_artists || data.top_artists.length === 0) {
-        artistsList.innerHTML = '<span class="text-xs text-[#6B6A78]">No learned artists yet. Stream songs in voice channels to continuously train Audia AI!</span>';
+        artistsList.innerHTML = '<span class="text-xs text-[#6B6A78]">No learned artists yet. Stream songs in voice channels to continuously train Audia AI.</span>';
       } else {
         data.top_artists.forEach(a => {
           const badge = document.createElement('span');
           badge.className = 'inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 text-xs font-medium text-white';
-          badge.innerHTML = `
-            <span>${escapeHtml(a.artist)}</span>
-            <span class="text-[10px] font-bold text-brand-secondary bg-brand-primary/20 px-1.5 py-0.5 rounded-md font-mono">${a.affinity}</span>
-            <button onclick="blockArtist('${escapeHtml(a.artist)}')" class="text-[#6B6A78] hover:text-rose-400" title="Block Artist">
-              <i data-lucide="ban" class="w-3 h-3"></i>
-            </button>
-          `;
+
+          const nameEl = document.createElement('span');
+          nameEl.textContent = a.artist;
+
+          const scoreEl = document.createElement('span');
+          scoreEl.className = 'text-[10px] font-semibold text-brand-secondary bg-brand-primary/20 px-1.5 py-0.5 rounded-md font-mono tabular-nums';
+          scoreEl.textContent = a.affinity;
+
+          const banBtn = document.createElement('button');
+          banBtn.type = 'button';
+          banBtn.className = 'text-[#6B6A78] hover:text-rose-400 transition-colors p-0.5 rounded';
+          banBtn.title = `Block ${a.artist}`;
+          banBtn.innerHTML = '<i data-lucide="ban" class="w-3 h-3"></i>';
+          banBtn.addEventListener('click', () => blockArtist(a.artist));
+
+          badge.appendChild(nameEl);
+          badge.appendChild(scoreEl);
+          badge.appendChild(banBtn);
           artistsList.appendChild(badge);
+        });
+      }
+    }
+
+    // Blocked Artists & Unblock UI
+    const blocked = Array.isArray(data.blocked_artists) ? data.blocked_artists.filter(b => String(b || '').trim()) : [];
+    const blockedCount = document.getElementById('audia-blocked-count');
+    if (blockedCount) {
+      blockedCount.textContent = `${blocked.length} blocked`;
+    }
+    const blockedList = document.getElementById('audia-blocked-list');
+    if (blockedList) {
+      blockedList.innerHTML = '';
+      if (blocked.length === 0) {
+        blockedList.innerHTML = '<span class="text-xs text-[#6B6A78]">No artists are currently blocked.</span>';
+      } else {
+        blocked.forEach(artistName => {
+          const chip = document.createElement('div');
+          chip.className = 'inline-flex items-center gap-2 pl-3 pr-1.5 py-1.5 rounded-xl bg-[#14131a] border border-rose-500/25 text-xs text-white';
+
+          const label = document.createElement('span');
+          label.className = 'font-medium';
+          label.textContent = artistName;
+
+          const btnUnblock = document.createElement('button');
+          btnUnblock.type = 'button';
+          btnUnblock.className = 'inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-medium bg-brand-primary/20 hover:bg-brand-primary/35 text-brand-secondary hover:text-white transition-colors';
+          btnUnblock.textContent = 'Unblock';
+          btnUnblock.title = `Unblock ${artistName}`;
+          btnUnblock.addEventListener('click', () => unblockArtist(artistName));
+
+          chip.appendChild(label);
+          chip.appendChild(btnUnblock);
+          blockedList.appendChild(chip);
         });
       }
     }
@@ -1762,8 +1828,8 @@ async function loadAudiaStudioRecommendations() {
         <div>
           <div class="flex items-center justify-between mb-2">
             <span class="text-[10px] font-bold px-2 py-0.5 rounded-full badge-violet uppercase">${escapeHtml(r.genre || 'Smart')}</span>
-            <span class="text-[11px] text-amber-400 font-semibold flex items-center gap-1 font-mono">
-              <i data-lucide="sparkles" class="w-3 h-3"></i> ${Math.round((r.confidence || 0.92) * 100)}%
+            <span class="text-[11px] text-brand-secondary font-medium flex items-center gap-1 font-mono tabular-nums">
+              ${Math.round((r.confidence || 0.92) * 100)}% match
             </span>
           </div>
           <h4 class="font-bold text-sm text-white truncate">${escapeHtml(r.title)}</h4>
@@ -1816,17 +1882,57 @@ async function updateAudiaSettings() {
 }
 
 async function blockArtist(artist) {
+  const cleaned = String(artist || '').trim();
+  if (!cleaned) return;
   try {
-    await fetch('/api/audia/feedback', {
+    const res = await fetch('/api/audia/feedback', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'block', artist })
+      body: JSON.stringify({ action: 'block', artist: cleaned })
     });
-    showToast(`Blocked "${artist}" from AI recommendations`, 'info');
-    loadAudiaProfile();
+    if (!res.ok) {
+      showToast('Please log in with Discord to manage blocked artists.', 'warning');
+      return;
+    }
+    showToast(`Blocked "${cleaned}" from recommendations`, 'info');
+    await loadAudiaProfile();
+    loadAudiaStudioRecommendations();
   } catch (e) {
     console.error('Block artist error:', e);
   }
+}
+
+async function unblockArtist(artist) {
+  const cleaned = String(artist || '').trim();
+  if (!cleaned) return;
+  try {
+    const res = await fetch('/api/audia/feedback', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ action: 'unblock', artist: cleaned })
+    });
+    if (!res.ok) {
+      showToast('Please log in with Discord to manage blocked artists.', 'warning');
+      return;
+    }
+    showToast(`Unblocked "${cleaned}"`, 'success');
+    await loadAudiaProfile();
+    loadAudiaStudioRecommendations();
+  } catch (e) {
+    console.error('Unblock artist error:', e);
+  }
+}
+
+async function blockArtistFromInput() {
+  const input = document.getElementById('audia-block-input');
+  if (!input) return;
+  const val = input.value.trim();
+  if (!val) {
+    showToast('Enter an artist name to block.', 'warning');
+    return;
+  }
+  await blockArtist(val);
+  input.value = '';
 }
 
 // ------------------- VIEW 4: MY LIBRARY & PLAYLISTS -------------------
@@ -2375,44 +2481,63 @@ async function loadListeningHistory() {
 
   try {
     const q = document.getElementById('history-search-input') ? document.getElementById('history-search-input').value.trim() : '';
+    const scopeEl = document.getElementById('history-scope-select');
+    const scope = scopeEl ? scopeEl.value : 'all';
     const gidParam = state.activeGuildId ? `&guild_id=${state.activeGuildId}` : '';
-    const res = await fetch(`/api/history?timeframe=${state.historyTimeframe}&query=${encodeURIComponent(q)}${gidParam}&limit=60`);
+    const scopeParam = scope === 'guild' ? '&scope=guild' : '';
+    const res = await fetch(`/api/history?timeframe=${state.historyTimeframe}&query=${encodeURIComponent(q)}${gidParam}${scopeParam}&limit=80`);
     const data = await res.json();
     tbody.innerHTML = '';
 
     if (!data.history || data.history.length === 0) {
-      tbody.innerHTML = '<tr><td colspan="6" class="py-12 text-center text-[#6B6A78]">No listening history recorded for this period.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="6" class="py-12 text-center text-[#6B6A78]">No listening history recorded for this scope or period.</td></tr>';
       return;
     }
 
     data.history.forEach(h => {
       const isLive = h.is_live_now || h.played_at === 'Now Playing';
       const tr = document.createElement('tr');
-      tr.className = isLive ? 'bg-brand-primary/15 border-l-2 border-brand-secondary hover:bg-brand-primary/20 transition-all' : 'hover:bg-brand-surface/40 transition-colors';
+      tr.className = isLive ? 'bg-brand-primary/15 border-l-2 border-brand-secondary hover:bg-brand-primary/20 transition-colors' : 'hover:bg-brand-surface/40 transition-colors';
+
+      const trackTitle = h.track_title || 'Unknown Track';
+      const trackAuthor = h.track_author || 'Artist';
+      const queryTarget = (trackAuthor && trackAuthor !== 'Unknown Artist' && trackAuthor !== 'Various Artists' && trackAuthor !== 'Artist')
+        ? `${trackAuthor} - ${trackTitle}`
+        : trackTitle;
+
       tr.innerHTML = `
-        <td class="px-4 py-3 flex items-center gap-3">
-          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
-          <div class="min-w-0 flex items-center gap-2">
-            <span class="font-medium text-white truncate max-w-xs">${escapeHtml(h.track_title)}</span>
-            ${isLive ? '<span class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-primary/40 text-brand-secondary border border-brand-primary/50 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> LIVE</span>' : ''}
+        <td class="px-4 py-3">
+          <div class="flex items-center gap-3">
+            <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-white truncate max-w-[180px] sm:max-w-xs">${escapeHtml(trackTitle)}</span>
+                ${isLive ? '<span class="hidden sm:inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-brand-primary/40 text-brand-secondary border border-brand-primary/50 shrink-0"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> LIVE</span>' : ''}
+              </div>
+              <p class="text-[11px] text-[#9E9EAD] truncate sm:hidden">${escapeHtml(trackAuthor)}</p>
+            </div>
           </div>
         </td>
-        <td class="px-4 py-3 text-[#9E9EAD] hidden sm:table-cell truncate max-w-xs">${escapeHtml(h.track_author || 'Artist')}</td>
+        <td class="px-4 py-3 text-[#9E9EAD] hidden sm:table-cell truncate max-w-xs">${escapeHtml(trackAuthor)}</td>
         <td class="px-4 py-3 text-[#9E9EAD] hidden md:table-cell uppercase font-semibold text-[10px]">${escapeHtml(h.platform || 'audio')}</td>
-        <td class="px-4 py-3 font-mono text-[#9E9EAD]">${formatDuration(h.duration)}</td>
-        <td class="px-4 py-3 text-right ${isLive ? 'text-brand-secondary font-semibold' : 'text-[#6B6A78]'}">
-          ${isLive ? '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-primary/30 text-brand-secondary"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Now Playing</span>' : (h.played_at ? formatRelativeTime(h.played_at) : '')}
+        <td class="px-4 py-3 font-mono text-[#9E9EAD] tabular-nums">${h.duration ? formatDuration(h.duration) : '—'}</td>
+        <td class="px-4 py-3 text-right whitespace-nowrap ${isLive ? 'text-brand-secondary font-semibold' : 'text-[#6B6A78]'}">
+          ${isLive ? '<span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-brand-primary/30 text-brand-secondary"><span class="w-1.5 h-1.5 rounded-full bg-emerald-400"></span> Now Playing</span>' : (h.played_at ? formatRelativeTime(h.played_at) : '')}
         </td>
-        <td class="px-4 py-3 text-right">
-          <button onclick="sendControlAction('play', { query: '${escapeHtml(h.track_title)}' })" class="text-brand-secondary hover:text-white p-1" title="Replay">
+        <td class="px-4 py-3 text-right whitespace-nowrap">
+          <button type="button" class="btn-hist-play text-brand-secondary hover:text-white p-1" title="Replay">
             <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
           </button>
-          ${isLive ? '' : `
-          <button onclick="deleteHistoryItem(${h.id})" class="text-[#6B6A78] hover:text-rose-400 p-1" title="Delete">
+          ${isLive || h.id >= 800000 ? '' : `
+          <button type="button" class="btn-hist-del text-[#6B6A78] hover:text-rose-400 p-1" title="Delete">
             <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
           </button>`}
         </td>
       `;
+      const playBtn = tr.querySelector('.btn-hist-play');
+      if (playBtn) playBtn.addEventListener('click', () => sendControlAction('play', { query: queryTarget }));
+      const delBtn = tr.querySelector('.btn-hist-del');
+      if (delBtn) delBtn.addEventListener('click', () => deleteHistoryItem(h.id));
       tbody.appendChild(tr);
     });
     initIcons();
@@ -2480,8 +2605,11 @@ async function loadAnalytics() {
   }
 
   try {
+    const scopeEl = document.getElementById('analytics-scope-select');
+    const scope = scopeEl ? scopeEl.value : 'all';
     const gidParam = state.activeGuildId ? `&guild_id=${state.activeGuildId}` : '';
-    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}${gidParam}`);
+    const scopeParam = scope === 'guild' ? '&scope=guild' : '';
+    const res = await fetch(`/api/analytics?timeframe=${state.analyticsTimeframe}${gidParam}${scopeParam}`);
     const data = await res.json();
 
     state.analyticsBaseSeconds = (data.total_seconds || 0) - (data.live_elapsed || 0);
@@ -2665,7 +2793,7 @@ async function loadAdminDiagnostics() {
       </div>
       <div class="glass-panel p-5 rounded-2xl">
         <p class="text-xs text-[#9E9EAD] font-medium">Active Radio Streams</p>
-        <p class="text-2xl font-extrabold text-amber-400 mt-1">${data.active_radio_streams}</p>
+        <p class="text-2xl font-extrabold text-brand-secondary mt-1 tabular-nums">${data.active_radio_streams}</p>
         <p class="text-[11px] text-[#6B6A78] mt-1">24/7 continuous audio</p>
       </div>
       <div class="glass-panel p-5 rounded-2xl">
@@ -3033,5 +3161,45 @@ function onSelectSpotifyQuickPlaylist(url) {
   const nameInput = document.getElementById('import-playlist-name');
   if (nameInput && (!nameInput.value.trim() || importDestMode === 'new')) {
     nameInput.value = pName;
+  }
+}
+
+// ------------------- ROUTE LINK & LIVE SIDEBAR TELEMETRY -------------------
+function resolveStaticRouteLinks() {
+  document.querySelectorAll('a[data-route-link]').forEach(el => {
+    const target = el.getAttribute('data-route-link');
+    if (target) {
+      el.href = `${BASE_PATH}/${target}`;
+    }
+  });
+}
+
+async function refreshSidebarStatus() {
+  try {
+    const res = await fetch('/api/status', { cache: 'no-store' });
+    if (!res.ok) return;
+    const d = await res.json();
+    const isOp = d.status === 'operational' || d.is_online;
+    const pingText = (typeof d.ping_ms === 'number')
+      ? `${d.ping_ms} ms`
+      : (typeof d.db_latency_ms === 'number' ? `${d.db_latency_ms} ms` : 'Live');
+
+    ['gateway-dot', 'mobile-gateway-dot'].forEach(id => {
+      const dot = document.getElementById(id);
+      if (dot) {
+        dot.className = isOp
+          ? 'w-2 h-2 rounded-full bg-emerald-400 shrink-0'
+          : 'w-2 h-2 rounded-full bg-brand-secondary shrink-0';
+      }
+    });
+    ['sidebar-status-ping', 'mobile-status-ping'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = pingText;
+    });
+  } catch (e) {
+    ['sidebar-status-ping', 'mobile-status-ping'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = 'Offline';
+    });
   }
 }

@@ -160,7 +160,7 @@ class TestFixesVerification(unittest.TestCase):
         self.assertEqual(row2.children[1].emoji, EmojiPartials.DISLIKE)
 
         footer_ap = items_ap[4]
-        self.assertIn("Audia AI Active", footer_ap.content)
+        self.assertIn("Audia AI AutoPlay Active", footer_ap.content)
         self.assertIn(Emojis.AUDIA_AI, footer_ap.content)
 
     def test_no_embed_footers(self):
@@ -176,7 +176,7 @@ class TestFixesVerification(unittest.TestCase):
         # Should instantiate smoothly without raising "v2 items cannot be added to this view"
         view = AutoPlayControlCenterView(music_cog=None, user=user, queue=queue)
         self.assertIsInstance(view, discord.ui.View)
-        self.assertEqual(len(view.children), 6)  # mood_select, lang_select, disc_select, toggle, block, profile
+        self.assertEqual(len(view.children), 7)  # mood_select, lang_select, disc_select, toggle, block, unblock, profile
         embed = view.build_embed()
         self.assertIsNone(embed.footer.text)
 
@@ -192,6 +192,37 @@ class TestFixesVerification(unittest.TestCase):
         self.assertIn("voice_latency", data)
         self.assertIn("latency_ms", data)
         self.assertEqual(data["voice_latency"], 18.5)
+
+    def test_unblock_artist_discord_and_history_db_import(self):
+        import inspect
+        import cogs.music as music_mod
+        from cogs.music import AutoPlayUnblockView, build_now_playing_embed
+        from services.autoplay_service import AutoPlayService
+
+        ap = AutoPlayService.get_instance()
+        uid = 999888777666111
+        try:
+            ap.block_artist(uid, "Blocked Test Artist")
+            view = AutoPlayUnblockView(uid)
+            # First item is Select dropdown with the blocked artist
+            select_items = [c for c in view.children if isinstance(c, discord.ui.Select)]
+            self.assertEqual(len(select_items), 1)
+            self.assertEqual(select_items[0].options[0].value, "Blocked Test Artist")
+
+            ok, _, rem = ap.unblock_artist(uid, "blocked test artist")
+            self.assertTrue(ok)
+            self.assertEqual(rem, [])
+        finally:
+            ap._profiles.pop(uid, None)
+            ap.save_profiles()
+
+        # Verify build_now_playing_embed has Support Bot style platform footer & play_track imports db
+        q = GuildMusicQueue(guild_id=999999)
+        empty_emb = build_now_playing_embed(q)
+        self.assertEqual(empty_emb.footer.text, "SyncInk Platform")
+        play_src = inspect.getsource(music_mod.Music.play_track)
+        self.assertIn("from database import db", play_src)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -47,129 +47,247 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Cyber Violet Stylesheet -->
-  <link rel="stylesheet" href="static/style.css?v=2.7.0">
+  <link rel="stylesheet" href="static/style.css?v=2.9.0">
 </head>
 <body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none font-sans">
 
   <!-- ==================== DESKTOP SIDEBAR ==================== -->
-  <aside id="sidebar" class="hidden md:flex flex-col w-64 bg-[#14131a] border-r border-brand-border/40 p-5 shrink-0 z-30 transition-all duration-300">
+  <aside id="sidebar" class="hidden md:flex flex-col w-[264px] bg-[#14131a] border-r border-brand-border/40 px-3.5 py-4 shrink-0 z-30 transition-colors duration-200 select-none">
     <!-- Brand Logo & Header -->
-    <div class="flex items-center gap-3 px-2 mb-7 cursor-pointer" onclick="navigateTo('overview')">
-      <div class="relative">
-        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-10 h-10 rounded-xl shadow-lg shadow-brand-primary/20 object-cover">
-        <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 bg-emerald-500 border-2 border-[#14131a] rounded-full"></span>
+    <div class="flex items-center gap-3 px-2.5 py-1.5 mb-5 cursor-pointer rounded-xl hover:bg-white/[0.03] transition-colors" onclick="navigateTo('overview')">
+      <div class="relative shrink-0">
+        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
+        <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-[#14131a] rounded-full"></span>
       </div>
-      <div>
-        <h1 class="font-extrabold text-base tracking-tight bg-gradient-to-r from-white via-slate-100 to-[#B9A2F2] bg-clip-text text-transparent">SyncInk Radio</h1>
-        <p class="text-[11px] text-[#9E9EAD] font-medium tracking-wide">Audia AI Engine</p>
+      <div class="min-w-0">
+        <h1 class="font-semibold text-[15px] leading-tight tracking-tight text-white truncate">SyncInk Radio</h1>
+        <p class="text-[11px] text-[#9E9EAD] font-medium truncate">Audia Audio Engine</p>
       </div>
     </div>
 
     <!-- Navigation Links -->
-    <nav class="flex-1 space-y-1.5 overflow-y-auto pr-1">
-      <a href="#overview" onclick="navigateTo('overview')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-white bg-brand-primary/20 border border-brand-primary/30" data-view="overview">
-        <i data-lucide="layout-dashboard" class="w-5 h-5 text-brand-secondary"></i>
-        <span>Home Overview</span>
+    <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none pr-0.5" aria-label="Primary Navigation">
+      <div class="px-2.5 pb-1 text-[11px] font-medium text-[#6B6A78]">Studio</div>
+
+      <a href="#overview" onclick="navigateTo('overview')" class="nav-item active-nav group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap transition-[background-color,color,border-color] duration-150 text-white bg-brand-primary/20 border border-brand-primary/35" data-view="overview">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2.75" y="2.75" width="6.25" height="7.5" rx="1.75"/>
+            <rect x="11" y="2.75" width="6.25" height="4.5" rx="1.75"/>
+            <rect x="11" y="9.5" width="6.25" height="7.75" rx="1.75"/>
+            <rect x="2.75" y="12.5" width="6.25" height="4.75" rx="1.75"/>
+          </svg>
+        </span>
+        <span class="truncate">Home Overview</span>
       </a>
-      <a href="#radio" onclick="navigateTo('radio')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="radio">
-        <i data-lucide="radio" class="w-5 h-5 text-purple-400"></i>
-        <span>Radio & Discover</span>
-        <span class="ml-auto text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-300">30K+</span>
+
+      <a href="#radio" onclick="navigateTo('radio')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="radio">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="10" cy="8.5" r="1.75" fill="currentColor" stroke="none"/>
+            <path d="M6.4 11.7a4.9 4.9 0 0 1 0-6.4"/>
+            <path d="M13.6 5.3a4.9 4.9 0 0 1 0 6.4"/>
+            <path d="M3.8 14a8.4 8.4 0 0 1 0-11"/>
+            <path d="M16.2 3a8.4 8.4 0 0 1 0 11"/>
+            <path d="M10 10.25V17.25"/>
+            <path d="M7.25 17.25h5.5"/>
+          </svg>
+        </span>
+        <span class="truncate">Radio &amp; Discover</span>
+        <span class="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/15 text-brand-secondary tabular-nums">30K+</span>
       </a>
-      <a href="#audia" onclick="navigateTo('audia')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="audia">
-        <i data-lucide="sparkles" class="w-5 h-5 text-amber-400"></i>
-        <span>Audia AI Studio</span>
-        <span class="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded bg-brand-primary/30 text-brand-secondary">Audia AI</span>
+
+      <a href="#audia" onclick="navigateTo('audia')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="audia">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 10v0"/>
+            <path d="M6.25 7.25v5.5"/>
+            <path d="M10 4.25v11.5"/>
+            <path d="M13.75 6.25v7.5"/>
+            <path d="M17 8.5v3"/>
+            <circle cx="10" cy="10" r="1.4" fill="#14131a"/>
+          </svg>
+        </span>
+        <span class="truncate">Audia AI Studio</span>
+        <span class="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/20 text-brand-secondary">AI</span>
       </a>
-      <a href="#library" onclick="navigateTo('library')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="library">
-        <i data-lucide="library" class="w-5 h-5 text-indigo-400"></i>
-        <span>My Library</span>
+
+      <div class="px-2.5 pb-1 pt-3 text-[11px] font-medium text-[#6B6A78]">Library &amp; Activity</div>
+
+      <a href="#library" onclick="navigateTo('library')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="library">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="4" width="10.5" height="12.5" rx="2"/>
+            <circle cx="8.25" cy="10.25" r="2.25"/>
+            <path d="M13.5 6.5h2.25a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H13.5"/>
+          </svg>
+        </span>
+        <span class="truncate">My Library</span>
       </a>
-      <a href="#history" onclick="navigateTo('history')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="history">
-        <i data-lucide="history" class="w-5 h-5 text-sky-400"></i>
-        <span>Listening History</span>
+
+      <a href="#history" onclick="navigateTo('history')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="history">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3.5 9.75a6.5 6.5 0 1 1 1.55 4.25"/>
+            <path d="M3.25 6.25v3.5h3.5"/>
+            <path d="M10 6.5v3.75l2.5 1.5"/>
+          </svg>
+        </span>
+        <span class="truncate">Listening History</span>
       </a>
-      <a href="#analytics" onclick="navigateTo('analytics')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="analytics">
-        <i data-lucide="bar-chart-3" class="w-5 h-5 text-rose-400"></i>
-        <span>Analytics</span>
+
+      <a href="#analytics" onclick="navigateTo('analytics')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="analytics">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 16.5h14"/>
+            <rect x="4.5" y="10.5" width="2.25" height="6" rx="0.75"/>
+            <rect x="8.875" y="5.5" width="2.25" height="11" rx="0.75"/>
+            <rect x="13.25" y="8" width="2.25" height="8.5" rx="0.75"/>
+          </svg>
+        </span>
+        <span class="truncate">Analytics</span>
       </a>
-      <a href="#servers" onclick="navigateTo('servers')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="servers">
-        <i data-lucide="server" class="w-5 h-5 text-emerald-400"></i>
-        <span>My Servers</span>
+
+      <a href="#servers" onclick="navigateTo('servers')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="servers">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="3" y="3.5" width="14" height="5" rx="1.5"/>
+            <rect x="3" y="11.5" width="14" height="5" rx="1.5"/>
+            <circle cx="6" cy="6" r="0.85" fill="currentColor" stroke="none"/>
+            <circle cx="6" cy="14" r="0.85" fill="currentColor" stroke="none"/>
+            <path d="M11 6h3M11 14h3"/>
+          </svg>
+        </span>
+        <span class="truncate">My Servers</span>
       </a>
 
       <!-- Protected Admin Section (Only visible for system admins) -->
-      <div id="nav-admin-section" class="pt-4 pb-2 hidden">
-        <div class="h-px bg-brand-border/30 w-full mb-3"></div>
-        <p class="px-3 text-[11px] font-bold uppercase tracking-wider text-[#6B6A78]">Global Control</p>
-        <a href="#admin" onclick="navigateTo('admin')" class="nav-item flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all text-[#9E9EAD] hover:text-white hover:bg-brand-surface mt-1" data-view="admin">
-          <i data-lucide="shield-check" class="w-5 h-5 text-brand-secondary"></i>
-          <span>System Admin</span>
+      <div id="nav-admin-section" class="pt-3 pb-1 hidden">
+        <div class="h-px bg-brand-border/25 w-full mb-2.5"></div>
+        <p class="px-2.5 pb-1 text-[11px] font-medium text-[#6B6A78]">System</p>
+        <a href="#admin" onclick="navigateTo('admin')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="admin">
+          <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M10 2.75 16.25 5.2v4.7c0 3.7-2.6 6.7-6.25 7.6-3.65-.9-6.25-3.9-6.25-7.6V5.2L10 2.75z"/>
+              <path d="M7.5 10.25 9.25 12l3.5-3.75"/>
+            </svg>
+          </span>
+          <span class="truncate">System Admin</span>
         </a>
       </div>
     </nav>
 
-    <!-- Sidebar Footer / Web Gateway Status -->
-    <div class="mt-auto pt-4 border-t border-brand-border/30 flex items-center justify-between text-xs text-[#9E9EAD]">
-      <div class="flex items-center gap-2">
-        <span id="gateway-dot" class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span id="gateway-status" class="font-medium text-[11px]">Live Gateway</span>
+    <!-- Quiet Real-Time Status & Legal Footer -->
+    <div class="mt-auto pt-3 border-t border-brand-border/25 space-y-2.5 shrink-0">
+      <a href="/status" data-route-link="status" class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-brand-surface/70 hover:bg-brand-surface border border-brand-border/30 text-xs font-medium text-[#9E9EAD] hover:text-white transition-[background-color,color,border-color] duration-150 whitespace-nowrap">
+        <span id="gateway-dot" class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
+        <span id="gateway-status" class="truncate">Live Bot Status</span>
+        <span id="sidebar-status-ping" class="ml-auto font-mono text-[11px] text-[#6B6A78] tabular-nums">-- ms</span>
+      </a>
+      <div class="flex items-center justify-between px-2.5 text-[11px] text-[#6B6A78]">
+        <div class="flex items-center gap-2">
+          <a href="/privacy" data-route-link="privacy" class="hover:text-brand-secondary transition-colors">Privacy</a>
+          <span aria-hidden="true">·</span>
+          <a href="/terms" data-route-link="terms" class="hover:text-brand-secondary transition-colors">Terms</a>
+        </div>
+        <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="hover:text-brand-secondary transition-colors">Support</a>
       </div>
-      <span class="text-[11px] text-[#6B6A78] font-mono">v2.5.0</span>
     </div>
   </aside>
 
   <!-- ==================== MOBILE SLIDE-OUT DRAWER ==================== -->
   <div id="mobile-drawer-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden md:hidden" onclick="closeMobileMenu()"></div>
-  <aside id="mobile-drawer" class="fixed top-0 bottom-0 left-0 w-72 bg-[#14131a] border-r border-brand-border/40 p-5 shrink-0 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col md:hidden">
-    <div class="flex items-center justify-between mb-6">
-      <div class="flex items-center gap-3" onclick="navigateTo('overview'); closeMobileMenu();">
-        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl object-cover">
+  <aside id="mobile-drawer" class="fixed top-0 bottom-0 left-0 w-72 bg-[#14131a] border-r border-brand-border/40 p-4 shrink-0 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col md:hidden select-none">
+    <div class="flex items-center justify-between mb-5 px-1">
+      <div class="flex items-center gap-2.5 cursor-pointer" onclick="navigateTo('overview'); closeMobileMenu();">
+        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
         <div>
-          <h2 class="font-extrabold text-sm text-white">SyncInk Radio</h2>
-          <p class="text-[10px] text-[#9E9EAD]">Audia AI Engine</p>
+          <h2 class="font-semibold text-sm text-white leading-tight">SyncInk Radio</h2>
+          <p class="text-[11px] text-[#9E9EAD]">Audia Audio Engine</p>
         </div>
       </div>
-      <button onclick="closeMobileMenu()" class="text-[#9E9EAD] hover:text-white p-1">
+      <button onclick="closeMobileMenu()" class="text-[#9E9EAD] hover:text-white p-1.5 rounded-lg hover:bg-brand-surface transition-colors" aria-label="Close Menu">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
 
-    <nav class="flex-1 space-y-1 overflow-y-auto">
-      <a href="#overview" onclick="navigateTo('overview')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-white hover:bg-brand-surface">
-        <i data-lucide="layout-dashboard" class="w-4 h-4 text-brand-secondary"></i> Home Overview
+    <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none">
+      <a href="#overview" onclick="navigateTo('overview')" data-view="overview" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap text-white bg-brand-primary/20 border border-brand-primary/35">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="2.75" width="6.25" height="7.5" rx="1.75"/><rect x="11" y="2.75" width="6.25" height="4.5" rx="1.75"/><rect x="11" y="9.5" width="6.25" height="7.75" rx="1.75"/><rect x="2.75" y="12.5" width="6.25" height="4.75" rx="1.75"/></svg>
+        </span>
+        <span>Home Overview</span>
       </a>
-      <a href="#radio" onclick="navigateTo('radio')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="radio" class="w-4 h-4 text-purple-400"></i> Radio & Discover
+      <a href="#radio" onclick="navigateTo('radio')" data-view="radio" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="8.5" r="1.75" fill="currentColor" stroke="none"/><path d="M6.4 11.7a4.9 4.9 0 0 1 0-6.4"/><path d="M13.6 5.3a4.9 4.9 0 0 1 0 6.4"/><path d="M3.8 14a8.4 8.4 0 0 1 0-11"/><path d="M16.2 3a8.4 8.4 0 0 1 0 11"/><path d="M10 10.25V17.25"/><path d="M7.25 17.25h5.5"/></svg>
+        </span>
+        <span>Radio &amp; Discover</span>
+        <span class="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/15 text-brand-secondary">30K+</span>
       </a>
-      <a href="#audia" onclick="navigateTo('audia')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="sparkles" class="w-4 h-4 text-amber-400"></i> Audia AI Studio
+      <a href="#audia" onclick="navigateTo('audia')" data-view="audia" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v0"/><path d="M6.25 7.25v5.5"/><path d="M10 4.25v11.5"/><path d="M13.75 6.25v7.5"/><path d="M17 8.5v3"/><circle cx="10" cy="10" r="1.4" fill="#14131a"/></svg>
+        </span>
+        <span>Audia AI Studio</span>
+        <span class="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/20 text-brand-secondary">AI</span>
       </a>
-      <a href="#library" onclick="navigateTo('library')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="library" class="w-4 h-4 text-indigo-400"></i> My Library
+      <a href="#library" onclick="navigateTo('library')" data-view="library" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="10.5" height="12.5" rx="2"/><circle cx="8.25" cy="10.25" r="2.25"/><path d="M13.5 6.5h2.25a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H13.5"/></svg>
+        </span>
+        <span>My Library</span>
       </a>
-      <a href="#history" onclick="navigateTo('history')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="history" class="w-4 h-4 text-sky-400"></i> Listening History
+      <a href="#history" onclick="navigateTo('history')" data-view="history" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.75a6.5 6.5 0 1 1 1.55 4.25"/><path d="M3.25 6.25v3.5h3.5"/><path d="M10 6.5v3.75l2.5 1.5"/></svg>
+        </span>
+        <span>Listening History</span>
       </a>
-      <a href="#analytics" onclick="navigateTo('analytics')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="bar-chart-3" class="w-4 h-4 text-rose-400"></i> Analytics
+      <a href="#analytics" onclick="navigateTo('analytics')" data-view="analytics" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5h14"/><rect x="4.5" y="10.5" width="2.25" height="6" rx="0.75"/><rect x="8.875" y="5.5" width="2.25" height="11" rx="0.75"/><rect x="13.25" y="8" width="2.25" height="8.5" rx="0.75"/></svg>
+        </span>
+        <span>Analytics</span>
       </a>
-      <a href="#servers" onclick="navigateTo('servers')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface">
-        <i data-lucide="server" class="w-4 h-4 text-emerald-400"></i> My Servers
+      <a href="#servers" onclick="navigateTo('servers')" data-view="servers" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><circle cx="6" cy="6" r="0.85" fill="currentColor" stroke="none"/><circle cx="6" cy="14" r="0.85" fill="currentColor" stroke="none"/><path d="M11 6h3M11 14h3"/></svg>
+        </span>
+        <span>My Servers</span>
       </a>
-      <a href="#admin" id="mobile-nav-admin" onclick="navigateTo('admin')" class="flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium text-[#9E9EAD] hover:bg-brand-surface hidden">
-        <i data-lucide="shield-check" class="w-4 h-4 text-brand-secondary"></i> System Admin
+      <a href="#admin" id="mobile-nav-admin" onclick="navigateTo('admin')" data-view="admin" class="nav-item hidden flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.75 16.25 5.2v4.7c0 3.7-2.6 6.7-6.25 7.6-3.65-.9-6.25-3.9-6.25-7.6V5.2L10 2.75z"/><path d="M7.5 10.25 9.25 12l3.5-3.75"/></svg>
+        </span>
+        <span>System Admin</span>
       </a>
 
-      <!-- Mobile Bot Invite CTA Link -->
-      <div class="pt-3 pb-1 border-t border-brand-border/30 mt-3">
-        <p class="px-3 text-[10px] font-bold uppercase tracking-wider text-[#6B6A78]">Add to Discord</p>
-        <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/15 border border-brand-primary/30 hover:bg-brand-primary/25 transition-all mt-1">
+      <!-- Mobile Bot Invite CTA -->
+      <div class="pt-3 pb-1 border-t border-brand-border/25 mt-3">
+        <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" rel="noopener" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/15 border border-brand-primary/30 hover:bg-brand-primary/25 transition-colors">
           <i data-lucide="plus-circle" class="w-4 h-4 text-brand-secondary"></i>
           <span>Invite Bot to Server</span>
         </a>
       </div>
     </nav>
+
+    <!-- Mobile Drawer Footer -->
+    <div class="mt-auto pt-3 border-t border-brand-border/25 space-y-2.5 shrink-0">
+      <a href="/status" data-route-link="status" class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs font-medium text-[#9E9EAD] hover:text-white whitespace-nowrap">
+        <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0" id="mobile-gateway-dot"></span>
+        <span>Live Bot Status</span>
+        <span id="mobile-status-ping" class="ml-auto font-mono text-[11px] text-[#6B6A78] tabular-nums">-- ms</span>
+      </a>
+      <div class="flex items-center justify-between px-2 text-[11px] text-[#6B6A78]">
+        <div class="flex items-center gap-2">
+          <a href="/privacy" data-route-link="privacy" class="hover:text-brand-secondary">Privacy</a>
+          <span>·</span>
+          <a href="/terms" data-route-link="terms" class="hover:text-brand-secondary">Terms</a>
+        </div>
+        <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="hover:text-brand-secondary">Support</a>
+      </div>
+    </div>
   </aside>
 
   <!-- ==================== MAIN CONTENT WRAPPER ==================== -->
@@ -221,7 +339,7 @@
         <!-- Discord User Pill / Login Button / Demo Mode -->
         <div id="auth-container" class="flex items-center gap-2">
           <button id="demo-mode-btn" onclick="toggleDemoMode()" style="display: none;" class="hidden items-center gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-xl text-xs font-semibold text-brand-secondary border border-brand-primary/40 bg-brand-primary/10 hover:bg-brand-primary/20 transition-all cursor-pointer" title="Preview dashboard with interactive demo data">
-            <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+            <i data-lucide="compass" class="w-3.5 h-3.5"></i>
             <span id="demo-mode-label">Demo Mode</span>
           </button>
           <a href="/api/auth/discord/login" id="login-btn" class="inline-flex items-center gap-2 px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-brand-primary to-purple-600 hover:shadow-lg hover:shadow-brand-primary/30 transition-all">
@@ -353,8 +471,9 @@
         <div>
           <div class="flex items-center justify-between mb-4">
             <div>
-              <h3 class="text-lg font-bold flex items-center gap-2">
-                <i data-lucide="sparkles" class="w-5 h-5 text-amber-400"></i> Recommended by Audia AI
+              <h3 class="text-lg font-semibold flex items-center gap-2 text-white">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#B9A2F2" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v0M6.25 7.25v5.5M10 4.25v11.5M13.75 6.25v7.5M17 8.5v3"/></svg>
+                Recommended by Audia AI
               </h3>
               <p class="text-xs text-[#9E9EAD]">Personalized tracks generated from your actual listening taste profile</p>
             </div>
@@ -382,7 +501,7 @@
 
           <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5">
             <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('lofi')">
-              <div class="w-12 h-12 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-3 group-hover:scale-110 transition-transform">
+              <div class="w-12 h-12 rounded-2xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-secondary mb-3 group-hover:scale-105 transition-transform">
                 <i data-lucide="coffee" class="w-6 h-6"></i>
               </div>
               <h4 class="font-bold text-sm">Lo-Fi Beats</h4>
@@ -426,8 +545,8 @@
             </div>
 
             <div class="glass-card-interactive p-4 flex flex-col items-center text-center cursor-pointer group" onclick="tunePresetRadio('kpop')">
-              <div class="w-12 h-12 rounded-2xl bg-pink-500/10 border border-pink-500/30 flex items-center justify-center text-pink-400 mb-3 group-hover:scale-110 transition-transform">
-                <i data-lucide="sparkles" class="w-6 h-6"></i>
+              <div class="w-12 h-12 rounded-2xl bg-brand-primary/15 border border-brand-primary/30 flex items-center justify-center text-brand-secondary mb-3 group-hover:scale-105 transition-transform">
+                <i data-lucide="music-2" class="w-6 h-6"></i>
               </div>
               <h4 class="font-bold text-sm">K-Pop Hits</h4>
               <p class="text-[11px] text-[#9E9EAD] mt-0.5">Korean Idol Beats</p>
@@ -599,12 +718,13 @@
         </div>
 
         <!-- Top Learned Artists & Affinities -->
-        <div class="glass-panel p-6 rounded-3xl">
+        <div class="glass-panel p-6 rounded-2xl">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-base font-bold flex items-center gap-2">
-              <i data-lucide="award" class="w-5 h-5 text-amber-400"></i> Learned Top Artists & Weights
+            <h3 class="text-base font-semibold flex items-center gap-2 text-white">
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#B9A2F2" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 3v14M6 6.5v7M14 5.5v9M2.5 8.5v3M17.5 8.5v3"/></svg>
+              Learned Top Artists &amp; Weights
             </h3>
-            <span class="text-xs text-[#9E9EAD]">Dynamic Affinity Score</span>
+            <span class="text-xs font-mono text-[#9E9EAD]">Dynamic Affinity</span>
           </div>
           <p class="text-xs text-[#9E9EAD] mb-4">Affinities automatically increase upon full track listens and decrease on instant skips.</p>
           <div id="audia-artists-list" class="flex flex-wrap gap-2.5">
@@ -612,10 +732,36 @@
           </div>
         </div>
 
+        <!-- Blocked Artists & Unblock Manager -->
+        <div class="glass-panel p-6 rounded-2xl">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+            <div>
+              <h3 class="text-base font-semibold flex items-center gap-2 text-white">
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#fb7185" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="10" cy="10" r="7.25"/><path d="m5.2 5.2 9.6 9.6"/></svg>
+                Blocked Artists &amp; Exclusions
+              </h3>
+              <p class="text-xs text-[#9E9EAD] mt-1">Blocked artists are excluded from Audia AI recommendations. Click Unblock anytime to restore them.</p>
+            </div>
+            <span id="audia-blocked-count" class="self-start sm:self-center text-xs font-mono px-2.5 py-1 rounded-lg bg-[#14131a] border border-brand-border/30 text-[#9E9EAD] tabular-nums shrink-0">0 blocked</span>
+          </div>
+
+          <div class="flex flex-col sm:flex-row gap-2 mb-4">
+            <input type="text" id="audia-block-input" placeholder="Enter artist name to block (e.g. Honey Singh)..." class="flex-1 bg-[#14131a] border border-brand-border/40 rounded-xl px-3.5 py-2 text-xs text-white placeholder-[#6B6A78] outline-none focus:border-brand-primary transition-colors">
+            <button type="button" onclick="blockArtistFromInput()" class="px-4 py-2 rounded-xl bg-brand-primary hover:bg-brand-primary/90 text-white text-xs font-semibold transition-colors whitespace-nowrap shrink-0">
+              Block Artist
+            </button>
+          </div>
+
+          <div id="audia-blocked-list" class="flex flex-wrap gap-2">
+            <!-- Dynamically populated blocked artists with Unblock button -->
+          </div>
+        </div>
+
         <!-- Dedicated Recommendations Feed with Explanations -->
-        <div class="glass-panel p-6 rounded-3xl">
-          <h3 class="text-base font-bold mb-1 flex items-center gap-2">
-            <i data-lucide="sparkles" class="w-5 h-5 text-brand-secondary"></i> Audia AI Recommendations Feed
+        <div class="glass-panel p-6 rounded-2xl">
+          <h3 class="text-base font-semibold mb-1 flex items-center gap-2 text-white">
+            <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="#B9A2F2" stroke-width="1.65" stroke-linecap="round" aria-hidden="true"><path d="M3 10v0M6.25 7.25v5.5M10 4.25v11.5M13.75 6.25v7.5M17 8.5v3"/></svg>
+            Audia AI Recommendations Feed
           </h3>
           <p class="text-xs text-[#9E9EAD] mb-4">Hyper-personalized songs with reasoning generated by the AI Engine.</p>
           <div id="audia-recommendations-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -699,28 +845,33 @@
             <p class="text-xs text-[#9E9EAD]">Chronological record of completed tracks, radio streams, and session durations.</p>
           </div>
 
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Scope Filter -->
+            <select id="history-scope-select" onchange="loadListeningHistory()" class="bg-brand-surface border border-brand-border/40 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-primary">
+              <option value="all">All Activity</option>
+              <option value="guild">Selected Server</option>
+            </select>
             <!-- Search History -->
-            <div class="flex items-center gap-2 bg-brand-surface border border-brand-border/40 rounded-xl px-3 py-1.5 text-xs">
-              <i data-lucide="search" class="w-3.5 h-3.5 text-[#9E9EAD]"></i>
-              <input type="text" id="history-search-input" oninput="debounceHistorySearch()" placeholder="Search history..." class="bg-transparent border-none outline-none text-xs text-white w-32 sm:w-44 placeholder-[#6B6A78]">
+            <div class="flex items-center gap-2 bg-brand-surface border border-brand-border/40 rounded-xl px-3 py-1.5 text-xs flex-1 sm:flex-initial">
+              <i data-lucide="search" class="w-3.5 h-3.5 text-[#9E9EAD] shrink-0"></i>
+              <input type="text" id="history-search-input" oninput="debounceHistorySearch()" placeholder="Search history..." class="bg-transparent border-none outline-none text-xs text-white w-full sm:w-44 placeholder-[#6B6A78]">
             </div>
-            <button onclick="confirmClearHistory()" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-all flex items-center gap-1.5">
+            <button onclick="confirmClearHistory()" class="px-3 py-1.5 rounded-xl text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/30 hover:bg-rose-500/20 transition-colors flex items-center gap-1.5 shrink-0">
               <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Clear
             </button>
           </div>
         </div>
 
         <!-- Timeframe Filters -->
-        <div class="flex items-center gap-2 border-b border-brand-border/30 pb-3">
-          <button onclick="switchHistoryTimeframe('all')" id="hist-tf-all" class="px-3.5 py-1.5 rounded-xl text-xs font-bold bg-brand-primary text-white">All Time</button>
-          <button onclick="switchHistoryTimeframe('24h')" id="hist-tf-24h" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-surface text-[#9E9EAD] hover:text-white">Past 24 Hours</button>
-          <button onclick="switchHistoryTimeframe('7d')" id="hist-tf-7d" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-surface text-[#9E9EAD] hover:text-white">Past 7 Days</button>
-          <button onclick="switchHistoryTimeframe('30d')" id="hist-tf-30d" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-surface text-[#9E9EAD] hover:text-white">Past 30 Days</button>
+        <div class="flex items-center gap-2 overflow-x-auto scrollbar-none border-b border-brand-border/30 pb-3">
+          <button onclick="switchHistoryTimeframe('all')" id="hist-tf-all" class="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-brand-primary text-white whitespace-nowrap shrink-0">All Time</button>
+          <button onclick="switchHistoryTimeframe('24h')" id="hist-tf-24h" class="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-brand-surface text-[#9E9EAD] hover:text-white whitespace-nowrap shrink-0">Past 24 Hours</button>
+          <button onclick="switchHistoryTimeframe('7d')" id="hist-tf-7d" class="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-brand-surface text-[#9E9EAD] hover:text-white whitespace-nowrap shrink-0">Past 7 Days</button>
+          <button onclick="switchHistoryTimeframe('30d')" id="hist-tf-30d" class="px-3.5 py-1.5 rounded-xl text-xs font-medium bg-brand-surface text-[#9E9EAD] hover:text-white whitespace-nowrap shrink-0">Past 30 Days</button>
         </div>
 
-        <div class="glass-panel rounded-2xl overflow-hidden border border-brand-border/30">
-          <table class="w-full text-left text-xs">
+        <div class="glass-panel rounded-2xl overflow-x-auto border border-brand-border/30">
+          <table class="w-full text-left text-xs min-w-[500px] sm:min-w-0">
             <thead class="bg-[#14131a] text-[#9E9EAD] uppercase font-semibold border-b border-brand-border/40">
               <tr>
                 <th class="px-4 py-3">Track / Station</th>
@@ -742,19 +893,25 @@
       <section id="view-analytics" class="view-panel hidden space-y-6 max-w-7xl mx-auto pb-16">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h2 class="text-2xl font-extrabold flex items-center gap-2.5">
-              <i data-lucide="bar-chart-3" class="w-7 h-7 text-rose-400"></i> Listening Analytics
+            <h2 class="text-2xl font-bold flex items-center gap-2.5">
+              <i data-lucide="bar-chart-3" class="w-7 h-7 text-brand-secondary"></i> Listening Analytics
             </h2>
-            <p class="text-xs text-[#9E9EAD]">Deep behavioral metrics and listening patterns calculated from real database playback logs.</p>
+            <p class="text-xs text-[#9E9EAD]">Behavioral metrics and listening patterns calculated from real playback records.</p>
           </div>
 
-          <!-- Timeframe selector -->
-          <div class="flex items-center gap-1.5 bg-brand-surface border border-brand-border/40 p-1 rounded-xl text-xs">
-            <button onclick="switchAnalyticsTimeframe('24h')" id="an-tf-24h" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">24H</button>
-            <button onclick="switchAnalyticsTimeframe('7d')" id="an-tf-7d" class="px-3 py-1 rounded-lg font-bold bg-brand-primary text-white">7D</button>
-            <button onclick="switchAnalyticsTimeframe('30d')" id="an-tf-30d" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">30D</button>
-            <button onclick="switchAnalyticsTimeframe('90d')" id="an-tf-90d" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">90D</button>
-            <button onclick="switchAnalyticsTimeframe('all')" id="an-tf-all" class="px-3 py-1 rounded-lg font-semibold text-[#9E9EAD] hover:text-white">All Time</button>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="analytics-scope-select" onchange="loadAnalytics()" class="bg-brand-surface border border-brand-border/40 rounded-xl px-2.5 py-1.5 text-xs text-white outline-none focus:border-brand-primary">
+              <option value="all">All Activity</option>
+              <option value="guild">Selected Server</option>
+            </select>
+            <!-- Timeframe selector -->
+            <div class="flex flex-wrap items-center gap-1 bg-brand-surface border border-brand-border/40 p-1 rounded-xl text-xs">
+              <button onclick="switchAnalyticsTimeframe('24h')" id="an-tf-24h" class="px-2.5 py-1 rounded-lg font-medium text-[#9E9EAD] hover:text-white">24H</button>
+              <button onclick="switchAnalyticsTimeframe('7d')" id="an-tf-7d" class="px-2.5 py-1 rounded-lg font-medium text-[#9E9EAD] hover:text-white">7D</button>
+              <button onclick="switchAnalyticsTimeframe('30d')" id="an-tf-30d" class="px-2.5 py-1 rounded-lg font-medium text-[#9E9EAD] hover:text-white">30D</button>
+              <button onclick="switchAnalyticsTimeframe('90d')" id="an-tf-90d" class="px-2.5 py-1 rounded-lg font-medium text-[#9E9EAD] hover:text-white">90D</button>
+              <button onclick="switchAnalyticsTimeframe('all')" id="an-tf-all" class="px-2.5 py-1 rounded-lg font-semibold bg-brand-primary text-white">All Time</button>
+            </div>
           </div>
         </div>
 
@@ -979,8 +1136,9 @@
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-1.5 mb-0.5">
-          <span class="text-[10px] font-bold uppercase tracking-wider text-amber-300 flex items-center gap-1">
-            <i data-lucide="sparkles" class="w-3 h-3 text-amber-400"></i> Up Next in <span id="upcoming-countdown" class="font-mono text-white">10</span>s
+          <span class="text-[10px] font-semibold uppercase tracking-wider text-brand-secondary flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 10v0M6.5 7v6M10 4v12M13.5 6.5v7M17 8.5v3"/></svg>
+            Up Next in <span id="upcoming-countdown" class="font-mono text-white tabular-nums">10</span>s
           </span>
         </div>
         <h5 id="upcoming-track-title" class="text-xs font-bold text-white truncate">Upcoming Song</h5>
@@ -1412,8 +1570,8 @@
   <div id="modal-import-playlist" class="modal-backdrop hidden" onclick="closeImportPlaylistModal(event)">
     <div class="modal-content p-6 sm:p-7 space-y-4 max-w-md" onclick="event.stopPropagation()">
       <div class="flex items-center justify-between pb-3 border-b border-brand-border/30">
-        <h3 class="text-base font-bold flex items-center gap-2 text-white">
-          <i data-lucide="sparkles" class="w-5 h-5 text-emerald-400"></i> Transfer / Import Playlist
+        <h3 class="text-base font-semibold flex items-center gap-2 text-white">
+          <i data-lucide="download" class="w-5 h-5 text-emerald-400"></i> Transfer / Import Playlist
         </h3>
         <button onclick="closeImportPlaylistModal()" class="text-[#9E9EAD] hover:text-white p-1">
           <i data-lucide="x" class="w-5 h-5"></i>
@@ -1497,6 +1655,6 @@
   <div id="toast-container"></div>
 
   <!-- Main Client Application Logic -->
-  <script src="static/app.js?v=2.8.0"></script>
+  <script src="static/app.js?v=2.9.0"></script>
 </body>
 </html>

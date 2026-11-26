@@ -124,14 +124,17 @@ def build_now_playing_embed(queue: GuildMusicQueue) -> discord.Embed:
     separator = "───────────────────────────────"
 
     if not current:
+        chan_id = get_music_command_channel_id()
+        chan_ref = f"<#{chan_id}>" if chan_id else "a music channel"
         embed = discord.Embed(
             description=(
                 f"{Emojis.SYNCINK_MUSIC} **Nothing is currently playing.**\n\n"
                 f"{separator}\n\n"
-                f"Use `/play` or `/radio` in <#{MUSIC_COMMAND_CHANNEL_ID}> to begin playback."
+                f"Use `/play` or `/radio` in {chan_ref} to begin playback."
             ),
             color=BRAND_COLOR,
         )
+        embed.set_footer(text="SyncInk Platform", icon_url=BRAND_LOGO_URL)
         return embed
 
     next_track = queue.tracks[0] if queue.tracks else None
@@ -169,6 +172,10 @@ def build_now_playing_embed(queue: GuildMusicQueue) -> discord.Embed:
     if current.thumbnail and current.thumbnail.startswith("http"):
         embed.set_thumbnail(url=current.thumbnail)
 
+    embed.set_footer(
+        text="SyncInk Platform",
+        icon_url=BRAND_LOGO_URL,
+    )
     return embed
 
 class MusicPlayerLayoutView(discord.ui.LayoutView):
@@ -272,11 +279,11 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         sep = discord.ui.Separator(visible=True, spacing=discord.enums.SeparatorSpacing.small)
         items.append(sep)
 
-        # 4. Requester / Audia AI Active footer
+        # 4. Requester / AutoPlay footer (Support Bot writing format)
         if self.queue.autoplay:
-            genre_info = "Pop/EDM"
+            genre_info = "Smart Selection"
             if getattr(self.queue, "last_autoplay_meta", None) and isinstance(self.queue.last_autoplay_meta, dict):
-                genre_info = self.queue.last_autoplay_meta.get("genre") or self.queue.last_autoplay_meta.get("mood") or "Pop/EDM"
+                genre_info = self.queue.last_autoplay_meta.get("genre") or self.queue.last_autoplay_meta.get("mood") or "Smart Selection"
             else:
                 req = current.requested_by if current and getattr(current, "requested_by", None) else None
                 prof = AutoPlayService.get_instance().get_user_profile(req.id if (req and hasattr(req, "id")) else 0)
@@ -288,13 +295,11 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
                     genre_info = prof.manual_mood
                 elif getattr(current, "genre", None):
                     genre_info = current.genre
-                else:
-                    genre_info = "Pop/EDM"
 
-            footer_text = f"{Emojis.AUDIA_AI} Audia AI Active ({genre_info}) • Rate with {Emojis.LIKE} or {Emojis.DISLIKE}"
+            footer_text = f"-# {Emojis.AUDIA_AI} Audia AI AutoPlay Active (`{genre_info}`) • Rate with {Emojis.LIKE} or {Emojis.DISLIKE}"
         else:
             req_id = current.requested_by.id if (current.requested_by and hasattr(current.requested_by, "id")) else 1520522990280769727
-            footer_text = f"{Emojis.MEMBER} Track requested by <@{req_id}>"
+            footer_text = f"-# {Emojis.MEMBER} Track requested by <@{req_id}>"
 
         footer = discord.ui.TextDisplay(footer_text)
         items.append(footer)
@@ -466,12 +471,13 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         )
         embed = discord.Embed(
             description=format_discord_emojis(
-                f"### {Emojis.LIKE} Audia AI • Liked Track\n"
-                f"Your positive rating for **{current.clean_title}** by **{current.author}** has been added to your Audia AI taste profile.\n\n"
-                f"{Emojis.S_ARROW} **Impact:** Audia AI will prioritize similar melodies, artists, and acoustic vibes for your future recommendations!"
+                f"### {Emojis.LIKE} Preference Recorded Successfully\n"
+                f"Thank you for rating! Your positive feedback for **{current.clean_title}** by **{current.author}** has been incorporated into your personal taste profile.\n\n"
+                f"{Emojis.S_ARROW} **Impact:** AutoPlay will prioritize similar melodies, artists, and acoustic vibes for your future recommendations."
             ),
             color=BRAND_COLOR
         )
+        embed.set_footer(text="Audia AI by SyncInk", icon_url=BRAND_LOGO_URL)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     async def on_ap_dislike(self, interaction: discord.Interaction):
@@ -493,12 +499,13 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         # Do NOT stop playback directly; let current song finish smoothly and refine next recommendation
         embed = discord.Embed(
             description=format_discord_emojis(
-                f"### {Emojis.DISLIKE} Audia AI • Disliked Track\n"
+                f"### {Emojis.DISLIKE} Preference Recorded Successfully\n"
                 f"Your feedback has been noted. We've marked **{current.clean_title}** by **{current.author}** as disliked in your profile.\n\n"
-                f"{Emojis.S_ARROW} **Impact:** Current playback will continue smoothly without interruption, and Audia AI will refine upcoming selections to avoid this style and deliver better recommendations."
+                f"{Emojis.S_ARROW} **Impact:** Current playback will continue smoothly without interruption, and AutoPlay will refine upcoming selections to avoid this style and deliver better recommendations."
             ),
             color=BRAND_COLOR
         )
+        embed.set_footer(text="Audia AI by SyncInk", icon_url=BRAND_LOGO_URL)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
 MusicPlayerView = MusicPlayerLayoutView
@@ -1243,19 +1250,120 @@ class AutoPlayBlockArtistModal(discord.ui.Modal, title="Block or Unblock Artist"
 
     async def on_submit(self, interaction: discord.Interaction):
         artist_name = self.artist_input.value.strip()
-        prof = AutoPlayService.get_instance().get_user_profile(self.user_id)
+        ap = AutoPlayService.get_instance()
+        prof = ap.get_user_profile(self.user_id)
         a_low = artist_name.lower()
-        if a_low in prof.blocked_artists:
-            prof.blocked_artists.remove(a_low)
-            AutoPlayService.get_instance().save_profiles()
+        existing_low = {str(a).strip().lower() for a in prof.blocked_artists}
+        if a_low in existing_low:
+            _, _, _ = ap.unblock_artist(self.user_id, artist_name)
             msg = f"{Emojis.CHECK_YES} Unblocked **{artist_name}**. AutoPlay may recommend them again."
         else:
-            prof.blocked_artists.append(a_low)
-            prof.artist_affinity[artist_name] = -10.0
-            AutoPlayService.get_instance().save_profiles()
+            _, _, _ = ap.block_artist(self.user_id, artist_name)
             msg = f"{Emojis.REFUSED} Blocked **{artist_name}**. AutoPlay will never recommend songs by this artist."
-        embed = discord.Embed(description=f"### {msg}", color=BRAND_COLOR)
+        embed = discord.Embed(description=format_discord_emojis(f"### {msg}"), color=BRAND_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class AutoPlayUnblockModal(discord.ui.Modal, title="Unblock Artist"):
+    artist_input = discord.ui.TextInput(
+        label="Artist Name to Unblock",
+        placeholder="Enter the exact or partial artist name...",
+        required=True,
+        min_length=1,
+        max_length=60
+    )
+
+    def __init__(self, user_id: int):
+        super().__init__()
+        self.user_id = user_id
+
+    async def on_submit(self, interaction: discord.Interaction):
+        artist_name = self.artist_input.value.strip()
+        ok, msg, remaining = AutoPlayService.get_instance().unblock_artist(self.user_id, artist_name)
+        icon = Emojis.CHECK_YES if ok else Emojis.WARNING
+        embed = discord.Embed(
+            description=format_discord_emojis(f"### {icon} {msg}\nRemaining blocked artists: `{len(remaining)}`"),
+            color=BRAND_COLOR
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+
+class AutoPlayUnblockView(discord.ui.View):
+    """Interactive selector allowing one-click unblocking of previously blocked artists."""
+
+    def __init__(self, user_id: int):
+        super().__init__(timeout=120.0)
+        self.user_id = user_id
+        self.build_components()
+
+    def build_components(self):
+        self.clear_items()
+        prof = AutoPlayService.get_instance().get_user_profile(self.user_id)
+        blocked = [str(b).strip() for b in prof.blocked_artists if str(b).strip()]
+
+        if blocked:
+            options = [
+                discord.SelectOption(
+                    label=b[:95],
+                    value=b[:95],
+                    description="Click to unblock this artist from AutoPlay"
+                )
+                for b in blocked[:25]
+            ]
+            select = discord.ui.Select(
+                placeholder="Choose an artist to unblock...",
+                options=options,
+                custom_id="ap_select_unblock",
+                row=0
+            )
+            select.callback = self.on_select_unblock
+            self.add_item(select)
+
+        btn_manual = discord.ui.Button(
+            label="Type Artist Name",
+            style=discord.ButtonStyle.secondary,
+            custom_id="ap_unblock_manual",
+            row=1
+        )
+        btn_manual.callback = self.on_manual_modal
+        self.add_item(btn_manual)
+
+    def build_embed(self) -> discord.Embed:
+        prof = AutoPlayService.get_instance().get_user_profile(self.user_id)
+        blocked = [str(b).strip() for b in prof.blocked_artists if str(b).strip()]
+        if blocked:
+            listed = "\n".join(f"• **{b}**" for b in blocked[:25])
+            extra = f"\n*...and {len(blocked) - 25} more*" if len(blocked) > 25 else ""
+            desc = (
+                f"### Blocked Artists ({len(blocked)})\n"
+                f"Select any artist below to remove them from your blocklist immediately:\n\n{listed}{extra}"
+            )
+        else:
+            desc = format_discord_emojis(f"### {Emojis.CHECK_YES} No Blocked Artists\nAll previously blocked artists have been unblocked.")
+        return discord.Embed(description=desc, color=BRAND_COLOR)
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.user_id:
+            await interaction.response.send_message(
+                embed=discord.Embed(description=format_discord_emojis(f"### {Emojis.WARNING} Only the requester can manage these blocked artists."), color=0xED4245),
+                ephemeral=True
+            )
+            return False
+        return True
+
+    async def on_select_unblock(self, interaction: discord.Interaction):
+        val = interaction.data["values"][0]
+        ok, msg, _ = AutoPlayService.get_instance().unblock_artist(self.user_id, val)
+        self.build_components()
+        await interaction.response.edit_message(embed=self.build_embed(), view=self)
+        icon = Emojis.CHECK_YES if ok else Emojis.WARNING
+        await interaction.followup.send(
+            embed=discord.Embed(description=format_discord_emojis(f"### {icon} {msg}"), color=BRAND_COLOR),
+            ephemeral=True
+        )
+
+    async def on_manual_modal(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(AutoPlayUnblockModal(self.user_id))
 
 
 class AutoPlayFeedbackView(discord.ui.View):
@@ -1563,6 +1671,15 @@ class AutoPlayControlCenterView(discord.ui.View):
         )
         btn_block.callback = self.on_block_artist
 
+        btn_unblock = discord.ui.Button(
+            label="Unblock Artist",
+            emoji="🔓",
+            style=discord.ButtonStyle.secondary,
+            custom_id="ap_btn_unblock",
+            row=3
+        )
+        btn_unblock.callback = self.on_unblock_artist
+
         btn_profile = discord.ui.Button(
             label="My Taste Profile",
             emoji="📊",
@@ -1574,6 +1691,7 @@ class AutoPlayControlCenterView(discord.ui.View):
 
         self.add_item(btn_toggle)
         self.add_item(btn_block)
+        self.add_item(btn_unblock)
         self.add_item(btn_profile)
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
@@ -1662,9 +1780,27 @@ class AutoPlayControlCenterView(discord.ui.View):
     async def on_block_artist(self, interaction: discord.Interaction):
         await interaction.response.send_modal(AutoPlayBlockArtistModal(self.music_cog, self.user.id))
 
+    async def on_unblock_artist(self, interaction: discord.Interaction):
+        prof = AutoPlayService.get_instance().get_user_profile(self.user.id)
+        blocked = [str(b).strip() for b in prof.blocked_artists if str(b).strip()]
+        if not blocked:
+            embed = discord.Embed(
+                description=format_discord_emojis(f"### {Emojis.WARNING} No Blocked Artists\nYou have not blocked any artists yet. Click **Block Artist** to exclude an artist."),
+                color=BRAND_COLOR
+            )
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+            return
+        unblock_view = AutoPlayUnblockView(self.user.id)
+        await interaction.response.send_message(embed=unblock_view.build_embed(), view=unblock_view, ephemeral=True)
+
     async def on_view_profile(self, interaction: discord.Interaction):
         prof = AutoPlayService.get_instance().get_user_profile(self.user.id)
-        clean_artists = [a for a, _ in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True) if a and not any(l in a.lower() for l in ["t-series", "sony music", "zee music", "tips", "yrf", "saregama"])]
+        blocked_set = {str(b).strip().lower() for b in prof.blocked_artists if str(b).strip()}
+        clean_artists = [
+            a for a, score in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True)
+            if a and score > 0 and str(a).strip().lower() not in blocked_set
+            and not any(l in a.lower() for l in ["t-series", "sony music", "zee music", "tips", "yrf", "saregama"])
+        ]
         top_art = [f"• **{a}** (score: {prof.artist_affinity[a]:.1f})" for a in clean_artists[:5]]
         top_gen = [f"• **{g}** (score: {s:.1f})" for g, s in sorted(prof.genre_affinity.items(), key=lambda x: x[1], reverse=True)[:5]]
         blocked = [f"`{b}`" for b in prof.blocked_artists[:10]]
@@ -2336,6 +2472,7 @@ class Music(commands.Cog):
 
                     async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb):
                         try:
+                            from database import db
                             # Verify user preference for private listening if user id is known
                             if uid:
                                 pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)

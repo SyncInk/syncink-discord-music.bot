@@ -3,6 +3,7 @@ from discord.ext import commands
 import asyncio
 import os
 import sys
+import time
 import traceback
 from dotenv import load_dotenv
 
@@ -25,6 +26,7 @@ ensure_opus_loaded()
 
 class SyncInkRadioBot(commands.Bot):
     def __init__(self, enable_presences: bool = True):
+        self.start_time: float = time.time()
         intents = discord.Intents.default()
         intents.message_content = True
         intents.members = True

@@ -186,6 +186,122 @@ class TestLiveWebServer(AioHTTPTestCase):
 
         await auth_mgr.destroy_session(session_a)
 
+    async def test_legal_status_routes_and_live_telemetry(self):
+        """Verifies /privacy, /terms, /status direct, subpath, subdomain routing and genuine live /api/status."""
+        routes_to_check = [
+            ("/privacy", "Privacy Policy"),
+            ("/privacy.html", "Privacy Policy"),
+            ("/dashboard/radio/privacy", "Privacy Policy"),
+            ("/terms", "Terms of Use"),
+            ("/terms.html", "Terms of Use"),
+            ("/terms-of-use", "Terms of Use"),
+            ("/dashboard/radio/terms", "Terms of Use"),
+            ("/status", "Live Session Latency Log"),
+            ("/status.html", "Live Session Latency Log"),
+            ("/dashboard/radio/status", "Live Session Latency Log"),
+        ]
+        for path, expected_text in routes_to_check:
+            resp = await self.client.request("GET", path)
+            self.assertEqual(resp.status, 200, f"Failed for path {path}")
+            content = await resp.text()
+            self.assertIn(expected_text, content, f"Missing '{expected_text}' in {path}")
+            self.assertIn("https://discord.gg/PmxfJwmQuB", content)
+
+        subdomain_tests = [
+            ("privacy.syncink.site", "Privacy Policy"),
+            ("terms.syncink.site", "Terms of Use"),
+            ("status.syncink.site", "Live Session Latency Log"),
+        ]
+        for host, expected_snippet in subdomain_tests:
+            resp = await self.client.request("GET", "/", headers={"Host": host})
+            self.assertEqual(resp.status, 200, f"Subdomain failed for {host}")
+            self.assertIn(expected_snippet, await resp.text())
+
+        for api_path in ["/api/status", "/api/bot/uptime", "/api/bot/status", "/dashboard/radio/api/status"]:
+            resp = await self.client.request("GET", api_path)
+            self.assertEqual(resp.status, 200, f"Failed for {api_path}")
+            data = await resp.json()
+            self.assertIn("status", data)
+            self.assertIn("uptime_seconds", data)
+            self.assertIn("db_latency_ms", data)
+            self.assertIn("services", data)
+            self.assertEqual(data.get("support_url"), "https://discord.gg/PmxfJwmQuB")
+
+    async def test_artist_block_unblock_and_history_analytics_api(self):
+        """Verifies blocking/unblocking artists and cross-guild history & analytics endpoints."""
+        from services.web.auth import DashboardAuthManager
+        from services.autoplay_service import AutoPlayService
+
+        auth_mgr = DashboardAuthManager.get_instance()
+        ap = AutoPlayService.get_instance()
+        uid_str = "888111222333444"
+        uid = int(uid_str)
+        session_id = await auth_mgr.create_session({"id": uid_str, "username": "BlockTester"}, {"access_token": "tok", "expires_in": 3600})
+        headers = {"Cookie": f"syncink_session={session_id}"}
+
+        try:
+            # 1. Block artist via API
+            r_block = await self.client.request("POST", "/api/audia/feedback", headers=headers, json={"action": "block", "artist": "Test Artist"})
+            self.assertEqual(r_block.status, 200)
+            b_data = await r_block.json()
+            self.assertIn("Test Artist", b_data.get("blocked_artists", []))
+
+            # 2. Blocked artist appears in blocked_artists and NOT in top_artists
+            r_prof = await self.client.request("GET", "/api/audia/profile", headers=headers)
+            self.assertEqual(r_prof.status, 200)
+            p_data = await r_prof.json()
+            self.assertIn("Test Artist", p_data.get("blocked_artists", []))
+            top_names = [a["artist"].lower() for a in p_data.get("top_artists", [])]
+            self.assertNotIn("test artist", top_names)
+
+            # 3. Unblock artist case-insensitively via API
+            r_unblock = await self.client.request("POST", "/api/audia/feedback", headers=headers, json={"action": "unblock", "artist": "test artist"})
+            self.assertEqual(r_unblock.status, 200)
+            u_data = await r_unblock.json()
+            self.assertEqual(u_data.get("blocked_artists", []), [])
+
+            # 4. Listening History & Analytics (quote-safe query + scope=all vs scope=guild + AP memory)
+            await db.execute("DELETE FROM listening_history WHERE discord_user_id = $1", uid)
+            await db.execute(
+                "INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform) VALUES ($1, $2, $3, $4, $5, $6, $7)",
+                555666777, uid, "Don't Stop Me Now", "Queen", "https://youtube.com/watch?v=x", 210, "youtube"
+            )
+            prof = ap.get_user_profile(uid)
+            prof.memorized_tracks.append({
+                "title": "Legacy Audia Song", "artist": "Arijit Singh", "play_count": 2,
+                "first_played": 1795000000.0, "last_played": 1795000000.0
+            })
+
+            # History with unrelated active guild_id (default scope='all') STILL shows user tracks & safely searches apostrophe
+            r_hist = await self.client.request("GET", "/api/history?guild_id=999111222&query=don't", headers=headers)
+            self.assertEqual(r_hist.status, 200)
+            h_data = await r_hist.json()
+            self.assertGreaterEqual(len(h_data.get("history", [])), 1)
+            self.assertEqual(h_data["history"][0]["track_title"], "Don't Stop Me Now")
+
+            # History without query includes both DB row and Audia memorized record
+            r_hist_all = await self.client.request("GET", "/api/history?guild_id=999111222", headers=headers)
+            all_titles = {item["track_title"] for item in (await r_hist_all.json()).get("history", [])}
+            self.assertIn("Don't Stop Me Now", all_titles)
+            self.assertIn("Legacy Audia Song", all_titles)
+
+            # History strictly scoped to unrelated guild has 0 tracks
+            r_hist_guild = await self.client.request("GET", "/api/history?guild_id=999111222&scope=guild", headers=headers)
+            g_data = await r_hist_guild.json()
+            self.assertEqual(len(g_data.get("history", [])), 0)
+
+            # Analytics default timeframe includes user records & real totals
+            r_an = await self.client.request("GET", "/api/analytics?guild_id=999111222", headers=headers)
+            self.assertEqual(r_an.status, 200)
+            an_data = await r_an.json()
+            self.assertGreaterEqual(an_data.get("total_tracks", 0), 3)
+            self.assertGreater(an_data.get("total_seconds", 0), 0)
+        finally:
+            await db.execute("DELETE FROM listening_history WHERE discord_user_id = $1", uid)
+            ap._profiles.pop(uid, None)
+            ap.save_profiles()
+            await auth_mgr.destroy_session(session_id)
+
 
 if __name__ == "__main__":
     unittest.main()

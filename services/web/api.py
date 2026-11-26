@@ -1034,12 +1034,14 @@ class DashboardAPI:
         user_id = user["discord_user_id"] if user else 0
 
         prof = AutoPlayService.get_instance().get_user_profile(user_id)
+        blocked_set = {str(b).strip().lower() for b in prof.blocked_artists if str(b).strip()}
 
         clean_artists = [
             {"artist": a, "affinity": round(score, 1)}
-            for a, score in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True)[:20]
-            if a and not any(l in a.lower() for l in ["t-series", "sony music", "zee music", "tips", "yrf", "saregama"])
-        ]
+            for a, score in sorted(prof.artist_affinity.items(), key=lambda x: x[1], reverse=True)
+            if a and score > 0 and str(a).strip().lower() not in blocked_set
+            and not any(l in a.lower() for l in ["t-series", "sony music", "zee music", "tips", "yrf", "saregama"])
+        ][:20]
 
         top_genres = [
             {"genre": g, "score": round(score, 1)}
@@ -1053,7 +1055,7 @@ class DashboardAPI:
             "manual_language": prof.manual_language,
             "top_artists": clean_artists,
             "top_genres": top_genres,
-            "blocked_artists": prof.blocked_artists,
+            "blocked_artists": list(prof.blocked_artists),
             "liked_count": len(prof.liked_tracks),
             "disliked_count": len(prof.disliked_tracks),
         })
@@ -1107,28 +1109,28 @@ class DashboardAPI:
         artist = body.get("artist")
         track_title = body.get("track_title")
 
-        prof = AutoPlayService.get_instance().get_user_profile(user["discord_user_id"])
+        ap_svc = AutoPlayService.get_instance()
+        prof = ap_svc.get_user_profile(user["discord_user_id"])
+        msg = "Updated preference."
         if action == "block" and artist:
-            if artist not in prof.blocked_artists:
-                prof.blocked_artists.append(artist)
+            _, msg, _ = ap_svc.block_artist(user["discord_user_id"], artist)
         elif action == "unblock" and artist:
-            if artist in prof.blocked_artists:
-                prof.blocked_artists.remove(artist)
-        elif action == "like" and track_title:
-            AutoPlayService.get_instance().record_explicit_feedback(
+            _, msg, _ = ap_svc.unblock_artist(user["discord_user_id"], artist)
+        elif action in ("like", "dislike") and track_title:
+            _, msg = ap_svc.record_explicit_feedback(
                 int(user["discord_user_id"]),
                 type("ObjTrack", (), {"clean_title": track_title, "title": track_title, "author": artist or ""})(),
-                "like"
-            )
-        elif action == "dislike" and track_title:
-            AutoPlayService.get_instance().record_explicit_feedback(
-                int(user["discord_user_id"]),
-                type("ObjTrack", (), {"clean_title": track_title, "title": track_title, "author": artist or ""})(),
-                "dislike"
+                action
             )
 
-        AutoPlayService.get_instance().save_profiles()
-        return aiohttp.web.json_response({"success": True})
+        ap_svc.save_profiles()
+        return aiohttp.web.json_response({
+            "success": True,
+            "action": action,
+            "artist": artist,
+            "message": msg,
+            "blocked_artists": list(prof.blocked_artists),
+        })
 
     # ------------------ 5. Library, Favorites & Playlists ------------------
 
@@ -1695,41 +1697,51 @@ class DashboardAPI:
 
     # ------------------ 6. History & Analytics ------------------
 
+    @staticmethod
+    def _parse_played_at(val: Any) -> Optional[datetime]:
+        """Parses SQLite string, ISO string, or Postgres datetime into naive UTC datetime."""
+        if isinstance(val, datetime):
+            return val.replace(tzinfo=None)
+        if isinstance(val, (int, float)) and val > 0:
+            try:
+                return datetime.utcfromtimestamp(float(val))
+            except Exception:
+                return None
+        if isinstance(val, str):
+            s = val.strip().replace("Z", "")
+            if not s or s.lower() == "now playing":
+                return None
+            try:
+                return datetime.fromisoformat(s)
+            except Exception:
+                for fmt in ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S.%f", "%Y-%m-%dT%H:%M:%S"):
+                    try:
+                        return datetime.strptime(s, fmt)
+                    except Exception:
+                        continue
+        return None
+
+    @staticmethod
+    def _compute_since_dt(timeframe: str) -> Optional[datetime]:
+        now = datetime.utcnow()
+        tf = (timeframe or "all").strip().lower()
+        days_map = {"24h": 1, "1d": 1, "7d": 7, "7": 7, "30d": 30, "30": 30, "90d": 90, "90": 90}
+        if tf in days_map:
+            return now - timedelta(days=days_map[tf])
+        return None
+
     @classmethod
-    async def handle_get_history(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
-        user = await cls.get_session_user(request)
-        timeframe = request.query.get("timeframe", "all")
-        query_text = request.query.get("query", "").strip().lower()
-        limit = min(150, int(request.query.get("limit", 50)))
+    def _resolve_history_scope(cls, request: aiohttp.web.Request, user: Optional[Dict[str, Any]]):
+        """Builds parameterized guild/user visibility scope shared across History & Analytics."""
+        uid = int(user["discord_user_id"]) if user and user.get("discord_user_id") else 0
         target_guild_id = 0
         try:
             target_guild_id = int(request.query.get("guild_id", 0))
         except (ValueError, TypeError):
             pass
 
-        uid = user["discord_user_id"] if user else 0
-
-        time_clause = ""
-        now = datetime.utcnow()
-        if timeframe == "24h":
-            since = now - timedelta(days=1)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-        elif timeframe == "7d":
-            since = now - timedelta(days=7)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-        elif timeframe == "30d":
-            since = now - timedelta(days=30)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-
-        filter_clause = ""
-        if query_text:
-            filter_clause = f"AND (LOWER(track_title) LIKE '%{query_text}%' OR LOWER(track_author) LIKE '%{query_text}%')"
-
         bot = request.app.get("bot")
         accessible_guild_ids = set()
-        if target_guild_id:
-            accessible_guild_ids.add(target_guild_id)
-
         if user and user.get("guild_ids"):
             accessible_guild_ids.update([int(gid) for gid in user.get("guild_ids") if gid])
 
@@ -1738,43 +1750,160 @@ class DashboardAPI:
             for g in bot.guilds:
                 if is_admin or (uid and g.get_member(uid)) or (target_guild_id and g.id == target_guild_id):
                     accessible_guild_ids.add(g.id)
-            if not accessible_guild_ids:
+            if not accessible_guild_ids and not target_guild_id:
                 accessible_guild_ids = {g.id for g in bot.guilds}
 
-        if target_guild_id:
-            user_clause = "WHERE guild_id = $1"
-            param1 = target_guild_id
-        elif accessible_guild_ids:
-            guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
-            user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
-            param1 = uid
+        scope = (request.query.get("scope") or "").strip().lower()
+        if target_guild_id and scope == "guild":
+            return uid, accessible_guild_ids, target_guild_id, "WHERE guild_id = $1", target_guild_id
+
+        or_clauses = []
+        if uid:
+            or_clauses.append("discord_user_id = $1")
         else:
-            user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
-            param1 = uid
+            or_clauses.append("$1 = 0")
+
+        if target_guild_id:
+            accessible_guild_ids.add(target_guild_id)
+
+        if accessible_guild_ids:
+            guild_list_str = ",".join(str(int(gid)) for gid in sorted(accessible_guild_ids))
+            or_clauses.append(f"guild_id IN ({guild_list_str})")
+
+        # Allow Demo Mode (999888777) or guest test calls to also read public seed records (discord_user_id = 0)
+        if uid in (0, 999888777):
+            or_clauses.append("discord_user_id = 0")
+
+        user_clause = f"WHERE ({' OR '.join(or_clauses)})"
+        return uid, accessible_guild_ids, target_guild_id, user_clause, uid
+
+    @classmethod
+    def _collect_autoplay_records(
+        cls,
+        uid: int,
+        existing_titles: set,
+        since_dt: Optional[datetime],
+        query_text: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Collects genuine plays recorded in Audia AI taste memory that predate DB logging."""
+        if not uid:
+            return []
+        ap = AutoPlayService.get_instance()
+        if uid not in ap._profiles:
+            return []
+        prof = ap.get_user_profile(uid)
+        q_low = (query_text or "").strip().lower()
+        collected = []
+        seen_local = set(existing_titles)
+
+        def _append_item(title: str, artist: str, ts_val: float, play_count: int = 1, genre: str = ""):
+            t_clean = (title or "").strip()
+            a_clean = (artist or "Unknown Artist").strip()
+            if not t_clean:
+                return
+            key = f"{t_clean.lower()}::{a_clean.lower()}"
+            if key in seen_local:
+                return
+            if q_low and q_low not in t_clean.lower() and q_low not in a_clean.lower():
+                return
+            dt = cls._parse_played_at(ts_val) or datetime.utcnow()
+            if since_dt and dt < since_dt:
+                return
+            seen_local.add(key)
+            collected.append({
+                "id": 900000 + len(collected),
+                "guild_id": 0,
+                "discord_user_id": uid,
+                "track_title": t_clean,
+                "track_author": a_clean,
+                "track_url": "",
+                "duration": 0,
+                "platform": "audia",
+                "genre": genre or "",
+                "play_count": max(1, int(play_count or 1)),
+                "thumbnail_url": "https://files.catbox.moe/74l9su.png",
+                "played_at": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                "_dt": dt,
+                "is_live_now": False,
+            })
+
+        for item in reversed(prof.memorized_tracks or []):
+            if not isinstance(item, dict) or item.get("hidden_from_history"):
+                continue
+            _append_item(
+                item.get("title", ""),
+                item.get("artist", ""),
+                item.get("last_played") or item.get("first_played") or 0,
+                play_count=item.get("play_count", 1),
+                genre=item.get("genre", ""),
+            )
+
+        for item in reversed(prof.recently_played or []):
+            if not isinstance(item, dict):
+                continue
+            _append_item(
+                item.get("title", ""),
+                item.get("artist", ""),
+                item.get("timestamp") or 0,
+                play_count=1,
+            )
+
+        collected.sort(key=lambda x: x["_dt"], reverse=True)
+        return collected
+
+    @classmethod
+    async def handle_get_history(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        user = await cls.get_session_user(request)
+        timeframe = request.query.get("timeframe", "all")
+        query_text = request.query.get("query", "").strip().lower()
+        platform_filter = request.query.get("platform", "").strip().lower()
+        limit = min(150, max(1, int(request.query.get("limit", 50))))
+
+        bot = request.app.get("bot")
+        uid, accessible_guild_ids, target_guild_id, user_clause, param1 = cls._resolve_history_scope(request, user)
+        since_dt = cls._compute_since_dt(timeframe)
+
+        params: List[Any] = [param1]
+        extra_filters = []
+        if since_dt is not None:
+            params.append(since_dt.strftime("%Y-%m-%d %H:%M:%S"))
+            extra_filters.append(f"played_at >= ${len(params)}")
+        if query_text:
+            params.append(f"%{query_text}%")
+            p_idx = len(params)
+            extra_filters.append(f"(LOWER(track_title) LIKE ${p_idx} OR LOWER(track_author) LIKE ${p_idx})")
+        if platform_filter and platform_filter != "all":
+            params.append(platform_filter)
+            extra_filters.append(f"LOWER(platform) = ${len(params)}")
+
+        params.append(limit)
+        limit_idx = len(params)
+        where_extra = (" AND " + " AND ".join(extra_filters)) if extra_filters else ""
 
         query = f"""
             SELECT * FROM listening_history
             {user_clause}
-            {time_clause}
-            {filter_clause}
+            {where_extra}
             ORDER BY played_at DESC
-            LIMIT $2
+            LIMIT ${limit_idx}
         """
-        rows = await db.fetch(query, param1, limit)
+        rows = await db.fetch(query, *params)
         history = [dict(r) for r in rows]
+        existing_keys = set()
         for h in history:
-            p_at = h.get("played_at")
-            if isinstance(p_at, datetime):
-                h["played_at"] = p_at.strftime("%Y-%m-%dT%H:%M:%SZ")
-            elif isinstance(p_at, str):
-                p_str = p_at.strip()
-                if " " in p_str and "T" not in p_str:
-                    h["played_at"] = p_str.replace(" ", "T") + "Z"
-                elif not p_str.endswith("Z"):
-                    h["played_at"] = p_str + "Z"
+            dt = cls._parse_played_at(h.get("played_at"))
+            if dt:
+                h["played_at"] = dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            else:
+                p_at = h.get("played_at")
+                if isinstance(p_at, str):
+                    p_str = p_at.strip()
+                    h["played_at"] = p_str.replace(" ", "T") + ("Z" if not p_str.endswith("Z") else "")
             h["is_live_now"] = False
+            t_key = f"{str(h.get('track_title', '')).strip().lower()}::{str(h.get('track_author', '')).strip().lower()}"
+            existing_keys.add(t_key)
 
-        # 1. Synthesize live currently playing track at the top of history (ALWAYS, not just when empty)
+        # 1. Live currently playing track + active in-memory session queue
         live_entry = None
         session_history = []
         if bot:
@@ -1788,43 +1917,65 @@ class DashboardAPI:
                 q = music_service.get_queue(gid)
                 active_vc = vc or q.voice_client
                 if not live_entry and q.current_track and active_vc and (active_vc.is_playing() or active_vc.is_paused()):
-                    live_entry = {
-                        "id": 0,
-                        "guild_id": gid,
-                        "discord_user_id": uid,
-                        "track_title": q.current_track.clean_title or q.current_track.title,
-                        "track_author": q.current_track.author or "Artist",
-                        "track_url": q.current_track.url or "",
-                        "duration": int(q.current_track.duration or 0),
-                        "platform": q.current_track.platform or "youtube",
-                        "thumbnail_url": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
-                        "played_at": "Now Playing",
-                        "is_live_now": True
-                    }
+                    t_title = q.current_track.clean_title or q.current_track.title
+                    t_author = q.current_track.author or "Artist"
+                    t_plat = (q.current_track.platform or "youtube").lower()
+                    matches_q = (not query_text) or (query_text in t_title.lower() or query_text in t_author.lower())
+                    matches_p = (not platform_filter or platform_filter == "all" or t_plat == platform_filter)
+                    if matches_q and matches_p:
+                        live_entry = {
+                            "id": 0,
+                            "guild_id": gid,
+                            "discord_user_id": uid,
+                            "track_title": t_title,
+                            "track_author": t_author,
+                            "track_url": q.current_track.url or "",
+                            "duration": int(q.current_track.duration or 0),
+                            "platform": t_plat,
+                            "thumbnail_url": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
+                            "played_at": "Now Playing",
+                            "is_live_now": True
+                        }
 
-                # 2. Merge recent in-memory session history (queue.history) from active queue
                 for trk in reversed(getattr(q, "history", [])[-25:]):
                     t_title = trk.clean_title or trk.title
-                    if not any(h.get("track_title", "").lower() == t_title.lower() for h in history):
+                    t_author = trk.author or "Artist"
+                    t_plat = (trk.platform or "youtube").lower()
+                    if query_text and query_text not in t_title.lower() and query_text not in t_author.lower():
+                        continue
+                    if platform_filter and platform_filter != "all" and t_plat != platform_filter:
+                        continue
+                    k = f"{t_title.lower()}::{t_author.lower()}"
+                    if k not in existing_keys and not any(h.get("track_title", "").lower() == t_title.lower() for h in history):
+                        existing_keys.add(k)
                         session_history.append({
                             "id": 800000 + len(session_history),
                             "guild_id": gid,
                             "discord_user_id": uid,
                             "track_title": t_title,
-                            "track_author": trk.author or "Artist",
+                            "track_author": t_author,
                             "track_url": trk.url or "",
                             "duration": int(trk.duration or 0),
-                            "platform": trk.platform or "youtube",
+                            "platform": t_plat,
                             "thumbnail_url": trk.thumbnail or "https://files.catbox.moe/74l9su.png",
                             "played_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "is_live_now": False
                         })
+
+        # 2. Merge genuine unlogged plays stored in AutoPlayService profile memory (skipped when guild-scoped)
+        req_scope = (request.query.get("scope") or "").strip().lower()
+        ap_history = []
+        if req_scope != "guild" and (not platform_filter or platform_filter in ("all", "audia", "youtube")):
+            for entry in cls._collect_autoplay_records(uid, existing_keys, since_dt, query_text):
+                entry.pop("_dt", None)
+                ap_history.append(entry)
 
         full_history = []
         if live_entry:
             full_history.append(live_entry)
         full_history.extend(session_history)
         full_history.extend([h for h in history if not live_entry or h.get("track_title", "").lower() != live_entry["track_title"].lower()])
+        full_history.extend(ap_history)
 
         return aiohttp.web.json_response({"history": full_history[:limit], "count": len(full_history), "authenticated": bool(user)})
 
@@ -1845,6 +1996,7 @@ class DashboardAPI:
             return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
 
         await db.execute("DELETE FROM listening_history WHERE discord_user_id = $1", user["discord_user_id"])
+        AutoPlayService.get_instance().clear_history_memory(user["discord_user_id"])
         return aiohttp.web.json_response({"success": True})
 
     @classmethod
@@ -1853,11 +2005,11 @@ class DashboardAPI:
         if not user:
             return aiohttp.web.json_response({
                 "authenticated": False,
-                "timeframe": "7d",
+                "timeframe": "all",
                 "total_tracks": 0,
                 "total_seconds": 0,
                 "total_hours": 0.0,
-                "peak_listening_hour": "--",
+                "peak_listening_hour": "No activity yet",
                 "hourly_distribution": [0] * 24,
                 "top_artists": [],
                 "top_tracks": [],
@@ -1870,94 +2022,82 @@ class DashboardAPI:
                 "server_timestamp": time.time()
             })
 
-        uid = user["discord_user_id"]
-        timeframe = request.query.get("timeframe", "7d")
-        target_guild_id = 0
-        try:
-            target_guild_id = int(request.query.get("guild_id", 0))
-        except (ValueError, TypeError):
-            pass
-
-        now = datetime.utcnow()
-        time_clause = ""
-        if timeframe == "24h":
-            since = now - timedelta(days=1)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-        elif timeframe == "7d":
-            since = now - timedelta(days=7)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-        elif timeframe == "30d":
-            since = now - timedelta(days=30)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
-        elif timeframe == "90d":
-            since = now - timedelta(days=90)
-            time_clause = f"AND played_at >= '{since.strftime('%Y-%m-%d %H:%M:%S')}'"
+        timeframe = request.query.get("timeframe") or request.query.get("days") or "all"
+        since_dt = cls._compute_since_dt(timeframe)
 
         bot = request.app.get("bot")
-        accessible_guild_ids = set()
-        if target_guild_id:
-            accessible_guild_ids.add(target_guild_id)
+        uid, accessible_guild_ids, target_guild_id, user_clause, param1 = cls._resolve_history_scope(request, user)
 
-        if user and user.get("guild_ids"):
-            accessible_guild_ids.update([int(gid) for gid in user.get("guild_ids") if gid])
+        params: List[Any] = [param1]
+        time_clause = ""
+        if since_dt is not None:
+            params.append(since_dt.strftime("%Y-%m-%d %H:%M:%S"))
+            time_clause = f"AND played_at >= ${len(params)}"
 
-        is_admin = DashboardAuthManager.is_system_admin(uid, bot) if bot and uid else False
-        if bot:
-            for g in bot.guilds:
-                if is_admin or (uid and g.get_member(uid)) or (target_guild_id and g.id == target_guild_id):
-                    accessible_guild_ids.add(g.id)
-            if not accessible_guild_ids:
-                accessible_guild_ids = {g.id for g in bot.guilds}
-
-        if target_guild_id:
-            user_clause = "WHERE guild_id = $1"
-            param1 = target_guild_id
-        elif accessible_guild_ids:
-            guild_list_str = ",".join(str(gid) for gid in accessible_guild_ids)
-            user_clause = f"WHERE (discord_user_id = $1 OR guild_id IN ({guild_list_str}) OR discord_user_id = 0)"
-            param1 = uid
-        else:
-            user_clause = "WHERE ($1 = 0 OR discord_user_id = $1)"
-            param1 = uid
-
-        # Totals
-        total_songs_row = await db.fetchrow(
-            f"SELECT COUNT(*) as count, COALESCE(SUM(duration), 0) as total_seconds FROM listening_history {user_clause} {time_clause}",
-            param1
-        )
-        total_songs = total_songs_row["count"] if total_songs_row else 0
-        total_seconds = total_songs_row["total_seconds"] if total_songs_row else 0
-
-        # Top Artists
-        top_artists_rows = await db.fetch(
-            f"SELECT track_author, COUNT(*) as play_count FROM listening_history {user_clause} AND track_author IS NOT NULL {time_clause} GROUP BY track_author ORDER BY play_count DESC LIMIT 8",
-            param1
-        )
-        top_artists = [dict(r) for r in top_artists_rows]
-
-        # Top Tracks
-        top_tracks_rows = await db.fetch(
-            f"SELECT track_title, track_author, thumbnail_url, COUNT(*) as play_count FROM listening_history {user_clause} {time_clause} GROUP BY track_title, track_author, thumbnail_url ORDER BY play_count DESC LIMIT 8",
-            param1
-        )
-        top_tracks = [dict(r) for r in top_tracks_rows]
-
-        # Hourly Distribution (0-23 hours for peak listening activity)
         history_rows = await db.fetch(
-            f"SELECT played_at FROM listening_history {user_clause} {time_clause} ORDER BY played_at DESC LIMIT 500",
-            param1
+            f"SELECT track_title, track_author, thumbnail_url, duration, platform, played_at FROM listening_history {user_clause} {time_clause} ORDER BY played_at DESC LIMIT 1000",
+            *params
         )
+
+        total_songs = 0
+        total_seconds = 0
         hourly_counts = [0] * 24
+        artist_counts: Dict[str, int] = {}
+        track_counts: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        platforms: Dict[str, int] = {}
+        existing_keys = set()
+
         for r in history_rows:
-            dt = r.get("played_at")
-            if isinstance(dt, datetime):
+            row = dict(r)
+            t_title = (row.get("track_title") or "Unknown Track").strip()
+            t_author = (row.get("track_author") or "Unknown Artist").strip()
+            t_thumb = row.get("thumbnail_url")
+            dur = int(row.get("duration") or 0)
+            plat = (row.get("platform") or "audio").strip().lower()
+
+            total_songs += 1
+            total_seconds += max(0, dur)
+            if t_author and t_author not in ("Unknown Artist", "Various Artists"):
+                artist_counts[t_author] = artist_counts.get(t_author, 0) + 1
+
+            t_key = (t_title, t_author)
+            if t_key not in track_counts:
+                track_counts[t_key] = {"track_title": t_title, "track_author": t_author, "thumbnail_url": t_thumb, "play_count": 0}
+            track_counts[t_key]["play_count"] += 1
+            if t_thumb and not track_counts[t_key]["thumbnail_url"]:
+                track_counts[t_key]["thumbnail_url"] = t_thumb
+
+            platforms[plat] = platforms.get(plat, 0) + 1
+            existing_keys.add(f"{t_title.lower()}::{t_author.lower()}")
+
+            dt = cls._parse_played_at(row.get("played_at"))
+            if dt:
                 hourly_counts[dt.hour] += 1
-            elif isinstance(dt, str):
-                try:
-                    parsed = datetime.fromisoformat(dt.replace("Z", ""))
-                    hourly_counts[parsed.hour] += 1
-                except Exception:
-                    pass
+
+        # Merge genuine unlogged plays stored in AutoPlayService profile memory (skipped when guild-scoped)
+        req_scope = (request.query.get("scope") or "").strip().lower()
+        ap_records = cls._collect_autoplay_records(uid, existing_keys, since_dt) if req_scope != "guild" else []
+        for rec in ap_records:
+            pc = max(1, int(rec.get("play_count") or 1))
+            t_title = rec["track_title"]
+            t_author = rec["track_author"]
+            total_songs += pc
+            if t_author and t_author not in ("Unknown Artist", "Various Artists"):
+                artist_counts[t_author] = artist_counts.get(t_author, 0) + pc
+            t_key = (t_title, t_author)
+            if t_key not in track_counts:
+                track_counts[t_key] = {"track_title": t_title, "track_author": t_author, "thumbnail_url": rec.get("thumbnail_url"), "play_count": 0}
+            track_counts[t_key]["play_count"] += pc
+            platforms["audia"] = platforms.get("audia", 0) + pc
+            dt = rec.get("_dt")
+            if isinstance(dt, datetime):
+                hourly_counts[dt.hour] += pc
+
+        top_artists = [
+            {"track_author": a, "play_count": c}
+            for a, c in sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)[:8]
+        ]
+        top_tracks = sorted(track_counts.values(), key=lambda x: x["play_count"], reverse=True)[:8]
 
         # Real-time live status from active playing voice channel
         live_active = False
@@ -1979,7 +2119,7 @@ class DashboardAPI:
                 g = bot.get_guild(gid)
                 vc = (g.voice_client if g else None) or q.voice_client
                 if vc:
-                    v_lat = getattr(vc, 'latency', None) or getattr(vc, 'average_latency', None)
+                    v_lat = getattr(vc, "latency", None) or getattr(vc, "average_latency", None)
                     if isinstance(v_lat, (int, float)) and v_lat > 0:
                         live_latency = round(float(v_lat) * 1000, 1)
 
@@ -1998,7 +2138,6 @@ class DashboardAPI:
                         live_elapsed = max(0, int(time.time() - q.start_time - q.total_paused_duration))
                     break
 
-        # If DB history is totally empty but active track is currently playing, enhance metrics
         if total_songs == 0 and live_active and live_track:
             total_songs = 1
             total_seconds = live_elapsed
@@ -2006,25 +2145,26 @@ class DashboardAPI:
             top_tracks = [{"track_title": live_track["title"], "track_author": live_track["author"], "thumbnail_url": live_track["thumbnail"], "play_count": 1}]
             curr_hour = datetime.utcnow().hour
             hourly_counts[curr_hour] = max(1, hourly_counts[curr_hour])
+            if not platforms:
+                platforms["radio" if live_track.get("is_radio") else "youtube"] = 1
 
-        peak_hour = hourly_counts.index(max(hourly_counts)) if max(hourly_counts) > 0 else 20
-        peak_hour_str = f"{peak_hour:02d}:00 - {(peak_hour+1)%24:02d}:00"
+        if max(hourly_counts) > 0:
+            peak_hour = hourly_counts.index(max(hourly_counts))
+            peak_hour_str = f"{peak_hour:02d}:00 - {(peak_hour + 1) % 24:02d}:00"
+        else:
+            peak_hour_str = "No activity yet"
 
-        # Platform distribution
-        platform_rows = await db.fetch(
-            f"SELECT platform, COUNT(*) as count FROM listening_history {user_clause} {time_clause} GROUP BY platform",
-            param1
-        )
-        platforms = {dict(r)["platform"]: dict(r)["count"] for r in platform_rows}
-        if not platforms and live_active:
-            platforms["youtube"] = 1
+        ap_svc = AutoPlayService.get_instance()
+        prof = ap_svc._profiles.get(uid) if uid else None
+        ap_total_sec = int(getattr(prof, "total_listen_seconds", 0) or 0) if prof else 0
+        effective_seconds = max(total_seconds, ap_total_sec) + live_elapsed
 
         return aiohttp.web.json_response({
             "authenticated": True,
             "timeframe": timeframe,
             "total_tracks": total_songs,
-            "total_seconds": total_seconds + live_elapsed,
-            "total_hours": round((total_seconds + live_elapsed) / 3600.0, 2),
+            "total_seconds": effective_seconds,
+            "total_hours": round(effective_seconds / 3600.0, 2),
             "peak_listening_hour": peak_hour_str,
             "hourly_distribution": hourly_counts,
             "top_artists": top_artists,
@@ -2298,3 +2438,248 @@ class DashboardAPI:
         auth_mgr = SpotifyUserAuthManager.get_instance()
         success = await auth_mgr.remove_user_spotify_playlist(discord_user_id, pid)
         return aiohttp.web.json_response({"success": success})
+
+    @classmethod
+    async def handle_public_status(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """
+        Genuine real-time telemetry endpoint powering /status and /api/status.
+        All metrics are measured live from the running process, Discord client,
+        voice queues, Audio engine, and database (no synthetic fallback values).
+        """
+        import math
+        import os
+        import platform
+
+        try:
+            import discord
+            discord_ver = discord.__version__
+            opus_loaded = bool(discord.opus.is_loaded())
+        except Exception:
+            discord_ver = "unknown"
+            opus_loaded = False
+
+        bot = request.app.get("bot")
+        now = time.time()
+
+        # 1. Real Discord gateway readiness & latency
+        is_closed = bool(bot and getattr(bot, "is_closed", None) and bot.is_closed() is True)
+        is_ready = bool(bot and callable(getattr(bot, "is_ready", None)) and bot.is_ready() and not is_closed)
+
+        ping_ms: Optional[float] = None
+        if bot and hasattr(bot, "latency") and bot.latency is not None:
+            try:
+                lat = float(bot.latency)
+                if not math.isinf(lat) and not math.isnan(lat) and lat >= 0:
+                    ping_ms = round(lat * 1000, 1)
+            except Exception:
+                ping_ms = None
+
+        # 2. Real process uptime since boot
+        start_time = getattr(bot, "start_time", None) if bot else None
+        if not isinstance(start_time, (int, float)) or start_time <= 0:
+            start_time = request.app.get("_start_time") or now
+
+        uptime_seconds = max(0, int(now - start_time))
+        days = uptime_seconds // 86400
+        hours = (uptime_seconds % 86400) // 3600
+        minutes = (uptime_seconds % 3600) // 60
+        seconds = uptime_seconds % 60
+        if days > 0:
+            uptime_formatted = f"{days}d {hours}h {minutes}m"
+        elif hours > 0:
+            uptime_formatted = f"{hours}h {minutes}m {seconds}s"
+        else:
+            uptime_formatted = f"{minutes}m {seconds}s"
+
+        # 3. Live guilds, listeners, voice sessions, active radio streams
+        guilds_count = 0
+        total_users = 0
+        active_voice = 0
+        active_radio = 0
+        total_listeners = 0
+        queued_tracks_count = 0
+        autoplay_sessions = 0
+
+        if bot and hasattr(bot, "guilds"):
+            try:
+                guilds = list(bot.guilds)
+                guilds_count = len(guilds)
+            except Exception:
+                guilds = []
+            music_service = MusicService.get_instance()
+            for g in guilds:
+                mc = getattr(g, "member_count", 0)
+                if isinstance(mc, int):
+                    total_users += mc
+                vc = getattr(g, "voice_client", None)
+                if vc and callable(getattr(vc, "is_connected", None)) and vc.is_connected() is True:
+                    active_voice += 1
+                    channel = getattr(vc, "channel", None)
+                    if channel and hasattr(channel, "members"):
+                        total_listeners += len([m for m in channel.members if not getattr(m, "bot", False)])
+                try:
+                    q = music_service.get_queue(g.id)
+                    if q:
+                        queued_tracks_count += len(getattr(q, "tracks", []) or [])
+                        if getattr(q, "autoplay", False):
+                            autoplay_sessions += 1
+                        if getattr(q, "active_radio_station", None) or (q.current_track and getattr(q.current_track, "is_radio", False)):
+                            active_radio += 1
+                except Exception:
+                    pass
+
+        # 4. Real DB round-trip health check & logged play count
+        db_ok = False
+        db_latency_ms: Optional[float] = None
+        total_plays_logged = 0
+        db_engine = "PostgreSQL" if getattr(db, "is_postgres", False) else "SQLite"
+        try:
+            t0 = time.perf_counter()
+            await db.fetchval("SELECT 1")
+            db_latency_ms = round((time.perf_counter() - t0) * 1000, 2)
+            total_plays_logged = int(await db.fetchval("SELECT COUNT(*) FROM listening_history") or 0)
+            db_ok = True
+        except Exception as db_err:
+            log.debug(f"[Status Telemetry DB Check] {db_err}")
+            db_ok = False
+
+        # 5. Live subsystem counts (Audia AI profiles & Radio stations)
+        ap_svc = AutoPlayService.get_instance()
+        audia_profiles_count = len(getattr(ap_svc, "_profiles", {}) or {})
+        radio_countries_count = 0
+        try:
+            from services.radio_service import RadioService
+            r_svc = RadioService.get_instance()
+            radio_countries_count = len(r_svc.get_countries() or [])
+        except Exception:
+            pass
+
+        # 6. Genuine OS / Process resource telemetry (None if sandbox blocks reading, never fabricated)
+        cpu_pct: Optional[float] = None
+        memory_info: Dict[str, Any] = {"percent": None, "used_mb": None, "total_mb": None, "process_rss_mb": None}
+        try:
+            import psutil
+            proc = psutil.Process(os.getpid())
+            memory_info["process_rss_mb"] = round(proc.memory_info().rss / (1024 * 1024), 1)
+            mem = psutil.virtual_memory()
+            memory_info["percent"] = round(float(mem.percent), 1)
+            memory_info["used_mb"] = round(mem.used / (1024 * 1024), 1)
+            memory_info["total_mb"] = round(mem.total / (1024 * 1024), 1)
+            cpu_val = psutil.cpu_percent(interval=None)
+            if isinstance(cpu_val, (int, float)):
+                cpu_pct = round(float(cpu_val), 1)
+        except Exception:
+            try:
+                if os.path.exists("/proc/self/status"):
+                    with open("/proc/self/status", "r", encoding="utf-8", errors="ignore") as f:
+                        for ln in f:
+                            if ln.startswith("VmRSS:"):
+                                kb = int(ln.split()[1])
+                                memory_info["process_rss_mb"] = round(kb / 1024.0, 1)
+                                break
+            except Exception:
+                pass
+
+        # WebSocket active dashboard clients
+        try:
+            from services.web.websocket import DashboardWebSocketManager
+            ws_mgr = DashboardWebSocketManager.get_instance()
+            ws_clients = len(getattr(ws_mgr, "connections", None) or getattr(ws_mgr, "_connections", []) or [])
+        except Exception:
+            ws_clients = 0
+
+        if is_closed:
+            overall_status = "offline"
+        elif is_ready and db_ok:
+            overall_status = "operational" if opus_loaded else "degraded"
+        elif bot is None:
+            overall_status = "degraded" if not db_ok else "initializing"
+        else:
+            overall_status = "degraded"
+
+        services = [
+            {
+                "id": "gateway",
+                "name": "Discord Gateway & Commands",
+                "status": "operational" if is_ready else ("offline" if is_closed else "starting"),
+                "latency_ms": ping_ms,
+                "detail": f"{guilds_count} connected server(s)" if is_ready else "Gateway handshake pending"
+            },
+            {
+                "id": "audio_engine",
+                "name": "Voice & Opus Audio Pipeline",
+                "status": "operational" if opus_loaded else "degraded",
+                "active_streams": active_voice,
+                "listeners": total_listeners,
+                "detail": f"libopus {'loaded' if opus_loaded else 'missing'} • {active_voice} active stream(s)"
+            },
+            {
+                "id": "radio_directory",
+                "name": "Radio Directory Resolver",
+                "status": "operational" if radio_countries_count > 0 else "degraded",
+                "active_stations": active_radio,
+                "detail": f"{radio_countries_count} countries indexed • {active_radio} active radio feed(s)"
+            },
+            {
+                "id": "audia_ai",
+                "name": "Audia AI Taste & AutoPlay",
+                "status": "operational",
+                "detail": f"{audia_profiles_count} taste profile(s) • {autoplay_sessions} active AutoPlay queue(s)"
+            },
+            {
+                "id": "database",
+                "name": f"{db_engine} Persistence",
+                "status": "operational" if db_ok else "down",
+                "latency_ms": db_latency_ms,
+                "detail": f"{total_plays_logged} logged play(s)" + (f" • {db_latency_ms}ms query" if db_latency_ms is not None else " • check failed")
+            },
+            {
+                "id": "web_dashboard",
+                "name": "Unified Web Server & WebSocket",
+                "status": "operational",
+                "ws_clients": ws_clients,
+                "detail": f"{ws_clients} active WebSocket client(s)"
+            }
+        ]
+
+        headers = {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Cache-Control": "no-cache, no-store, must-revalidate"
+        }
+
+        bot_user = getattr(bot, "user", None) if bot else None
+        bot_name = str(bot_user) if bot_user else "SyncInk Radio"
+        bot_id = str(getattr(bot_user, "id", "1500567606648897819")) if bot_user else "1500567606648897819"
+
+        return aiohttp.web.json_response({
+            "status": overall_status,
+            "is_online": is_ready,
+            "bot_name": bot_name,
+            "bot_id": bot_id,
+            "ping_ms": ping_ms,
+            "db_latency_ms": db_latency_ms,
+            "db_engine": db_engine,
+            "opus_loaded": opus_loaded,
+            "uptime_seconds": uptime_seconds,
+            "uptime_formatted": uptime_formatted,
+            "start_time": int(start_time),
+            "guilds": guilds_count,
+            "users": total_users,
+            "active_voice": active_voice,
+            "active_radio": active_radio,
+            "listeners": total_listeners,
+            "queued_tracks": queued_tracks_count,
+            "total_plays_logged": total_plays_logged,
+            "audia_profiles": audia_profiles_count,
+            "ws_clients": ws_clients,
+            "cpu_percent": cpu_pct,
+            "memory": memory_info,
+            "platform": f"{platform.system()} {platform.release()}",
+            "python_version": platform.python_version(),
+            "discord_version": discord_ver,
+            "services": services,
+            "support_url": "https://discord.gg/PmxfJwmQuB",
+            "timestamp": int(now)
+        }, headers=headers)

@@ -1,4 +1,5 @@
 import os
+import time
 import aiohttp.web
 from typing import Optional, Any
 from utils.logger import log
@@ -26,6 +27,7 @@ class UnifiedWebServer:
         self.host = host
         self.app = aiohttp.web.Application()
         self.app["bot"] = bot
+        self.app["_start_time"] = time.time()
         self.runner: Optional[aiohttp.web.AppRunner] = None
         self.site: Optional[aiohttp.web.TCPSite] = None
         self._setup_routes()
@@ -103,6 +105,11 @@ class UnifiedWebServer:
         _route("GET", "/api/analytics", DashboardAPI.handle_get_analytics)
         _route("GET", "/api/admin/status", DashboardAPI.handle_admin_status)
 
+        # 6b. Live Telemetry & Bot Status API (Public, CORS-enabled)
+        _route("GET", "/api/status", DashboardAPI.handle_public_status)
+        _route("GET", "/api/bot/uptime", DashboardAPI.handle_public_status)
+        _route("GET", "/api/bot/status", DashboardAPI.handle_public_status)
+
         # 7. Spotify Web API Endpoints & Callbacks
         _route("GET", "/callback", self.handle_spotify_callback)
         _route("GET", "/api/spotify/callback", self.handle_spotify_callback)
@@ -114,6 +121,15 @@ class UnifiedWebServer:
         _route("POST", "/api/spotify/playlists/add", DashboardAPI.handle_spotify_add_playlist)
         _route("DELETE", "/api/spotify/playlists/{id}", DashboardAPI.handle_spotify_remove_playlist)
         _route("GET", "/health", self.handle_health)
+
+        # 7b. Legal & Real-Time Status Routes
+        _route("GET", "/privacy", self.handle_privacy)
+        _route("GET", "/privacy.html", self.handle_privacy)
+        _route("GET", "/terms", self.handle_terms)
+        _route("GET", "/terms.html", self.handle_terms)
+        _route("GET", "/terms-of-use", self.handle_terms)
+        _route("GET", "/status", self.handle_status)
+        _route("GET", "/status.html", self.handle_status)
 
         # 8. Static Assets (Both root and mounted subpath)
         static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
@@ -135,7 +151,31 @@ class UnifiedWebServer:
     async def handle_dashboard_redirect(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         raise aiohttp.web.HTTPFound("/dashboard/radio/")
 
+    async def handle_page(self, filename: str) -> aiohttp.web.Response:
+        static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
+        page_file = os.path.join(static_dir, filename)
+        if os.path.isfile(page_file):
+            return aiohttp.web.FileResponse(page_file)
+        return aiohttp.web.Response(text=f"<h1>{filename} not found</h1>", content_type="text/html", status=404)
+
+    async def handle_privacy(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self.handle_page("privacy.html")
+
+    async def handle_terms(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self.handle_page("terms.html")
+
+    async def handle_status(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self.handle_page("status.html")
+
     async def handle_index(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        host = (request.headers.get("X-Forwarded-Host") or request.host or "").lower()
+        if host.startswith("privacy."):
+            return await self.handle_privacy(request)
+        if host.startswith("terms."):
+            return await self.handle_terms(request)
+        if host.startswith("status."):
+            return await self.handle_status(request)
+
         static_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "static")
         index_file = os.path.join(static_dir, "index.html")
         if os.path.isfile(index_file):

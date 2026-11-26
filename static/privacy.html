@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SyncInk Radio Official Privacy Policy — transparent data handling, zero voice recording, and instant user data erasure controls.">
+  <title>Privacy Policy • SyncInk Radio</title>
+  <link rel="icon" type="image/svg+xml" href="https://files.catbox.moe/74l9su.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #101014;
+      --bg-surface: #14131a;
+      --bg-elevated: #191820;
+      --border-subtle: rgba(128, 85, 217, 0.16);
+      --border-hover: rgba(185, 162, 242, 0.36);
+      --text-primary: #ffffff;
+      --text-secondary: #9e9ead;
+      --text-muted: #6b6a78;
+      --accent: #8055d9;
+      --accent-soft: #b9a2f2;
+      --emerald: #34d399;
+    }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(16, 16, 20, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .header-inner {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .brand img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border-subtle);
+    }
+    .brand-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: color 0.16s ease;
+    }
+    nav a:hover { color: var(--text-primary); }
+    nav a.active { color: var(--accent-soft); font-weight: 600; }
+    .btn-support {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--bg-elevated);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 7px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 500;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: border-color 0.16s ease, background-color 0.16s ease;
+    }
+    .btn-support:hover {
+      border-color: var(--border-hover);
+      background: #22202c;
+    }
+    main {
+      flex: 1;
+      max-width: 820px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 44px 20px 72px;
+    }
+    .doc-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(128, 85, 217, 0.12);
+      border: 1px solid var(--border-subtle);
+      color: var(--accent-soft);
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 14px;
+    }
+    h1 {
+      font-size: clamp(26px, 4vw, 34px);
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 8px;
+    }
+    .meta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: var(--text-muted);
+      padding-bottom: 24px;
+      margin-bottom: 32px;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .summary-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px 22px;
+      margin-bottom: 36px;
+    }
+    .summary-card h2 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--text-primary);
+    }
+    .summary-card ul {
+      list-style: none;
+      display: grid;
+      gap: 10px;
+    }
+    .summary-card li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+    .check { color: var(--emerald); flex-shrink: 0; margin-top: 2px; }
+    section { margin-bottom: 30px; }
+    section h2 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+    section p, section li {
+      font-size: 14px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+    section ul { margin-left: 20px; margin-bottom: 14px; }
+    strong { color: var(--text-primary); font-weight: 600; }
+    a.inline-link { color: var(--accent-soft); text-decoration: none; border-bottom: 1px solid rgba(185, 162, 242, 0.3); }
+    a.inline-link:hover { color: #fff; border-bottom-color: var(--accent-soft); }
+    code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      background: var(--bg-elevated);
+      border: 1px solid rgba(255,255,255,0.06);
+      padding: 2px 6px;
+      border-radius: 6px;
+      color: var(--accent-soft);
+    }
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 24px 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .footer-links {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+    }
+    .footer-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.15s ease;
+    }
+    .footer-links a:hover { color: var(--accent-soft); }
+    @media (max-width: 640px) {
+      .header-inner { padding: 0 14px; }
+      .btn-support span { display: none; }
+      main { padding: 28px 16px 56px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="./" class="brand" data-nav="root">
+        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Radio">
+        <span class="brand-title">SyncInk Radio</span>
+      </a>
+      <nav>
+        <a href="./" data-nav="root">Dashboard</a>
+        <a href="./status" data-nav="status">Status</a>
+        <a href="./privacy" class="active" data-nav="privacy">Privacy</a>
+        <a href="./terms" data-nav="terms">Terms</a>
+      </nav>
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="btn-support">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z"/></svg>
+        <span>Support Server</span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <div class="doc-tag">Official Legal Document</div>
+    <h1>Privacy Policy</h1>
+    <p class="meta">Last updated: November 26, 2026 • Effective immediately</p>
+
+    <div class="summary-card">
+      <h2>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#B9A2F2" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/><path d="m9 12 2 2 4-4"/></svg>
+        Privacy Guarantees at a Glance
+      </h2>
+      <ul>
+        <li>
+          <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Zero Voice Recording:</strong> SyncInk Radio never captures, records, or analyzes Discord voice channel conversations. Audio playback only transmits outbound media streams.</span>
+        </li>
+        <li>
+          <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Minimal Data Footprint:</strong> Only IDs and preferences needed for playback queues, server configuration, radio favorites, and Audia AI taste customization are stored.</span>
+        </li>
+        <li>
+          <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Direct User Control:</strong> Enable private listening mode, unblock/block artists, unlink Spotify, or clear your entire history directly from the dashboard or Discord commands.</span>
+        </li>
+        <li>
+          <svg class="check" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><polyline points="20 6 9 17 4 12"/></svg>
+          <span><strong>Never Sold:</strong> Listener data is never sold, rented, or shared with advertising networks.</span>
+        </li>
+      </ul>
+    </div>
+
+    <section>
+      <h2>1. Scope & Service Identity</h2>
+      <p>SyncInk Radio ("we", "us") operates the <strong>SyncInk Radio Discord Bot</strong> (Application ID: <code>1500567606648897819</code>), the <strong>Audia AI Recommendation Engine</strong>, and the <strong>SyncInk Radio Web Dashboard</strong> (<a href="https://syncink.site" class="inline-link">syncink.site</a>). This policy explains what data is processed and how you control it.</p>
+    </section>
+
+    <section>
+      <h2>2. Information We Process</h2>
+      <ul>
+        <li><strong>Discord Identifiers:</strong> Discord User ID, username, display avatar hash, Guild (Server) ID, and target voice/text channel IDs when invoking commands or signing in via Discord OAuth2.</li>
+        <li><strong>Queue & Guild Preferences:</strong> Configured guild music channels, default/max volume levels, 24/7 persistence toggles, saved favorites, and user-created playlists.</li>
+        <li><strong>Listening History & Audia AI Taste Profile:</strong> Requested tracks, played radio stations, likes/dislikes, skip signals, and blocked artists used to personalize your History, Analytics, and AutoPlay queue (disabled immediately when Private Listening mode is active).</li>
+        <li><strong>Spotify Account Linking (Optional):</strong> When linking Spotify via OAuth2 PKCE, authorization tokens and selected public playlist IDs are stored strictly to import playlists upon request. We never access passwords or billing credentials.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>3. Voice Channel Audio Policy</h2>
+      <p><strong>SyncInk Radio does not record or process incoming user voice audio.</strong> The voice connection transmits encoded Opus frames exclusively outbound into your connected voice channel.</p>
+    </section>
+
+    <section>
+      <h2>4. Third-Party Services</h2>
+      <ul>
+        <li><strong>Discord Inc.:</strong> Subject to the <a href="https://discord.com/privacy" target="_blank" rel="noopener" class="inline-link">Discord Privacy Policy</a>.</li>
+        <li><strong>Radio-Browser Community API:</strong> Used to resolve live public radio broadcast directories and country streams.</li>
+        <li><strong>Spotify Web API:</strong> Governed by the <a href="https://www.spotify.com/legal/privacy-policy/" target="_blank" rel="noopener" class="inline-link">Spotify Privacy Policy</a>.</li>
+        <li><strong>Public Media Metadata Providers:</strong> Used to resolve track titles, artists, artwork, and durations for requested audio streams.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>5. Your Controls & Data Erasure</h2>
+      <ul>
+        <li><strong>Private Listening Mode:</strong> Toggle on in the dashboard preferences to pause recording new entries to Listening History.</li>
+        <li><strong>Clear History:</strong> Use the Clear History button in the Listening History tab or clear database/history entries anytime.</li>
+        <li><strong>Spotify Unlink:</strong> Disconnect Spotify from your Library tab or via Discord slash commands at any time.</li>
+        <li><strong>Full Data Removal:</strong> Contact our support team on the <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="inline-link">Official Discord Support Server</a> to request complete deletion of all records linked to your Discord User ID.</li>
+      </ul>
+    </section>
+
+    <section>
+      <h2>6. Contact</h2>
+      <p>Questions about privacy or data requests? Join our official community: <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="inline-link">https://discord.gg/PmxfJwmQuB</a></p>
+    </section>
+  </main>
+
+  <footer>
+    <div>© 2026 SyncInk Radio Platform</div>
+    <div class="footer-links">
+      <a href="./" data-nav="root">Dashboard</a>
+      <a href="./status" data-nav="status">Live Status</a>
+      <a href="./privacy" data-nav="privacy">Privacy Policy</a>
+      <a href="./terms" data-nav="terms">Terms of Use</a>
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener">Support Server</a>
+    </div>
+  </footer>
+
+  <script>
+    (function() {
+      const base = window.location.pathname.startsWith('/dashboard/radio') ? '/dashboard/radio' : '';
+      document.querySelectorAll('a[data-nav]').forEach(a => {
+        const dest = a.getAttribute('data-nav');
+        a.href = dest === 'root' ? (base ? base + '/' : '/') : (base + '/' + dest);
+      });
+    })();
+  </script>
+</body>
+</html>

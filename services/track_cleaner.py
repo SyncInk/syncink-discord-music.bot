@@ -15,25 +15,26 @@ LABEL_CHANNELS = {
 }
 
 KNOWN_ACTORS = {
-    'shah rukh khan', 'shahrukh khan', 'srk', 'kajol', 'ranbir kapoor', 'alia bhatt',
-    'salman khan', 'aamir khan', 'deepika padukone', 'ranveer singh', 'katrina kaif',
-    'akshay kumar', 'hrithik roshan', 'vicky kaushal', 'triptii dimri', 'kiara advani',
-    'sidharth malhotra', 'varun dhawan', 'shraddha kapoor', 'kartik aaryan', 'kriti sanon',
-    'shahid kapoor', 'aditya roy kapur', 'jacqueline fernandez', 'nawazuddin siddiqui',
+    'shah rukh khan', 'shahrukh khan', 'shahrukh', 'srk', 'kajol', 'ranbir kapoor', 'ranbir', 'alia bhatt', 'alia',
+    'salman khan', 'salman', 'aamir khan', 'aamir', 'deepika padukone', 'deepika', 'ranveer singh', 'ranveer', 'katrina kaif', 'katrina',
+    'akshay kumar', 'akshay', 'hrithik roshan', 'hrithik', 'vicky kaushal', 'vicky', 'triptii dimri', 'triptii', 'kiara advani', 'kiara',
+    'sidharth malhotra', 'sidharth', 'varun dhawan', 'varun', 'shraddha kapoor', 'shraddha', 'kartik aaryan', 'kartik', 'kriti sanon', 'kriti',
+    'shahid kapoor', 'shahid', 'aditya roy kapur', 'aditya roy kapoor', 'aditya', 'jacqueline fernandez', 'jacqueline', 'nawazuddin siddiqui',
     'nayanthara', 'srk kajol', 'ram charan', 'jr ntr', 'allu arjun', 'prabhas',
-    'rashmika mandanna', 'bobby deol', 'anil kapoor', 'ajay devgn', 'kareena kapoor',
-    'saif ali khan', 'john abraham', 'tiger shroff', 'disha patani', 'ananya panday',
-    'sara ali khan', 'janhvi kapoor', 'ayushmann khurrana', 'rajkummar rao', 'suniel shetty'
+    'rashmika mandanna', 'rashmika', 'bobby deol', 'anil kapoor', 'ajay devgn', 'ajay devgan', 'kareena kapoor', 'kareena',
+    'saif ali khan', 'saif', 'john abraham', 'tiger shroff', 'disha patani', 'disha', 'ananya panday', 'ananya',
+    'sara ali khan', 'sara', 'janhvi kapoor', 'janhvi', 'ayushmann khurrana', 'ayushmann', 'rajkummar rao', 'rajkumar rao', 'suniel shetty',
+    'taapsee pannu', 'taapsee', 'amitabh bachchan', 'amitabh b', 'amitabh', 'govinda'
 }
 
 KNOWN_ARTISTS = {
-    'arijit singh', 'atif aslam', 'pritam', 'anirudh', 'a.r. rahman', 'ar rahman',
-    'shreya ghoshal', 'neha kakkar', 'jubin nautiyal', 'b praak', 'jasleen royal',
-    'darshan raval', 'armaan malik', 'badshah', 'diljit dosanjh', 'karan aujla',
+    'arijit singh', 'arijit', 'atif aslam', 'atif', 'pritam', 'anirudh', 'a.r. rahman', 'ar rahman', 'rahman',
+    'shreya ghoshal', 'shreya', 'neha kakkar', 'jubin nautiyal', 'jubin', 'b praak', 'jasleen royal',
+    'darshan raval', 'armaan malik', 'badshah', 'diljit dosanjh', 'diljit', 'karan aujla',
     'ap dhillon', 'shubh', 'sidhu moose wala', 'yo yo honey singh', 'honey singh',
-    'guru randhawa', 'hardy sandhu', 'vishal-shekhar', 'sachin-jigar', 'amit trivedi',
-    'tanishk bagchi', 'sachet-parampara', 'harshdeep kaur', 'antara mitra',
-    'sunidhi chauhan', 'mohit chauhan', 'kk', 'sonu nigam', 'udit narayan',
+    'guru randhawa', 'hardy sandhu', 'vishal-shekhar', 'vishal shekhar', 'sachin-jigar', 'sachin jigar', 'amit trivedi',
+    'tanishk bagchi', 'sachet-parampara', 'sachet parampara', 'harshdeep kaur', 'harshdeep k', 'antara mitra',
+    'sunidhi chauhan', 'sunidhi', 'mohit chauhan', 'kk', 'sonu nigam', 'udit narayan',
     'kumar sanu', 'alka yagnik', 'lata mangeshkar', 'kishore kumar', 'the kid laroi',
     'alan walker', 'the weeknd', 'dua lipa', 'post malone', 'swae lee', 'taylor swift',
     'ed sheeran', 'drake', 'eminem', 'billie eilish', 'bruno mars', 'charlie puth',
@@ -172,6 +173,7 @@ def clean_track_metadata(raw_title: str, raw_uploader: str = '', entry: Optional
         other_segments = pipe_parts[1:]
 
         filtered_artists = []
+        known_artist_candidates = []
         for seg in other_segments:
             seg_clean = re.sub(r'[\-_:\.]+', ' ', seg).strip()
             low = seg_clean.lower()
@@ -179,10 +181,15 @@ def clean_track_metadata(raw_title: str, raw_uploader: str = '', entry: Optional
                 continue
             if any(movie in low for movie in KNOWN_MOVIES):
                 continue
-            if any(kw in low for kw in ['director', 'producer', 'choreographer', 'screenplay', 'teaser', 'trailer', 'song', 'music', 'full video', 'soundtrack', 'album', 'era']):
+            if any(kw in low for kw in ['director', 'producer', 'choreographer', 'screenplay', 'teaser', 'trailer', 'song', 'music', 'full video', 'soundtrack', 'album', 'era', 'lyric', 'lyrical', 'video']):
                 continue
             if len(seg_clean) > 2:
-                filtered_artists.append(seg_clean)
+                if any(art in low for art in KNOWN_ARTISTS):
+                    known_artist_candidates.append(seg_clean)
+                else:
+                    filtered_artists.append(seg_clean)
+
+        candidate_artists = known_artist_candidates if known_artist_candidates else filtered_artists
 
         # Check first segment for colon e.g. "Diljit Dosanjh: Lover"
         if ': ' in first_segment:
@@ -215,10 +222,10 @@ def clean_track_metadata(raw_title: str, raw_uploader: str = '', entry: Optional
             else:
                 extracted_song = first_segment
 
-        if not extracted_artist and filtered_artists:
-            extracted_artist = ", ".join(filtered_artists[:2])
-        elif filtered_artists and (is_channel_label or not extracted_artist):
-            extracted_artist = ", ".join(filtered_artists[:2])
+        if not extracted_artist and candidate_artists:
+            extracted_artist = ", ".join(candidate_artists[:2])
+        elif candidate_artists and (is_channel_label or not extracted_artist):
+            extracted_artist = ", ".join(candidate_artists[:2])
 
     elif len(pipe_parts) == 1:
         single = pipe_parts[0]

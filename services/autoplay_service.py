@@ -1782,7 +1782,7 @@ class AutoPlayService:
                     cand_artist = cand.get("artist")
                     if cand_title:
                         chosen_track.clean_title = cand_title
-                    if cand_artist and (chosen_track.author in ("Unknown Artist", "Various Artists") or any(lbl in chosen_track.author.lower() for lbl in ("music", "records", "company", "vevo", "t-series", "sony", "entertainment"))):
+                    if cand_artist:
                         chosen_track.author = cand_artist
 
                     # Final duplicate check on actual extracted track title
@@ -1941,11 +1941,13 @@ class AutoPlayService:
 
             pool: List[Dict[str, Any]] = []
 
+            blocked_set = {str(b).strip().lower() for b in prof.blocked_artists if b}
+
             # Sample primary cluster tracks
             p_samples = list(primary_cluster.get("sample_tracks", []))
             user_rng.shuffle(p_samples)
             for s_title, s_artist in p_samples:
-                if s_title.lower() in db_history_tracks or s_artist in prof.blocked_artists:
+                if s_title.lower() in db_history_tracks or s_artist.lower() in blocked_set:
                     continue
                 reason_templates = [
                     f"Selected by Audia AI based on your affinity for {primary_cluster['genre']} and {s_artist}.",
@@ -1965,7 +1967,7 @@ class AutoPlayService:
             s_samples = list(secondary_cluster.get("sample_tracks", []))
             user_rng.shuffle(s_samples)
             for s_title, s_artist in s_samples:
-                if s_title.lower() in db_history_tracks or s_artist in prof.blocked_artists:
+                if s_title.lower() in db_history_tracks or s_artist.lower() in blocked_set:
                     continue
                 pool.append({
                     "title": s_title,
@@ -1993,3 +1995,63 @@ class AutoPlayService:
             })
 
         return results
+
+    def block_artist(self, user_id: int, artist_name: str) -> Tuple[bool, str, List[str]]:
+        """Case-insensitively blocks an artist, applies negative affinity, and persists profile."""
+        cleaned = str(artist_name or "").strip()
+        if not cleaned:
+            prof = self.get_user_profile(user_id)
+            return False, "Please provide a valid artist name.", list(prof.blocked_artists)
+
+        prof = self.get_user_profile(user_id)
+        target_low = cleaned.lower()
+        existing = {str(b).strip().lower() for b in prof.blocked_artists if str(b).strip()}
+        already_blocked = target_low in existing
+        if not already_blocked:
+            prof.blocked_artists.append(cleaned)
+
+        # Penalize or replace matching positive affinity entries
+        matched_keys = [k for k in list(prof.artist_affinity.keys()) if str(k).strip().lower() == target_low]
+        if matched_keys:
+            for k in matched_keys:
+                prof.artist_affinity[k] = -10.0
+        else:
+            prof.artist_affinity[cleaned] = -10.0
+
+        self.save_profiles()
+        msg = f"**{cleaned}** is already blocked." if already_blocked else f"Blocked artist **{cleaned}**."
+        return True, msg, list(prof.blocked_artists)
+
+    def unblock_artist(self, user_id: int, artist_name: str) -> Tuple[bool, str, List[str]]:
+        """Case-insensitively unblocks an artist, clears negative block affinity, and persists profile."""
+        cleaned = str(artist_name or "").strip()
+        prof = self.get_user_profile(user_id)
+        if not cleaned:
+            return False, "Please provide a valid artist name.", list(prof.blocked_artists)
+
+        target_low = cleaned.lower()
+        before_len = len(prof.blocked_artists)
+        prof.blocked_artists = [
+            b for b in prof.blocked_artists if str(b).strip().lower() != target_low
+        ]
+        removed = len(prof.blocked_artists) < before_len
+
+        for k in list(prof.artist_affinity.keys()):
+            if str(k).strip().lower() == target_low and prof.artist_affinity[k] < 0:
+                del prof.artist_affinity[k]
+
+        if removed:
+            self.save_profiles()
+            return True, f"Unblocked artist **{cleaned}**.", list(prof.blocked_artists)
+        return False, f"**{cleaned}** was not found in your blocked artists list.", list(prof.blocked_artists)
+
+    def clear_history_memory(self, user_id: int) -> None:
+        """Marks memorized history items hidden and clears recent plays when user clears history."""
+        if not user_id:
+            return
+        prof = self.get_user_profile(user_id)
+        prof.recently_played.clear()
+        for item in prof.memorized_tracks:
+            if isinstance(item, dict):
+                item["hidden_from_history"] = True
+        self.save_profiles()
