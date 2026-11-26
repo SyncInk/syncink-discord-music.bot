@@ -230,6 +230,8 @@ class TestFixesVerification(unittest.TestCase):
         self.assertTrue(is_fallback_artwork(None))
         self.assertTrue(is_fallback_artwork(""))
         self.assertTrue(is_fallback_artwork("https://files.catbox.moe/74l9su.png"))
+        self.assertTrue(is_fallback_artwork("static/radio-bot.jpg"))
+        self.assertTrue(is_fallback_artwork("https://syncink.site/dashboard/radio/static/radio-bot.jpg"))
         self.assertFalse(is_fallback_artwork("https://is1-ssl.mzstatic.com/image/thumb/cover/600x600bb.jpg"))
 
         self.assertEqual(
@@ -243,10 +245,111 @@ class TestFixesVerification(unittest.TestCase):
         self.assertIsNone(extract_youtube_poster("https://open.spotify.com/track/123"))
 
         static_dir = Path(__file__).resolve().parent.parent / "static"
+        self.assertTrue((static_dir / "radio-bot.jpg").exists(), "Missing static/radio-bot.jpg")
         for page in ("index.html", "status.html", "guide.html", "faq.html", "privacy.html", "terms.html"):
             html = (static_dir / page).read_text(encoding="utf-8")
+            self.assertIn("static/radio-bot.jpg", html, f"{page} missing updated radio-bot.jpg logo")
             self.assertIn("M8.02 15.33", html, f"{page} missing full Discord Clyde eye cutout path")
             self.assertIn('fill-rule="evenodd"', html, f"{page} missing fill-rule='evenodd' on Discord SVG")
+
+    def test_all_cog_commands_and_audia_replay_fixes(self):
+        """Verifies /audia no longer fails with 'Command' object is not callable, /replay has single response, and fast stream reuse works."""
+        import asyncio
+        import time
+        from unittest.mock import AsyncMock, MagicMock
+        import cogs.music as music_mod
+        import cogs.help as help_mod
+        import cogs.spotify as spotify_mod
+        from services.music_service import MusicService, Track
+
+        mock_bot = MagicMock()
+        mock_bot.user = MagicMock()
+        mock_bot.user.id = 1500567606648897819
+        mock_bot.loop = asyncio.new_event_loop()
+
+        try:
+            music_cog = music_mod.Music(mock_bot)
+            help_cog = help_mod.Help(mock_bot)
+            spotify_cog = spotify_mod.Spotify(mock_bot)
+
+            # Verify every slash and prefix command attribute exists cleanly
+            expected_music_cmds = [
+                "slash_play", "slash_radio", "slash_lofi", "slash_search", "slash_pause",
+                "slash_resume", "slash_skip", "slash_previous", "slash_stop", "slash_leave",
+                "slash_queue", "slash_remove", "slash_np", "slash_shuffle", "slash_loop",
+                "slash_volume", "slash_audia", "slash_autoplay", "slash_247", "slash_replay",
+                "slash_invite",
+                "cmd_play", "cmd_radio", "cmd_lofi", "cmd_search", "cmd_pause", "cmd_resume",
+                "cmd_skip", "cmd_previous", "cmd_stop", "cmd_leave", "cmd_queue", "cmd_remove",
+                "cmd_np", "cmd_shuffle", "cmd_loop", "cmd_volume", "cmd_autoplay", "cmd_247",
+                "cmd_replay", "cmd_invite",
+            ]
+            for name in expected_music_cmds:
+                self.assertTrue(hasattr(music_cog, name), f"Missing Music command {name}")
+
+            self.assertTrue(hasattr(help_cog, "help"))
+            self.assertTrue(hasattr(help_cog, "slash_help"))
+            self.assertTrue(hasattr(spotify_cog, "spotify_group"))
+
+            async def _run_command_checks():
+                # 1. Verify /audia (interactive menu + mode='on' + mode='off') executes without TypeError
+                for mode_val in ("on", "off", None):
+                    inter = MagicMock(spec=discord.Interaction)
+                    inter.guild_id = 999888111
+                    inter.user = DummyUser(777666)
+                    inter.response = MagicMock()
+                    inter.response.is_done = MagicMock(return_value=False)
+                    inter.response.send_message = AsyncMock()
+                    inter.followup = MagicMock()
+                    inter.followup.send = AsyncMock()
+
+                    await music_cog.slash_audia.callback(music_cog, inter, mode=mode_val)
+                    self.assertTrue(inter.response.send_message.await_count == 1)
+
+                # 2. Verify /replay sends single response and stops once with manual_skip=True
+                q = music_cog.service.get_queue(999888111)
+                q.tracks.clear()
+                q.current_track = Track(
+                    title="Fast Replay Test",
+                    clean_title="Fast Replay Test",
+                    author="Artist",
+                    duration=180,
+                    url="https://youtube.com/watch?v=dQw4w9WgXcQ",
+                    stream_url="https://rr1.googlevideo.com/videoplayback?id=123",
+                    thumbnail="static/radio-bot.jpg",
+                    platform="youtube",
+                    requested_by=DummyUser(777666),
+                    _stream_resolved_at=time.time(),
+                )
+                q.voice_client = MagicMock()
+                q.voice_client.stop = MagicMock()
+
+                replay_inter = MagicMock(spec=discord.Interaction)
+                replay_inter.guild_id = 999888111
+                replay_inter.user = DummyUser(777666)
+                replay_inter.response = MagicMock()
+                replay_inter.response.is_done = MagicMock(return_value=False)
+                replay_inter.response.send_message = AsyncMock()
+                await music_cog.slash_replay.callback(music_cog, replay_inter)
+                self.assertEqual(q.voice_client.stop.call_count, 1)
+                self.assertEqual(replay_inter.response.send_message.await_count, 1)
+                self.assertTrue(q.manual_skip)
+
+                # 3. Verify fresh single-pass stream URL skips redundant yt-dlp round-trip
+                svc = MusicService.get_instance()
+                cached_url = await svc.refresh_stream_url(q.current_track)
+                self.assertEqual(cached_url, "https://rr1.googlevideo.com/videoplayback?id=123")
+
+            mock_bot.loop.run_until_complete(_run_command_checks())
+
+            # 4. Verify ensure_voice uses 'interaction' (no ctx NameError) and ensure_voice_ctx connects when vc is None
+            import inspect
+            ev_src = inspect.getsource(music_mod.Music.ensure_voice)
+            self.assertNotIn("send_error_embed(\n                        ctx", ev_src)
+            evc_src = inspect.getsource(music_mod.Music.ensure_voice_ctx)
+            self.assertIn("        vc = await channel.connect(", evc_src)
+        finally:
+            mock_bot.loop.close()
 
 
 if __name__ == "__main__":

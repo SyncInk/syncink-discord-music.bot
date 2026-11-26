@@ -184,6 +184,7 @@ class Track:
     is_live: bool = False
     is_radio: bool = False
     radio_station_id: Optional[str] = None
+    _stream_resolved_at: float = 0.0
 
     @property
     def formatted_duration(self) -> str:
@@ -351,7 +352,7 @@ class MusicService:
             'extract_flat': False,
             'source_address': '0.0.0.0',
             'skip_download': True,
-            'socket_timeout': 15,
+            'socket_timeout': 10,
             'http_headers': {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
                 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -359,7 +360,7 @@ class MusicService:
             },
             'extractor_args': {
                 'youtube': {
-                    'player_client': ['mweb', 'web', 'android', 'ios'],
+                    'player_client': ['android', 'mweb', 'web', 'ios'],
                     'lang': ['en'],
                 }
             },
@@ -470,7 +471,9 @@ class MusicService:
 
         loop = asyncio.get_event_loop()
         opts = dict(self.ydl_opts)
-        opts['extract_flat'] = 'in_playlist'
+        q_low = query.lower()
+        is_single_fast = (limit <= 1) and ("list=" not in q_low) and ("/playlist" not in q_low) and ("/sets/" not in q_low)
+        opts['extract_flat'] = False if is_single_fast else 'in_playlist'
 
         def _extract(opts_to_use):
             if yt_dlp is None:
@@ -536,17 +539,13 @@ class MusicService:
             if not webpage_url:
                 continue
 
-            if limit <= 2 and detected_platform != "spotify":
-                try:
-                    from services.artwork_service import ArtworkService, is_fallback_artwork
-                    official = await ArtworkService.resolve_official_artwork(
-                        c_title, artist, webpage_url, existing_thumb=None, platform=detected_platform
-                    )
-                    if official and not is_fallback_artwork(official):
-                        thumb = official
-                except Exception:
-                    pass
-
+            is_direct_stream = (
+                isinstance(stream_url, str)
+                and stream_url.startswith("http")
+                and stream_url != webpage_url
+                and "youtube.com/watch" not in stream_url
+                and "youtu.be/" not in stream_url
+            )
             track = Track(
                 title=raw_title,
                 clean_title=c_title,
@@ -558,6 +557,7 @@ class MusicService:
                 platform=detected_platform if detected_platform != "auto" else "youtube",
                 requested_by=requester,
                 is_live=is_live,
+                _stream_resolved_at=time.time() if is_direct_stream else 0.0,
             )
             tracks.append(track)
 
@@ -567,6 +567,17 @@ class MusicService:
         """Resolve a fresh media URL immediately before playback (extractor URLs expire)."""
         if track.platform == "radio" or track.is_radio:
             return track.stream_url
+
+        # Skip redundant yt-dlp round-trip if stream URL was freshly resolved in this session
+        s_url = getattr(track, "stream_url", "") or ""
+        if (
+            s_url.startswith("http")
+            and s_url != track.url
+            and "youtube.com/watch" not in s_url
+            and "youtu.be/" not in s_url
+            and (time.time() - getattr(track, "_stream_resolved_at", 0.0)) < 120.0
+        ):
+            return s_url
 
         if yt_dlp is None:
             raise RuntimeError("yt-dlp is not installed; run ?fixmusic to repair music dependencies.")
@@ -606,6 +617,7 @@ class MusicService:
                 raise RuntimeError(f"No authorized playback source could be matched for: {track.title} by {track.author}")
 
             track.stream_url = info["url"]
+            track._stream_resolved_at = time.time()
             track.is_live = bool(info.get("is_live", track.is_live))
             if not track.thumbnail and info.get("thumbnail"):
                 track.thumbnail = info["thumbnail"]
@@ -647,6 +659,7 @@ class MusicService:
             raise RuntimeError("The source did not return a playable audio stream.")
 
         track.stream_url = info["url"]
+        track._stream_resolved_at = time.time()
         track.is_live = bool(info.get("is_live", track.is_live))
         if info.get("thumbnail"):
             track.thumbnail = info["thumbnail"]
@@ -664,10 +677,10 @@ class MusicService:
             "-reconnect_on_network_error 1 "
             "-reconnect_on_http_error 5xx,408,429 "
             "-reconnect_delay_max 5 "
-            "-rw_timeout 20000000 "
+            "-rw_timeout 15000000 "
             "-thread_queue_size 8192 "
-            "-probesize 10000000 "
-            "-analyzeduration 15000000 "
+            "-probesize 1024k "
+            "-analyzeduration 2000000 "
             '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" '
             "-nostdin"
         )

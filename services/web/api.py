@@ -128,7 +128,7 @@ class DashboardAPI:
         if user.get("avatar"):
             avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{user['avatar']}.png?size=256"
         else:
-            avatar_url = "https://files.catbox.moe/74l9su.png"
+            avatar_url = "static/radio-bot.jpg"
 
         prefs_row = await db.fetchrow("SELECT * FROM user_preferences WHERE discord_user_id = $1", user_id)
         prefs = dict(prefs_row) if prefs_row else {
@@ -206,7 +206,7 @@ class DashboardAPI:
                 "id": "999888777",
                 "username": "SyncInk Listener",
                 "discriminator": "0001",
-                "avatar_url": "https://files.catbox.moe/74l9su.png",
+                "avatar_url": "static/radio-bot.jpg",
                 "is_admin": True
             }
         })
@@ -271,7 +271,7 @@ class DashboardAPI:
             {
                 "id": "110000000000000001",
                 "name": "SyncInk Cyber Lounge (Demo)",
-                "icon": "https://files.catbox.moe/74l9su.png",
+                "icon": "static/radio-bot.jpg",
                 "member_count": 142,
                 "connected": True,
                 "voice_channel": "Lofi Chill & Beats",
@@ -286,7 +286,7 @@ class DashboardAPI:
             {
                 "id": "110000000000000002",
                 "name": "Vibrant Anime Cafe (Demo)",
-                "icon": "https://files.catbox.moe/74l9su.png",
+                "icon": "static/radio-bot.jpg",
                 "member_count": 89,
                 "connected": True,
                 "voice_channel": "J-Rock Radio 24/7",
@@ -340,7 +340,7 @@ class DashboardAPI:
                 if not is_member and not is_sys_admin:
                     continue
 
-                icon_url = str(g.icon.url) if g.icon else "https://files.catbox.moe/74l9su.png"
+                icon_url = str(g.icon.url) if g.icon else "static/radio-bot.jpg"
                 queue = MusicService.get_instance().get_queue(g.id)
                 vc = g.voice_client
 
@@ -548,7 +548,7 @@ class DashboardAPI:
         is_admin = DashboardAuthManager.is_system_admin(user_id, bot)
         can_manage = DashboardAuthManager.can_manage_guild(user_id, guild)
         member = guild.get_member(user_id)
-        if not member:
+        if not member and not (is_admin or can_manage):
             try:
                 member = await guild.fetch_member(user_id)
             except Exception:
@@ -575,29 +575,39 @@ class DashboardAPI:
                 return aiohttp.web.json_response({"error": "Missing query parameter"}, status=400)
 
             voice_channel_id = body.get("voice_channel_id")
-            if not vc or not vc.is_connected():
-                if guild:
-                    target_vc = None
-                    if voice_channel_id:
-                        target_vc = guild.get_channel(int(voice_channel_id))
-                    elif guild.voice_channels:
-                        # Auto-pick non-empty voice channel or first voice channel
-                        for ch in guild.voice_channels:
-                            if any(not m.bot for m in ch.members):
-                                target_vc = ch
-                                break
-                        if not target_vc:
-                            target_vc = guild.voice_channels[0]
-                    if target_vc:
-                        try:
-                            vc = await target_vc.connect()
-                            queue.voice_client = vc
-                        except Exception as ce:
-                            log.warning(f"Voice connect error: {ce}")
+            requester = member or SimpleNamespace(
+                id=user_id,
+                name=user.get("username", "Dashboard User"),
+                display_name=user.get("username", "Dashboard User"),
+                mention=f"<@{user_id}>",
+                bot=False,
+            )
+
+            # Start track extraction immediately in parallel with voice connection!
+            search_task = asyncio.create_task(service.search_and_extract(query, requester, limit=1))
+
+            if (not vc or not vc.is_connected()) and guild:
+                target_vc = None
+                if voice_channel_id:
+                    target_vc = guild.get_channel(int(voice_channel_id))
+                elif member and member.voice and member.voice.channel:
+                    target_vc = member.voice.channel
+                elif guild.voice_channels:
+                    for ch in guild.voice_channels:
+                        if any(not m.bot for m in ch.members):
+                            target_vc = ch
+                            break
+                    if not target_vc:
+                        target_vc = guild.voice_channels[0]
+                if target_vc:
+                    try:
+                        vc = await target_vc.connect(self_deaf=True, timeout=15.0, reconnect=True)
+                        queue.voice_client = vc
+                    except Exception as ce:
+                        log.warning(f"Voice connect error: {ce}")
 
             try:
-                requester = member or SimpleNamespace(id=user_id, name=user.get("username", "Dashboard User"), display_name=user.get("username", "Dashboard User"), mention=f"<@{user_id}>", bot=False)
-                tracks = await service.search_and_extract(query, requester, limit=1)
+                tracks = await search_task
                 if tracks:
                     track = tracks[0]
                     track.requested_by = requester
@@ -605,11 +615,13 @@ class DashboardAPI:
                         music_cog = bot.get_cog("Music") if bot else None
                         if music_cog:
                             await music_cog.play_track(queue, track)
-                            await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False)
+                            asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False))
                     else:
                         queue.tracks.append(track)
-                        await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=True, enqueued_position=len(queue.tracks))
+                        asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=True, enqueued_position=len(queue.tracks)))
             except Exception as pe:
+                if not search_task.done():
+                    search_task.cancel()
                 return aiohttp.web.json_response({"error": f"Failed to enqueue: {pe}"}, status=500)
 
         elif action == "pause":
@@ -909,7 +921,7 @@ class DashboardAPI:
                 "stationuuid": s.get("stationuuid") or s.get("name"),
                 "name": s.get("name"),
                 "url": s.get("url_resolved") or s.get("url"),
-                "favicon": s.get("favicon") or "https://files.catbox.moe/74l9su.png",
+                "favicon": s.get("favicon") or "static/radio-bot.jpg",
                 "country": s.get("country") or country,
                 "tags": s.get("tags", ""),
                 "votes": s.get("votes", 0),
@@ -1008,7 +1020,7 @@ class DashboardAPI:
             "name": station_name or "Live Radio",
             "url": stream_url,
             "url_resolved": stream_url,
-            "favicon": body.get("favicon", "https://files.catbox.moe/74l9su.png"),
+            "favicon": body.get("favicon", "static/radio-bot.jpg"),
             "country": country
         }
 
@@ -1169,7 +1181,7 @@ class DashboardAPI:
         item_id = body.get("item_id", "")
         title = body.get("title", "")
         subtitle = body.get("subtitle", "")
-        image_url = body.get("image_url", "https://files.catbox.moe/74l9su.png")
+        image_url = body.get("image_url", "static/radio-bot.jpg")
         url = body.get("url", "")
 
         query = """
@@ -1264,7 +1276,7 @@ class DashboardAPI:
         author = body.get("author", "Artist")
         url = body.get("url", "")
         duration = int(body.get("duration", 0))
-        thumbnail = body.get("thumbnail", "https://files.catbox.moe/74l9su.png")
+        thumbnail = body.get("thumbnail", "static/radio-bot.jpg")
         platform = body.get("platform", "youtube")
 
         query = """
@@ -1339,7 +1351,7 @@ class DashboardAPI:
                             "author": nt.artist,
                             "url": nt.original_url or f"https://open.spotify.com/track/{nt.id}",
                             "duration": int((nt.duration_ms or 0) / 1000),
-                            "thumbnail": nt.artwork or "https://files.catbox.moe/74l9su.png",
+                            "thumbnail": nt.artwork or "static/radio-bot.jpg",
                             "platform": "spotify"
                         })
             except Exception as e:
@@ -1379,7 +1391,7 @@ class DashboardAPI:
                                                 "author": t_author,
                                                 "url": t_url,
                                                 "duration": t_dur,
-                                                "thumbnail": "https://files.catbox.moe/74l9su.png",
+                                                "thumbnail": "static/radio-bot.jpg",
                                                 "platform": "spotify"
                                             })
                 except Exception as e:
@@ -1418,7 +1430,7 @@ class DashboardAPI:
                         if not e_url:
                             continue
                         e_dur = int(entry.get("duration") or 0)
-                        thumb = "https://files.catbox.moe/74l9su.png"
+                        thumb = "static/radio-bot.jpg"
                         if entry.get("thumbnails"):
                             thumb = entry["thumbnails"][-1].get("url", thumb)
                         extracted_tracks.append({
@@ -1483,7 +1495,7 @@ class DashboardAPI:
                 parsed_sp = SpotifyResolver.parse_resource(url)
                 if parsed_sp:
                     _, res_id = parsed_sp
-                    first_thumb = extracted_tracks[0].get("thumbnail") if extracted_tracks else "https://files.catbox.moe/74l9su.png"
+                    first_thumb = extracted_tracks[0].get("thumbnail") if extracted_tracks else "static/radio-bot.jpg"
                     await db.execute("""
                         INSERT INTO user_spotify_playlists (
                             discord_user_id, spotify_playlist_id, name, description, url, image_url, tracks_total, updated_at
@@ -1582,7 +1594,7 @@ class DashboardAPI:
                                     if k not in seen_titles:
                                         seen_titles.add(k)
                                         duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
-                                        thumb = item.get("artworkUrl100") or "https://files.catbox.moe/74l9su.png"
+                                        thumb = item.get("artworkUrl100") or "static/radio-bot.jpg"
                                         itunes_results.append({
                                             "title": track_name,
                                             "artist": artist_name,
@@ -1620,11 +1632,11 @@ class DashboardAPI:
             )
             for s in suggestions:
                 if not s.get("thumbnail"):
-                    s["thumbnail"] = "https://files.catbox.moe/74l9su.png"
+                    s["thumbnail"] = "static/radio-bot.jpg"
         except Exception:
             for s in suggestions:
                 if not s.get("thumbnail"):
-                    s["thumbnail"] = "https://files.catbox.moe/74l9su.png"
+                    s["thumbnail"] = "static/radio-bot.jpg"
 
         return aiohttp.web.json_response({"suggestions": suggestions[:8]})
 
@@ -1828,7 +1840,7 @@ class DashboardAPI:
             if since_dt and dt < since_dt:
                 return
             seen_local.add(key)
-            cleaned_thumb = thumb.strip() if (thumb and "74l9su.png" not in thumb) else ""
+            cleaned_thumb = thumb.strip() if (thumb and "74l9su.png" not in thumb and "radio-bot.jpg" not in thumb) else ""
             collected.append({
                 "id": 900000 + len(collected),
                 "guild_id": 0,
@@ -1953,7 +1965,7 @@ class DashboardAPI:
                             "track_url": q.current_track.url or "",
                             "duration": int(q.current_track.duration or 0),
                             "platform": t_plat,
-                            "thumbnail_url": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
+                            "thumbnail_url": q.current_track.thumbnail or "static/radio-bot.jpg",
                             "played_at": "Now Playing",
                             "is_live_now": True
                         }
@@ -1978,7 +1990,7 @@ class DashboardAPI:
                             "track_url": trk.url or "",
                             "duration": int(trk.duration or 0),
                             "platform": t_plat,
-                            "thumbnail_url": trk.thumbnail or "https://files.catbox.moe/74l9su.png",
+                            "thumbnail_url": trk.thumbnail or "static/radio-bot.jpg",
                             "played_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "is_live_now": False
                         })
@@ -2173,7 +2185,7 @@ class DashboardAPI:
                     live_track = {
                         "title": q.current_track.clean_title or q.current_track.title,
                         "author": q.current_track.author or "Artist",
-                        "thumbnail": q.current_track.thumbnail or "https://files.catbox.moe/74l9su.png",
+                        "thumbnail": q.current_track.thumbnail or "static/radio-bot.jpg",
                         "duration": int(q.current_track.duration or 0),
                         "is_radio": q.current_track.is_radio
                     }

@@ -10,7 +10,7 @@ from utils.emojis import Emojis, format_discord_emojis
 from utils.logger import log
 
 BRAND_COLOR = 0x7b2cbf
-BRAND_LOGO_URL = "https://files.catbox.moe/74l9su.png"
+BRAND_LOGO_URL = "https://syncink.site/dashboard/radio/static/radio-bot.jpg"
 
 
 def is_admin_or_owner(user: discord.Member, guild: Optional[discord.Guild] = None) -> bool:

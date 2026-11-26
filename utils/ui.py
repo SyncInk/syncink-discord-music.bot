@@ -9,7 +9,7 @@ BRAND_ACCENT = 0x7b2cbf   # SyncInk Cyber Violet (Music & Radio brand color)
 SUCCESS_COLOR = 0x57F287  # Green
 ERROR_COLOR = 0xED4245    # Red
 WARNING_COLOR = 0xFEE75C  # Yellow
-BRAND_LOGO_URL = "https://files.catbox.moe/74l9su.png"
+BRAND_LOGO_URL = "https://syncink.site/dashboard/radio/static/radio-bot.jpg"
 
 def get_latency_badge(latency_ms: float) -> tuple[str, str]:
     """Returns (emoji, quality_label) based on gateway websocket latency."""

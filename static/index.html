@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>SyncInk Radio • Unified Web Dashboard & Audia AI</title>
-  <link rel="icon" href="https://files.catbox.moe/74l9su.png" type="image/png">
+  <link rel="icon" href="static/radio-bot.jpg" type="image/jpeg">
   
   <!-- Dynamic Base Path for syncink.site/dashboard/radio mounting -->
   <script>
@@ -47,34 +47,35 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Cyber Violet Stylesheet -->
-  <link rel="stylesheet" href="static/style.css?v=3.0.0">
+  <link rel="stylesheet" href="static/style.css?v=3.1.0">
 </head>
 <body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none font-sans">
 
   <!-- ==================== DESKTOP SIDEBAR (SLIDABLE / COLLAPSIBLE) ==================== -->
-  <aside id="sidebar" class="hidden md:flex flex-col w-[264px] bg-[#14131a] border-r border-brand-border/40 px-3.5 pt-4 pb-28 shrink-0 z-30 select-none overflow-x-hidden">
-    <!-- Brand Logo & Slide Toggle Header -->
-    <div class="sidebar-brand-row flex items-center justify-between gap-2 px-1.5 py-1.5 mb-4">
-      <div class="sidebar-brand-link flex items-center gap-3 min-w-0 flex-1 px-1.5 py-1 cursor-pointer rounded-xl hover:bg-white/[0.03] transition-colors" onclick="navigateTo('overview')" title="SyncInk Radio">
+  <aside id="sidebar" class="hidden md:flex relative flex-col w-[264px] bg-[#14131a] border-r border-brand-border/40 px-3.5 pt-4 pb-28 shrink-0 z-[35] select-none overflow-visible">
+    <!-- Edge Slide Toggle Handle Centered on Right Border Line -->
+    <button id="btn-toggle-sidebar" type="button" onclick="toggleDesktopSidebar()" class="hidden md:flex absolute -right-3.5 top-1/2 -translate-y-1/2 z-40 w-7 h-12 items-center justify-center rounded-full bg-[#191820] hover:bg-[#252136] text-[#C8C7D8] hover:text-white border border-brand-border/60 hover:border-brand-secondary/75 shadow-[0_6px_18px_rgba(0,0,0,0.65)] transition-all cursor-pointer" aria-label="Collapse or expand sidebar" aria-expanded="true" title="Slide sidebar">
+      <svg id="sidebar-chevron-icon" width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12.5 5 7.5 10l5 5"/>
+      </svg>
+    </button>
+
+    <!-- Brand Logo & Title Header -->
+    <div class="sidebar-brand-row flex items-center gap-3 px-2 py-1.5 mb-4 overflow-hidden">
+      <div class="sidebar-brand-link flex items-center gap-3 min-w-0 flex-1 px-1 py-1 cursor-pointer rounded-xl hover:bg-white/[0.03] transition-colors" onclick="navigateTo('overview')" title="SyncInk Radio">
         <div class="relative shrink-0">
-          <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
+          <img src="static/radio-bot.jpg" alt="SyncInk Radio Logo" class="w-10 h-10 rounded-full border border-brand-primary/50 object-cover shadow-md">
           <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-[#14131a] rounded-full"></span>
         </div>
         <div class="brand-meta min-w-0">
           <h1 class="font-semibold text-[15px] leading-tight tracking-tight text-white truncate">SyncInk Radio</h1>
-          <p class="text-[11px] text-[#9E9EAD] font-medium truncate">Audia Audio Engine</p>
+          <p class="text-[11px] text-[#9E9EAD] font-medium truncate">Powered by Audia AI</p>
         </div>
       </div>
-      <button id="btn-toggle-sidebar" type="button" onclick="toggleDesktopSidebar()" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-[#B8B7C7] hover:text-white hover:bg-brand-surface border border-brand-border/25 hover:border-brand-primary/50 transition-all" aria-label="Collapse or expand sidebar" aria-expanded="true" title="Slide sidebar (Full View)">
-        <svg id="sidebar-chevron-icon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12.5 5 7.5 10l5 5"/>
-          <path d="M5 4.5v11"/>
-        </svg>
-      </button>
     </div>
 
     <!-- Navigation Links -->
-    <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none pr-0.5" aria-label="Primary Navigation">
+    <nav class="flex-1 space-y-1 overflow-y-auto overflow-x-hidden scrollbar-none pr-0.5" aria-label="Primary Navigation">
       <div class="sidebar-section-label px-2.5 pb-1 text-[11px] font-medium text-[#8C8B9C]">Studio</div>
 
       <a href="#overview" onclick="navigateTo('overview')" title="Home Overview" class="nav-item active-nav group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap transition-[background-color,color,border-color] duration-150 text-white bg-brand-primary/20 border border-brand-primary/35" data-view="overview">
@@ -261,10 +262,10 @@
   <aside id="mobile-drawer" class="fixed top-0 bottom-0 left-0 w-72 bg-[#14131a] border-r border-brand-border/40 p-4 pb-7 shrink-0 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col md:hidden select-none">
     <div class="flex items-center justify-between mb-4 px-1">
       <div class="flex items-center gap-2.5 cursor-pointer" onclick="navigateTo('overview'); closeMobileMenu();">
-        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
+        <img src="static/radio-bot.jpg" alt="SyncInk Radio Logo" class="w-10 h-10 rounded-full border border-brand-primary/50 object-cover shadow-md">
         <div>
           <h2 class="font-semibold text-sm text-white leading-tight">SyncInk Radio</h2>
-          <p class="text-[11px] text-[#9E9EAD]">Audia Audio Engine</p>
+          <p class="text-[11px] text-[#9E9EAD]">Powered by Audia AI</p>
         </div>
       </div>
       <button onclick="closeMobileMenu()" class="text-[#9E9EAD] hover:text-white p-1.5 rounded-lg hover:bg-brand-surface transition-colors" aria-label="Close Menu">
@@ -393,19 +394,10 @@
           <i data-lucide="menu" class="w-5 h-5"></i>
         </button>
 
-        <!-- Desktop Slidable Sidebar Toggle -->
-        <button id="btn-desktop-sidebar" type="button" class="hidden md:inline-flex p-2 rounded-xl text-[#9E9EAD] hover:text-white hover:bg-brand-surface border border-transparent hover:border-brand-border/40 transition-colors" onclick="toggleDesktopSidebar()" aria-label="Toggle Sidebar Width" title="Slide Sidebar (Full View)">
-          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <rect x="2.75" y="3.25" width="14.5" height="13.5" rx="2.5"/>
-            <path d="M7.5 3.25v13.5"/>
-            <path d="M12.75 8l-2 2 2 2"/>
-          </svg>
-        </button>
-
         <!-- Active Server Dropdown Selector -->
         <div class="relative">
           <button id="server-selector-btn" class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-brand-surface border border-brand-border/40 hover:border-brand-primary text-xs sm:text-sm font-medium transition-all" onclick="toggleServerDropdown()">
-            <img id="active-server-icon" src="https://files.catbox.moe/74l9su.png" alt="Server" class="w-6 h-6 rounded-lg object-cover">
+            <img id="active-server-icon" src="static/radio-bot.jpg" alt="Server" class="w-6 h-6 rounded-lg object-cover">
             <span id="active-server-name" class="max-w-[120px] sm:max-w-[180px] truncate">Select Server</span>
             <i data-lucide="chevron-down" class="w-4 h-4 text-[#9E9EAD]"></i>
           </button>
@@ -425,15 +417,8 @@
         </div>
       </div>
 
-      <!-- Right Header Actions (Live Status + Invite + Preferences + Discord User Login) -->
+      <!-- Right Header Actions (Invite + Preferences + Discord User Login) -->
       <div class="flex items-center gap-2 sm:gap-3">
-        <!-- Always-Visible Live Bot Status Pill (PC) -->
-        <a id="header-status-pill" href="/status" data-route-link="status" title="Open Live Telemetry & Status Console" class="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#E4E3F0] hover:text-white bg-brand-surface/90 border border-brand-border/40 hover:border-emerald-400/50 transition-all">
-          <span id="header-gateway-dot" class="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
-          <span>Live Status</span>
-          <span id="header-status-ping" class="font-mono text-[11px] text-emerald-400 tabular-nums">-- ms</span>
-        </a>
-
         <!-- Invite SyncInk Bot CTA -->
         <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/10 border border-brand-primary/30 hover:bg-brand-primary/20 transition-all">
           <i data-lucide="plus-circle" class="w-4 h-4"></i> Invite Bot
@@ -455,7 +440,7 @@
             <span>Login</span>
           </a>
           <div id="user-profile-pill" class="hidden items-center gap-2.5 bg-brand-surface border border-brand-border/40 px-2 py-1 sm:px-3 sm:py-1.5 rounded-xl">
-            <img id="user-avatar" src="https://files.catbox.moe/74l9su.png" alt="Avatar" class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-brand-primary/50 object-cover">
+            <img id="user-avatar" src="static/radio-bot.jpg" alt="Avatar" class="w-6 h-6 sm:w-7 sm:h-7 rounded-full border border-brand-primary/50 object-cover">
             <div class="text-left hidden sm:block">
               <p id="user-username" class="text-xs font-bold leading-tight"></p>
               <p id="user-tag" class="text-[10px] text-[#9E9EAD]"></p>
@@ -509,7 +494,7 @@
         <!-- Live Status Spotlight Card (Active Listening Session) -->
         <div id="overview-spotlight" class="relative z-0 glass-panel p-5 sm:p-6 rounded-3xl border border-brand-primary/30 flex flex-col md:flex-row items-center justify-between gap-5">
           <div class="flex items-center gap-4 w-full md:w-auto min-w-0">
-            <img id="spotlight-track-img" src="https://files.catbox.moe/74l9su.png" alt="Cover" class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-brand-border/40 shrink-0 shadow-lg">
+            <img id="spotlight-track-img" src="static/radio-bot.jpg" alt="Cover" class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl object-cover border border-brand-border/40 shrink-0 shadow-lg">
             <div class="min-w-0 flex-1">
               <div class="flex items-center gap-2 mb-1">
                 <div class="equalizer-container">
@@ -1027,7 +1012,7 @@
         <div id="analytics-live-banner" class="hidden glass-panel p-4 sm:p-5 rounded-2xl border border-emerald-500/40 bg-gradient-to-r from-emerald-950/25 via-[#191820] to-[#191820] flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-xl">
           <div class="flex items-center gap-3.5">
             <div class="relative shrink-0">
-              <img id="analytics-live-art" src="https://files.catbox.moe/74l9su.png" class="w-12 h-12 rounded-xl object-cover border border-emerald-500/40 shadow-md">
+              <img id="analytics-live-art" src="static/radio-bot.jpg" class="w-12 h-12 rounded-xl object-cover border border-emerald-500/40 shadow-md">
               <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full animate-ping"></span>
               <span class="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border-2 border-[#101014]"></span>
             </div>
@@ -1238,7 +1223,7 @@
     <!-- ==================== UPCOMING SONG FLOATING NOTIFICATION (10s BEFORE TRACK ENDS) ==================== -->
     <div id="upcoming-track-banner" class="hidden fixed bottom-20 md:bottom-28 right-3 sm:right-6 z-50 bg-[#191726]/95 backdrop-blur-xl border border-brand-primary/60 rounded-2xl shadow-2xl p-3 flex items-center gap-3 max-w-sm transition-all duration-300 animate-slide-up">
       <div class="relative shrink-0">
-        <img id="upcoming-track-img" src="https://files.catbox.moe/74l9su.png" alt="Upcoming" class="w-11 h-11 rounded-xl object-cover border border-brand-border/40 shadow-md">
+        <img id="upcoming-track-img" src="static/radio-bot.jpg" alt="Upcoming" class="w-11 h-11 rounded-xl object-cover border border-brand-border/40 shadow-md">
         <span class="absolute -top-1 -right-1 w-3 h-3 bg-brand-primary rounded-full animate-ping"></span>
         <span class="absolute -top-1 -right-1 w-3 h-3 bg-brand-secondary rounded-full border-2 border-[#191726]"></span>
       </div>
@@ -1272,7 +1257,7 @@
       <!-- Left Track Info -->
       <div class="flex items-center gap-2.5 sm:gap-3.5 min-w-0 max-w-[45%] sm:max-w-[55%] md:max-w-none md:w-1/4 cursor-pointer" onclick="openMobileFullPlayer()">
         <div class="relative shrink-0 overflow-hidden rounded-lg md:rounded-xl">
-          <img id="player-track-img" src="https://files.catbox.moe/74l9su.png" alt="Album Art" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px; max-width: 44px; max-height: 44px; object-fit: cover;" class="w-10 h-10 md:w-14 md:h-14 rounded-lg md:rounded-xl object-cover border border-brand-border/50 shadow-md shrink-0">
+          <img id="player-track-img" src="static/radio-bot.jpg" alt="Album Art" style="width: 44px; height: 44px; min-width: 44px; min-height: 44px; max-width: 44px; max-height: 44px; object-fit: cover;" class="w-10 h-10 md:w-14 md:h-14 rounded-lg md:rounded-xl object-cover border border-brand-border/50 shadow-md shrink-0">
         </div>
         <div class="min-w-0 flex-1">
           <h4 id="player-track-title" class="text-xs md:text-sm font-bold truncate text-white hover:underline">Nothing is playing</h4>
@@ -1385,7 +1370,7 @@
       <!-- Center Large Album Artwork -->
       <div class="my-auto py-6 flex flex-col items-center">
         <div class="relative w-64 h-64 sm:w-80 sm:h-80 max-w-[80vw] max-h-[80vw] rounded-3xl overflow-hidden shadow-2xl border border-brand-border/40">
-          <img id="mfp-track-img" src="https://files.catbox.moe/74l9su.png" alt="Cover" class="w-full h-full object-cover">
+          <img id="mfp-track-img" src="static/radio-bot.jpg" alt="Cover" class="w-full h-full object-cover">
         </div>
       </div>
 
@@ -1616,7 +1601,7 @@
       </div>
 
       <div id="add-to-playlist-target-song" class="p-3 rounded-xl bg-brand-surface border border-brand-border/40 flex items-center gap-3">
-        <img id="atp-song-img" src="https://files.catbox.moe/74l9su.png" class="w-10 h-10 rounded-lg object-cover shrink-0">
+        <img id="atp-song-img" src="static/radio-bot.jpg" class="w-10 h-10 rounded-lg object-cover shrink-0">
         <div class="min-w-0 flex-1">
           <p id="atp-song-title" class="text-xs font-bold text-white truncate">Song Title</p>
           <p id="atp-song-artist" class="text-[11px] text-[#9E9EAD] truncate">Artist</p>
@@ -1763,6 +1748,6 @@
   <div id="toast-container"></div>
 
   <!-- Main Client Application Logic -->
-  <script src="static/app.js?v=3.0.0"></script>
+  <script src="static/app.js?v=3.1.0"></script>
 </body>
 </html>

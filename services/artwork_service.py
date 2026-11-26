@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import aiohttp
 from utils.logger import log
 
-DEFAULT_LOGO_URL = "https://files.catbox.moe/74l9su.png"
+DEFAULT_LOGO_URL = "static/radio-bot.jpg"
 
 _GENERIC_AUTHORS = {
     "", "artist", "unknown artist", "various artists", "song", "radio", "unknown"
@@ -21,13 +21,13 @@ _CLEAN_NOISE_RE = re.compile(
 
 
 def is_fallback_artwork(url: Optional[str]) -> bool:
-    """Returns True when thumbnail is empty, invalid, or the generic SyncInk fallback logo."""
+    """Returns True when thumbnail is empty, invalid, or a generic SyncInk fallback logo."""
     if not url or not isinstance(url, str):
         return True
     cleaned = url.strip()
     if not cleaned.startswith(("http://", "https://")):
         return True
-    return "74l9su.png" in cleaned
+    return ("74l9su.png" in cleaned) or ("radio-bot.jpg" in cleaned)
 
 
 def extract_youtube_poster(url: Optional[str]) -> Optional[str]:

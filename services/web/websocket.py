@@ -104,7 +104,7 @@ class DashboardWebSocketManager:
             return {
                 "guild_id": "110000000000000001",
                 "server_name": "SyncInk Cyber Lounge",
-                "server_icon": "https://files.catbox.moe/74l9su.png",
+                "server_icon": "static/radio-bot.jpg",
                 "voice_channel": "Lofi Chill & Beats",
                 "channel_id": "90000000000000001",
                 "is_connected": True,
@@ -169,7 +169,7 @@ class DashboardWebSocketManager:
             return {
                 "guild_id": "110000000000000002",
                 "server_name": "Vibrant Anime Cafe",
-                "server_icon": "https://files.catbox.moe/74l9su.png",
+                "server_icon": "static/radio-bot.jpg",
                 "voice_channel": "J-Rock Radio 24/7",
                 "channel_id": "90000000000000002",
                 "is_connected": True,
@@ -265,7 +265,7 @@ class DashboardWebSocketManager:
             channel_id = str(vc.channel.id)
 
         server_name = guild.name if guild else f"Guild #{guild_id}"
-        server_icon = str(guild.icon.url) if (guild and guild.icon) else "https://files.catbox.moe/74l9su.png"
+        server_icon = str(guild.icon.url) if (guild and guild.icon) else "static/radio-bot.jpg"
 
         # AutoPlay / Audia AI Metadata
         autoplay_meta = getattr(queue, "last_autoplay_meta", None)

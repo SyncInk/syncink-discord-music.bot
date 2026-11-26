@@ -35,7 +35,7 @@ ERROR_MESSAGE = (
 )
 
 BRAND_COLOR = 0x7b2cbf  # SyncInk Cyber Violet
-BRAND_LOGO_URL = "https://files.catbox.moe/74l9su.png"
+BRAND_LOGO_URL = "https://syncink.site/dashboard/radio/static/radio-bot.jpg"
 
 def get_music_booster_role_id() -> Optional[int]:
     raw = os.getenv("MUSIC_BOOSTER_ROLE_ID")
@@ -1208,11 +1208,11 @@ class SearchPickerLayoutView(discord.ui.LayoutView):
                 return
             selected = self.tracks[index]
             self.stop()
+            await interaction.response.defer()
             try:
                 await interaction.message.delete()
             except Exception:
                 pass
-            await interaction.response.defer()
             await self.music_cog.enqueue_and_play(interaction, [selected])
         return _callback
 
@@ -2193,13 +2193,13 @@ class Music(commands.Cog):
                         await vc.disconnect(force=True)
                     except Exception:
                         pass
-                vc = await channel.connect(self_deaf=True, timeout=30.0, reconnect=True)
+                vc = await channel.connect(self_deaf=True, timeout=15.0, reconnect=True)
             elif vc.channel.id != channel.id:
                 listeners = [m for m in vc.channel.members if not m.bot]
                 is_active = vc.is_playing() or vc.is_paused()
                 if len(listeners) > 0 or is_active:
                     await self.send_error_embed(
-                        ctx,
+                        interaction,
                         description=(
                             f"### {Emojis.WARNING} Already Active in Another Channel\n\n"
                             f"I am currently playing music in **{vc.channel.name}** ({vc.channel.mention}) for other listeners.\n\n"
@@ -2490,6 +2490,7 @@ class Music(commands.Cog):
                                     resolved_thumb = official
                                     if trk_obj is not None and is_fallback_artwork(getattr(trk_obj, "thumbnail", None)):
                                         trk_obj.thumbnail = official
+                                        self.notify_dashboard(gid)
 
                             q = """
                                 INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
@@ -3208,7 +3209,7 @@ class Music(commands.Cog):
                         await vc.disconnect(force=True)
                     except Exception:
                         pass
-                    vc = await channel.connect(self_deaf=True, timeout=30.0, reconnect=True)
+                vc = await channel.connect(self_deaf=True, timeout=15.0, reconnect=True)
             elif vc.channel.id != channel.id:
                 listeners = [m for m in vc.channel.members if not m.bot]
                 is_active = vc.is_playing() or vc.is_paused()
@@ -3374,19 +3375,38 @@ class Music(commands.Cog):
         # 1. Defer immediately to avoid Discord 3-second interaction timeout
         await interaction.response.defer()
 
-        # 2. Check and connect to voice
-        vc = await self.ensure_voice(interaction)
-        if not vc:
+        member = interaction.user
+        if not isinstance(member, discord.Member) and interaction.guild:
+            member = interaction.guild.get_member(interaction.user.id) or interaction.user
+
+        # Fast-fail if user is not in a voice channel before touching yt-dlp/Spotify
+        if not hasattr(member, "voice") or not member.voice or not member.voice.channel:
+            await self.send_error_embed(
+                interaction,
+                description="You must be in a voice channel first! Please join a voice channel and try again.",
+                is_warning=True,
+            )
             return
 
+        # 2. Connect voice, resolve dedicated channel, and search/extract concurrently!
+        voice_task = asyncio.create_task(self.ensure_voice(interaction))
+        dedicated_task = asyncio.create_task(self.get_dedicated_text_channel(interaction.guild))
+        search_task = asyncio.create_task(self.service.search_and_extract(query, interaction.user, platform=platform, limit=1))
+
+        vc = await voice_task
+        if not vc:
+            for t in (search_task, dedicated_task):
+                if not t.done():
+                    t.cancel()
+            return
+
+        dedicated = await dedicated_task
         queue = self.service.get_queue(interaction.guild_id)
         queue.voice_client = vc
-        dedicated = await self.get_dedicated_text_channel(interaction.guild)
         queue.text_channel = dedicated or interaction.channel
 
-        # 3. Search and extract
         try:
-            tracks = await self.service.search_and_extract(query, interaction.user, platform=platform, limit=1)
+            tracks = await search_task
         except Exception as e:
             log.error(f"[Music Search Error] {e}")
             await self.send_error_embed(interaction, description=f"Track lookup failed: `{e}`", delay=30)
@@ -3396,7 +3416,7 @@ class Music(commands.Cog):
             await self.send_error_embed(interaction, description=f"No tracks found for: **{query}**", is_warning=True)
             return
 
-        # 4. Play
+        # 3. Play immediately (stream_url is already resolved on single-track queries!)
         try:
             await self.enqueue_and_play(interaction, tracks)
         except Exception as e:
@@ -3713,15 +3733,8 @@ class Music(commands.Cog):
         embed = make_success_embed(f"### {Emojis.VOLUME} Volume adjusted to **{val}%**.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
-    @app_commands.command(name="audia", description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
-    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
-    async def slash_audia(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
-        """Audia AI intelligent music assistant."""
-        return await self.slash_autoplay(interaction, mode)
-
-    @app_commands.command(name="autoplay", description="Audia AI — Continuous song recommendation and AutoPlay.")
-    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
-    async def slash_autoplay(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+    async def _handle_autoplay_interaction(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+        """Shared handler for /audia and /autoplay slash commands."""
         try:
             queue = self.service.get_queue(interaction.guild_id)
             if mode == "on":
@@ -3784,6 +3797,17 @@ class Music(commands.Cog):
             else:
                 await interaction.response.send_message(embed=embed_err, ephemeral=True)
 
+    @app_commands.command(name="audia", description="Audia AI — Intelligent music assistant & continuous AutoPlay.")
+    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
+    async def slash_audia(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+        """Audia AI intelligent music assistant."""
+        return await self._handle_autoplay_interaction(interaction, mode)
+
+    @app_commands.command(name="autoplay", description="Audia AI — Continuous song recommendation and AutoPlay.")
+    @app_commands.describe(mode="Directly toggle ON or OFF (or omit to open interactive Audia AI settings)")
+    async def slash_autoplay(self, interaction: discord.Interaction, mode: Optional[Literal["on", "off"]] = None):
+        return await self._handle_autoplay_interaction(interaction, mode)
+
     @app_commands.command(name="247", description="Keep bot in voice channel 24/7.")
     @app_commands.describe(mode="Enable or disable 24/7 mode")
     async def slash_247(self, interaction: discord.Interaction, mode: Literal["on", "off"]):
@@ -3806,10 +3830,8 @@ class Music(commands.Cog):
         queue.tracks.insert(0, curr)
         queue.manual_skip = True
         queue.voice_client.stop()
+        self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**")
-        await interaction.response.send_message(embed=embed, ephemeral=True)
-        queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", color=BRAND_COLOR)
         await interaction.response.send_message(embed=embed, ephemeral=True)
 
     @app_commands.command(name="invite", description="Get the official bot invite link to add SyncInk Radio to your server.")
@@ -3860,29 +3882,35 @@ class Music(commands.Cog):
             )
             return
 
-        vc = await self.ensure_voice_ctx(ctx)
+        if not ctx.author.voice or not ctx.author.voice.channel:
+            await self.send_error_embed(
+                ctx,
+                description="Please join a voice channel first, then try again.",
+                is_warning=True
+            )
+            return
+
+        # Run voice join, dedicated channel lookup, and track extraction concurrently!
+        voice_task = asyncio.create_task(self.ensure_voice_ctx(ctx))
+        dedicated_task = asyncio.create_task(self.get_dedicated_text_channel(ctx.guild))
+        search_task = asyncio.create_task(self.service.search_and_extract(query, ctx.author, platform="auto", limit=1))
+
+        vc = await voice_task
         if not vc:
+            for t in (search_task, dedicated_task):
+                if not t.done():
+                    t.cancel()
             return
 
         queue.voice_client = vc
-        dedicated = await self.get_dedicated_text_channel(ctx.guild)
+        dedicated = await dedicated_task
         queue.text_channel = dedicated or ctx.channel
 
-        msg = await ctx.send(embed=discord.Embed(description=f"{Emojis.LOOKING} Searching for **{query}**...", color=BRAND_COLOR))
         try:
-            tracks = await self.service.search_and_extract(query, ctx.author, platform="auto", limit=1)
+            tracks = await search_task
         except Exception as e:
-            try:
-                await msg.delete()
-            except Exception:
-                pass
             await self.send_error_embed(ctx, description=f"Track lookup failed: `{e}`", delay=30)
             return
-
-        try:
-            await msg.delete()
-        except Exception:
-            pass
 
         if not tracks:
             await self.send_error_embed(ctx, description=f"No tracks found for: **{query}**", is_warning=True)
@@ -4252,8 +4280,10 @@ class Music(commands.Cog):
             return
         curr = queue.current_track
         queue.tracks.insert(0, curr)
+        queue.manual_skip = True
         queue.voice_client.stop()
-        embed = discord.Embed(description=f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**", color=BRAND_COLOR)
+        self.notify_dashboard(ctx.guild.id)
+        embed = make_success_embed(f"### {Emojis.PREVIOUS} Replaying: **{curr.clean_title}**")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
             asyncio.create_task(_delayed_delete_msg(ctx.message, 5))

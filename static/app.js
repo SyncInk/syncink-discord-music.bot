@@ -9,6 +9,12 @@ const BASE_PATH = (window.SYNCINK_BASE_PATH !== undefined)
   ? window.SYNCINK_BASE_PATH
   : (window.location.pathname.startsWith('/dashboard/radio') ? '/dashboard/radio' : '');
 
+const DEFAULT_LOGO = `${BASE_PATH}/static/radio-bot.jpg`;
+function resolveArtUrl(url) {
+  if (!url || typeof url !== 'string' || url.includes('74l9su.png')) return DEFAULT_LOGO;
+  return url;
+}
+
 // Transparently prefix API calls if running under /dashboard/radio
 const _nativeFetch = window.fetch;
 window.fetch = function(resource, init) {
@@ -28,7 +34,7 @@ const state = {
   playback: {
     guild_id: null,
     server_name: 'Server',
-    server_icon: 'https://files.catbox.moe/74l9su.png',
+    server_icon: DEFAULT_LOGO,
     connected: false,
     channel_name: null,
     channel_id: null,
@@ -176,8 +182,6 @@ function initSidebarToggle() {
   sidebar.classList.toggle('sidebar-collapsed', savedCollapsed);
   const btn = document.getElementById('btn-toggle-sidebar');
   if (btn) btn.setAttribute('aria-expanded', savedCollapsed ? 'false' : 'true');
-  const headerBtn = document.getElementById('btn-desktop-sidebar');
-  if (headerBtn) headerBtn.setAttribute('aria-expanded', savedCollapsed ? 'false' : 'true');
 }
 
 function toggleDesktopSidebar() {
@@ -189,8 +193,6 @@ function toggleDesktopSidebar() {
   } catch (e) {}
   const btn = document.getElementById('btn-toggle-sidebar');
   if (btn) btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
-  const headerBtn = document.getElementById('btn-desktop-sidebar');
-  if (headerBtn) headerBtn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
 }
 
 function toggleMobileMenu() {
@@ -428,7 +430,7 @@ function checkUpcomingTrackNotice() {
     if (nextTrack) {
       if (titleEl) titleEl.innerText = nextTrack.title;
       if (artistEl) artistEl.innerText = nextTrack.author || 'Next Track';
-      if (imgEl) imgEl.src = nextTrack.thumbnail || 'https://files.catbox.moe/74l9su.png';
+      if (imgEl) imgEl.src = resolveArtUrl(nextTrack.thumbnail);
       banner.classList.remove('hidden');
     } else if (state.playback.autoplay) {
       if (titleEl) titleEl.innerText = 'Smart AutoPlay Track';
@@ -502,8 +504,8 @@ async function fetchAnalyticsSilently() {
             if (titleEl) titleEl.innerText = data.live_track.title;
             if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
             if (artEl) {
-              artEl.onerror = () => { artEl.onerror = null; artEl.src = 'https://files.catbox.moe/74l9su.png'; };
-              artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+              artEl.onerror = () => { artEl.onerror = null; artEl.src = DEFAULT_LOGO; };
+              artEl.src = resolveArtUrl(data.live_track.thumbnail);
             }
             if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
           }
@@ -586,15 +588,15 @@ function renderBottomPlayer() {
   if (track) {
     if (titleEl) titleEl.innerText = track.title;
     if (artistEl) artistEl.innerText = track.author || (track.is_radio ? 'Live Radio Stream' : 'SyncInk Platform');
-    if (imgEl) imgEl.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(track.thumbnail);
   } else if (state.playback.radio_station) {
     if (titleEl) titleEl.innerText = state.playback.radio_station;
     if (artistEl) artistEl.innerText = '24/7 Continuous Live Radio';
-    if (imgEl) imgEl.src = (state.playback.active_radio_info && state.playback.active_radio_info.favicon) || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(state.playback.active_radio_info && state.playback.active_radio_info.favicon);
   } else {
     if (titleEl) titleEl.innerText = 'Nothing is playing';
     if (artistEl) artistEl.innerText = 'Select a server or start with /play';
-    if (imgEl) imgEl.src = 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = DEFAULT_LOGO;
   }
 
   // Play/Pause icon toggle (both desktop & mobile)
@@ -660,15 +662,15 @@ function syncMobileFullPlayer() {
   if (track) {
     if (titleEl) titleEl.innerText = track.title;
     if (artistEl) artistEl.innerText = track.author || 'Artist';
-    if (imgEl) imgEl.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(track.thumbnail);
   } else if (state.playback.radio_station) {
     if (titleEl) titleEl.innerText = state.playback.radio_station;
     if (artistEl) artistEl.innerText = '24/7 Live Radio';
-    if (imgEl) imgEl.src = (state.playback.active_radio_info && state.playback.active_radio_info.favicon) || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(state.playback.active_radio_info && state.playback.active_radio_info.favicon);
   } else {
     if (titleEl) titleEl.innerText = 'Nothing is playing';
     if (artistEl) artistEl.innerText = 'Select a server or /play';
-    if (imgEl) imgEl.src = 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = DEFAULT_LOGO;
   }
 
   const isPlaying = state.playback.is_playing && !state.playback.is_paused;
@@ -690,19 +692,19 @@ function renderSpotlightCard() {
   if (track) {
     if (titleEl) titleEl.innerText = track.title;
     if (artistEl) artistEl.innerText = `${track.author || 'Artist'} • ${state.playback.channel_name || 'Voice Channel'}`;
-    if (imgEl) imgEl.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(track.thumbnail);
     if (statusLabel) statusLabel.innerText = state.playback.is_paused ? 'Paused' : 'Live On Discord';
     if (playBtnText) playBtnText.innerText = state.playback.is_paused ? 'Resume' : 'Pause';
   } else if (state.playback.radio_station) {
     if (titleEl) titleEl.innerText = state.playback.radio_station;
     if (artistEl) artistEl.innerText = `Live Worldwide Radio • ${state.playback.channel_name || 'Voice Channel'}`;
-    if (imgEl) imgEl.src = (state.playback.active_radio_info && state.playback.active_radio_info.favicon) || 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = resolveArtUrl(state.playback.active_radio_info && state.playback.active_radio_info.favicon);
     if (statusLabel) statusLabel.innerText = '24/7 Live Radio';
     if (playBtnText) playBtnText.innerText = state.playback.is_paused ? 'Resume' : 'Pause';
   } else {
     if (titleEl) titleEl.innerText = 'Music is currently idle';
     if (artistEl) artistEl.innerText = 'Select a station or enter any song name above to start listening';
-    if (imgEl) imgEl.src = 'https://files.catbox.moe/74l9su.png';
+    if (imgEl) imgEl.src = DEFAULT_LOGO;
     if (statusLabel) statusLabel.innerText = 'Ready';
     if (playBtnText) playBtnText.innerText = 'Play Lo-Fi';
   }
@@ -720,7 +722,7 @@ function renderQueueDrawer() {
     currDiv.className = 'p-3 rounded-2xl bg-brand-primary/10 border border-brand-primary/30 mb-2';
     currDiv.innerHTML = `
       <div class="flex items-center gap-3">
-        <img src="${curr.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-10 h-10 rounded-xl object-cover shrink-0">
+        <img src="${resolveArtUrl(curr.thumbnail)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-10 h-10 rounded-xl object-cover shrink-0">
         <div class="min-w-0 flex-1">
           <span class="text-[10px] font-bold text-brand-secondary uppercase tracking-wider">Now Playing</span>
           <p class="font-bold text-xs text-white truncate">${escapeHtml(curr.title)}</p>
@@ -762,7 +764,7 @@ function renderQueueDrawer() {
     div.className = 'flex items-center gap-3 p-2.5 rounded-xl bg-brand-surface/70 border border-brand-border/30 hover:border-brand-primary/50 text-xs transition-colors';
     div.innerHTML = `
       <span class="font-mono text-[#6B6A78] w-4 text-center shrink-0">${i + 1}</span>
-      <img src="${t.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-9 h-9 rounded-lg object-cover shrink-0">
+      <img src="${resolveArtUrl(t.thumbnail)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-9 h-9 rounded-lg object-cover shrink-0">
       <div class="min-w-0 flex-1">
         <p class="font-semibold text-white truncate">${escapeHtml(t.title)}</p>
         <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(t.author || 'Artist')}</p>
@@ -934,7 +936,7 @@ function handleSearchInput(val) {
         div.className = 'flex items-center gap-3 p-2.5 rounded-xl hover:bg-brand-surface-elevated cursor-pointer group transition-all';
         div.onclick = () => selectSearchSuggestion(item.title, item.artist);
         div.innerHTML = `
-          <img src="${item.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-10 h-10 rounded-lg object-cover border border-brand-border/40 shrink-0 shadow">
+          <img src="${resolveArtUrl(item.thumbnail)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-10 h-10 rounded-lg object-cover border border-brand-border/40 shrink-0 shadow">
           <div class="min-w-0 flex-1">
             <p class="text-xs font-bold text-white group-hover:text-brand-secondary truncate transition-colors">${escapeHtml(item.title)}</p>
             <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(item.artist)}</p>
@@ -1049,7 +1051,7 @@ async function loadServers() {
     state.servers = [];
     state.activeGuildId = null;
     if (activeName) activeName.innerText = 'Login with Discord';
-    if (activeIcon) activeIcon.src = 'https://files.catbox.moe/74l9su.png';
+    if (activeIcon) activeIcon.src = DEFAULT_LOGO;
     if (dropdownList) {
       dropdownList.innerHTML = `
         <div class="p-4 text-center text-xs text-[#9E9EAD]">
@@ -1451,7 +1453,7 @@ async function loadOverviewData() {
         const card = document.createElement('div');
         card.className = 'glass-card-interactive p-3.5 flex items-center gap-3';
         card.innerHTML = `
-          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-11 h-11 rounded-xl object-cover shrink-0">
+          <img src="${resolveArtUrl(h.thumbnail_url)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-11 h-11 rounded-xl object-cover shrink-0">
           <div class="min-w-0 flex-1">
             <h4 class="font-bold text-xs text-white truncate">${escapeHtml(h.track_title)}</h4>
             <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(h.track_author || 'Artist')}</p>
@@ -1721,7 +1723,7 @@ async function bookmarkSong(title, artist) {
         item_id: `${artist} - ${title}`,
         title: title,
         subtitle: artist,
-        image_url: 'https://files.catbox.moe/74l9su.png',
+        image_url: DEFAULT_LOGO,
         url: `https://www.youtube.com/results?search_query=${encodeURIComponent(artist + ' ' + title)}`
       })
     });
@@ -2011,7 +2013,7 @@ async function loadLibraryFavorites() {
       card.className = 'glass-panel p-4 rounded-2xl flex items-center justify-between gap-3';
       card.innerHTML = `
         <div class="flex items-center gap-3 min-w-0">
-          <img src="${f.image_url || 'https://files.catbox.moe/74l9su.png'}" class="w-12 h-12 rounded-xl object-cover border border-brand-border/40 shrink-0">
+          <img src="${resolveArtUrl(f.image_url)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-12 h-12 rounded-xl object-cover border border-brand-border/40 shrink-0">
           <div class="min-w-0">
             <h4 class="font-bold text-sm text-white truncate">${escapeHtml(f.title)}</h4>
             <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(f.subtitle || f.item_type)}</p>
@@ -2156,7 +2158,7 @@ async function openPlaylistTracksModal(pid, name, desc) {
       item.className = 'flex items-center gap-3 p-2.5 rounded-xl bg-brand-surface/60 border border-brand-border/30 hover:border-brand-primary/40 transition-all';
       item.innerHTML = `
         <span class="text-xs font-mono text-[#6B6A78] w-5 text-center">${idx + 1}</span>
-        <img src="${t.thumbnail || 'https://files.catbox.moe/74l9su.png'}" class="w-9 h-9 rounded-lg object-cover shrink-0">
+        <img src="${resolveArtUrl(t.thumbnail)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-9 h-9 rounded-lg object-cover shrink-0">
         <div class="min-w-0 flex-1">
           <p class="text-xs font-bold text-white truncate">${escapeHtml(t.title)}</p>
           <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(t.author || 'Artist')}</p>
@@ -2209,7 +2211,7 @@ async function openAddToPlaylistModal() {
 
   if (songTitle) songTitle.innerText = track.title;
   if (songArtist) songArtist.innerText = track.author || 'Artist';
-  if (songImg) songImg.src = track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+  if (songImg) songImg.src = resolveArtUrl(track.thumbnail);
 
   listEl.innerHTML = '<div class="py-4 text-center text-xs text-[#9E9EAD]">Loading your playlists...</div>';
   modal.classList.remove('hidden');
@@ -2537,7 +2539,7 @@ async function loadListeningHistory() {
       tr.innerHTML = `
         <td class="px-4 py-3">
           <div class="flex items-center gap-3">
-            <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
+            <img src="${resolveArtUrl(h.thumbnail_url)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-white truncate max-w-[180px] sm:max-w-xs">${escapeHtml(trackTitle)}</span>
@@ -2659,8 +2661,8 @@ async function loadAnalytics() {
           if (titleEl) titleEl.innerText = data.live_track.title;
           if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
           if (artEl) {
-            artEl.onerror = () => { artEl.onerror = null; artEl.src = 'https://files.catbox.moe/74l9su.png'; };
-            artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+            artEl.onerror = () => { artEl.onerror = null; artEl.src = DEFAULT_LOGO; };
+            artEl.src = resolveArtUrl(data.live_track.thumbnail);
           }
           if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
         }
@@ -2760,7 +2762,7 @@ async function loadAnalytics() {
           div.innerHTML = `
             <div class="flex items-center gap-2.5 min-w-0">
               <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
-              <img src="${t.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-7 h-7 rounded-lg object-cover shrink-0">
+              <img src="${resolveArtUrl(t.thumbnail_url)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-7 h-7 rounded-lg object-cover shrink-0">
               <span class="font-bold text-white truncate max-w-xs">${escapeHtml(t.track_title)}</span>
             </div>
             <span class="font-semibold text-brand-secondary shrink-0">${t.play_count} plays</span>
@@ -3207,8 +3209,8 @@ function resolveStaticRouteLinks() {
 }
 
 async function refreshSidebarStatus() {
-  const dotIds = ['gateway-dot', 'mobile-gateway-dot', 'header-gateway-dot'];
-  const pingIds = ['sidebar-status-ping', 'mobile-status-ping', 'header-status-ping'];
+  const dotIds = ['gateway-dot', 'mobile-gateway-dot'];
+  const pingIds = ['sidebar-status-ping', 'mobile-status-ping'];
   const railDot = document.getElementById('gateway-dot-rail');
 
   try {
@@ -3236,12 +3238,11 @@ async function refreshSidebarStatus() {
     pingIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
-        const marginCls = id === 'header-status-ping' ? '' : 'ml-auto ';
         const badgeCls = id === 'sidebar-status-ping' ? ' nav-badge' : '';
         el.textContent = pingText;
         el.className = isOp
-          ? `${marginCls}font-mono text-[11px] font-semibold text-emerald-400 tabular-nums${badgeCls}`
-          : `${marginCls}font-mono text-[11px] font-semibold text-brand-secondary tabular-nums${badgeCls}`;
+          ? `ml-auto font-mono text-[11px] font-semibold text-emerald-400 tabular-nums${badgeCls}`
+          : `ml-auto font-mono text-[11px] font-semibold text-brand-secondary tabular-nums${badgeCls}`;
       }
     });
   } catch (e) {
@@ -3253,10 +3254,9 @@ async function refreshSidebarStatus() {
     pingIds.forEach(id => {
       const el = document.getElementById(id);
       if (el) {
-        const marginCls = id === 'header-status-ping' ? '' : 'ml-auto ';
         const badgeCls = id === 'sidebar-status-ping' ? ' nav-badge' : '';
         el.textContent = 'Offline';
-        el.className = `${marginCls}font-mono text-[11px] font-semibold text-rose-400 tabular-nums${badgeCls}`;
+        el.className = `ml-auto font-mono text-[11px] font-semibold text-rose-400 tabular-nums${badgeCls}`;
       }
     });
   }
