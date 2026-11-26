@@ -122,12 +122,20 @@ class UnifiedWebServer:
         _route("DELETE", "/api/spotify/playlists/{id}", DashboardAPI.handle_spotify_remove_playlist)
         _route("GET", "/health", self.handle_health)
 
-        # 7b. Legal & Real-Time Status Routes
+        # 7b. Legal, Documentation, FAQ & Real-Time Status Routes
         _route("GET", "/privacy", self.handle_privacy)
         _route("GET", "/privacy.html", self.handle_privacy)
         _route("GET", "/terms", self.handle_terms)
         _route("GET", "/terms.html", self.handle_terms)
         _route("GET", "/terms-of-use", self.handle_terms)
+        _route("GET", "/guide", self.handle_guide)
+        _route("GET", "/guide.html", self.handle_guide)
+        _route("GET", "/setup", self.handle_guide)
+        _route("GET", "/setup.html", self.handle_guide)
+        _route("GET", "/commands", self.handle_guide)
+        _route("GET", "/commands.html", self.handle_guide)
+        _route("GET", "/faq", self.handle_faq)
+        _route("GET", "/faq.html", self.handle_faq)
         _route("GET", "/status", self.handle_status)
         _route("GET", "/status.html", self.handle_status)
 
@@ -164,6 +172,12 @@ class UnifiedWebServer:
     async def handle_terms(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self.handle_page("terms.html")
 
+    async def handle_guide(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self.handle_page("guide.html")
+
+    async def handle_faq(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        return await self.handle_page("faq.html")
+
     async def handle_status(self, request: aiohttp.web.Request) -> aiohttp.web.Response:
         return await self.handle_page("status.html")
 
@@ -173,6 +187,10 @@ class UnifiedWebServer:
             return await self.handle_privacy(request)
         if host.startswith("terms."):
             return await self.handle_terms(request)
+        if host.startswith("guide.") or host.startswith("setup.") or host.startswith("commands."):
+            return await self.handle_guide(request)
+        if host.startswith("faq."):
+            return await self.handle_faq(request)
         if host.startswith("status."):
             return await self.handle_status(request)
 

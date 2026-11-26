@@ -42,14 +42,26 @@ class TestLiveWebServer(AioHTTPTestCase):
         text = await resp.text()
         self.assertIn("SyncInk Radio", text)
         self.assertIn("Audia AI", text)
+        self.assertIn("toggleDesktopSidebar", text)
+        self.assertIn("sidebar-status-card", text)
+        self.assertIn("header-status-pill", text)
+        self.assertIn("pb-28", text)
+        self.assertIn("Commands &amp; Guide", text)
+        self.assertIn("FAQ &amp; Help", text)
+        self.assertIn("M8.02 15.33", text)
+        self.assertIn('fill-rule="evenodd"', text)
 
         resp_css = await self.client.request("GET", "/static/style.css")
         self.assertEqual(resp_css.status, 200)
         css_text = await resp_css.text()
         self.assertIn("#101014", css_text)
+        self.assertIn("#sidebar.sidebar-collapsed", css_text)
 
         resp_js = await self.client.request("GET", "/static/app.js")
         self.assertEqual(resp_js.status, 200)
+        js_text = await resp_js.text()
+        self.assertIn("toggleDesktopSidebar", js_text)
+        self.assertIn("initSidebarToggle", js_text)
 
     async def test_api_routes(self):
         resp = await self.client.request("GET", "/health")
@@ -187,7 +199,7 @@ class TestLiveWebServer(AioHTTPTestCase):
         await auth_mgr.destroy_session(session_a)
 
     async def test_legal_status_routes_and_live_telemetry(self):
-        """Verifies /privacy, /terms, /status direct, subpath, subdomain routing and genuine live /api/status."""
+        """Verifies /privacy, /terms, /status, /guide, /faq direct, subpath, subdomain routing and genuine live /api/status."""
         routes_to_check = [
             ("/privacy", "Privacy Policy"),
             ("/privacy.html", "Privacy Policy"),
@@ -196,9 +208,17 @@ class TestLiveWebServer(AioHTTPTestCase):
             ("/terms.html", "Terms of Use"),
             ("/terms-of-use", "Terms of Use"),
             ("/dashboard/radio/terms", "Terms of Use"),
-            ("/status", "Live Session Latency Log"),
-            ("/status.html", "Live Session Latency Log"),
-            ("/dashboard/radio/status", "Live Session Latency Log"),
+            ("/status", "Real-Time Session Latency Telemetry"),
+            ("/status.html", "Real-Time Session Latency Telemetry"),
+            ("/dashboard/radio/status", "Real-Time Session Latency Telemetry"),
+            ("/guide", "Setup Guide &amp; All Commands"),
+            ("/guide.html", "Setup Guide &amp; All Commands"),
+            ("/setup", "Setup Guide &amp; All Commands"),
+            ("/commands", "Setup Guide &amp; All Commands"),
+            ("/dashboard/radio/guide", "Setup Guide &amp; All Commands"),
+            ("/faq", "Frequently Asked Questions"),
+            ("/faq.html", "Frequently Asked Questions"),
+            ("/dashboard/radio/faq", "Frequently Asked Questions"),
         ]
         for path, expected_text in routes_to_check:
             resp = await self.client.request("GET", path)
@@ -206,11 +226,15 @@ class TestLiveWebServer(AioHTTPTestCase):
             content = await resp.text()
             self.assertIn(expected_text, content, f"Missing '{expected_text}' in {path}")
             self.assertIn("https://discord.gg/PmxfJwmQuB", content)
+            self.assertIn("M8.02 15.33", content, f"Missing complete Discord Clyde eye cutout in {path}")
+            self.assertIn('fill-rule="evenodd"', content, f"Missing fill-rule='evenodd' in {path}")
 
         subdomain_tests = [
             ("privacy.syncink.site", "Privacy Policy"),
             ("terms.syncink.site", "Terms of Use"),
-            ("status.syncink.site", "Live Session Latency Log"),
+            ("status.syncink.site", "Real-Time Session Latency Telemetry"),
+            ("guide.syncink.site", "Setup Guide &amp; All Commands"),
+            ("faq.syncink.site", "Frequently Asked Questions"),
         ]
         for host, expected_snippet in subdomain_tests:
             resp = await self.client.request("GET", "/", headers={"Host": host})
@@ -226,6 +250,46 @@ class TestLiveWebServer(AioHTTPTestCase):
             self.assertIn("db_latency_ms", data)
             self.assertIn("services", data)
             self.assertEqual(data.get("support_url"), "https://discord.gg/PmxfJwmQuB")
+
+    async def test_listening_history_artwork_enrichment(self):
+        """Verifies null/fallback listening_history posters resolve to official artwork & heal SQLite row."""
+        from unittest.mock import AsyncMock, patch
+        from services.web.auth import DashboardAuthManager
+        from services.artwork_service import ArtworkService
+
+        auth_mgr = DashboardAuthManager.get_instance()
+        uid_str = "888222333444555"
+        uid = int(uid_str)
+        session_id = await auth_mgr.create_session({"id": uid_str, "username": "PosterTester"}, {"access_token": "tok", "expires_in": 3600})
+        headers = {"Cookie": f"syncink_session={session_id}"}
+        expected_poster = "https://is1-ssl.mzstatic.com/image/thumb/Music/600x600bb.jpg"
+
+        ArtworkService._cache.clear()
+        try:
+            await db.execute("DELETE FROM listening_history WHERE discord_user_id = $1", uid)
+            await db.execute(
+                "INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+                555666777, uid, "UniquePosterTrack2026", "Arijit Singh", "https://youtube.com/watch?v=dQw4w9WgXcQ", 240, "youtube", None
+            )
+
+            with patch.object(ArtworkService, "_fetch_itunes_poster", new=AsyncMock(return_value=expected_poster)):
+                resp = await self.client.request("GET", "/api/history", headers=headers)
+                self.assertEqual(resp.status, 200)
+                data = await resp.json()
+                matching = [h for h in data.get("history", []) if h.get("track_title") == "UniquePosterTrack2026"]
+                self.assertEqual(len(matching), 1)
+                self.assertEqual(matching[0]["thumbnail_url"], expected_poster)
+
+            row = await db.fetchrow(
+                "SELECT thumbnail_url FROM listening_history WHERE discord_user_id = $1 AND track_title = $2",
+                uid, "UniquePosterTrack2026"
+            )
+            self.assertIsNotNone(row)
+            self.assertEqual(row["thumbnail_url"], expected_poster)
+        finally:
+            await db.execute("DELETE FROM listening_history WHERE discord_user_id = $1", uid)
+            ArtworkService._cache.clear()
+            await auth_mgr.destroy_session(session_id)
 
     async def test_artist_block_unblock_and_history_analytics_api(self):
         """Verifies blocking/unblocking artists and cross-guild history & analytics endpoints."""

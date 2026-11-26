@@ -2470,19 +2470,32 @@ class Music(commands.Cog):
                         if human_members:
                             user_id = human_members[0].id
 
-                    async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb):
+                    async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb, trk_obj=None):
                         try:
                             from database import db
+                            from services.artwork_service import ArtworkService, is_fallback_artwork
                             # Verify user preference for private listening if user id is known
                             if uid:
                                 pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
                                 if pref and pref.get("private_listening"):
                                     return
+
+                            # Resolve official song cover poster when missing or generic YT/fallback thumbnail
+                            resolved_thumb = thumb if (thumb and not is_fallback_artwork(thumb)) else ""
+                            if (not resolved_thumb or "ytimg.com" in resolved_thumb) and (plat or "").lower() != "radio":
+                                official = await ArtworkService.resolve_official_artwork(
+                                    title, author, url, existing_thumb=None, platform=plat
+                                )
+                                if official and not is_fallback_artwork(official):
+                                    resolved_thumb = official
+                                    if trk_obj is not None and is_fallback_artwork(getattr(trk_obj, "thumbnail", None)):
+                                        trk_obj.thumbnail = official
+
                             q = """
                                 INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
                                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                             """
-                            await db.execute(q, gid, uid or 0, title, author, url, int(dur or 0), plat or "audio", thumb or "")
+                            await db.execute(q, gid, uid or 0, title, author, url, int(dur or 0), plat or "audio", resolved_thumb)
                             log.info(f"[Listening History] Successfully recorded '{title}' for user {uid} in guild {gid}")
                         except Exception as h_err:
                             log.warning(f"[Listening History] Could not record playback: {h_err}")
@@ -2495,7 +2508,8 @@ class Music(commands.Cog):
                         track.url or "",
                         int(track.duration or 0),
                         track.platform or "youtube",
-                        track.thumbnail or "https://files.catbox.moe/74l9su.png"
+                        track.thumbnail or "",
+                        track,
                     ))
                 except Exception as log_err:
                     log.warning(f"[Listening History Task Init] {log_err}")

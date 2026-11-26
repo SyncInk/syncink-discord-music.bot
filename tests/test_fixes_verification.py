@@ -223,6 +223,31 @@ class TestFixesVerification(unittest.TestCase):
         play_src = inspect.getsource(music_mod.Music.play_track)
         self.assertIn("from database import db", play_src)
 
+    def test_artwork_service_and_discord_clyde_svg(self):
+        from pathlib import Path
+        from services.artwork_service import is_fallback_artwork, extract_youtube_poster
+
+        self.assertTrue(is_fallback_artwork(None))
+        self.assertTrue(is_fallback_artwork(""))
+        self.assertTrue(is_fallback_artwork("https://files.catbox.moe/74l9su.png"))
+        self.assertFalse(is_fallback_artwork("https://is1-ssl.mzstatic.com/image/thumb/cover/600x600bb.jpg"))
+
+        self.assertEqual(
+            extract_youtube_poster("https://www.youtube.com/watch?v=dQw4w9WgXcQ"),
+            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+        )
+        self.assertEqual(
+            extract_youtube_poster("https://youtu.be/dQw4w9WgXcQ"),
+            "https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg"
+        )
+        self.assertIsNone(extract_youtube_poster("https://open.spotify.com/track/123"))
+
+        static_dir = Path(__file__).resolve().parent.parent / "static"
+        for page in ("index.html", "status.html", "guide.html", "faq.html", "privacy.html", "terms.html"):
+            html = (static_dir / page).read_text(encoding="utf-8")
+            self.assertIn("M8.02 15.33", html, f"{page} missing full Discord Clyde eye cutout path")
+            self.assertIn('fill-rule="evenodd"', html, f"{page} missing fill-rule='evenodd' on Discord SVG")
+
 
 if __name__ == "__main__":
     unittest.main()

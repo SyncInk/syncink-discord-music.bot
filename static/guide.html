@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SyncInk Radio Setup Guide & Complete Command Reference — Setup permissions, Audia AI, Spotify integration, and all slash/prefix commands.">
+  <title>Commands &amp; Setup Guide • SyncInk Radio</title>
+  <link rel="icon" type="image/svg+xml" href="https://files.catbox.moe/74l9su.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg-primary: #101014;
+      --bg-surface: #14131a;
+      --bg-elevated: #191820;
+      --border-subtle: rgba(128, 85, 217, 0.16);
+      --border-hover: rgba(185, 162, 242, 0.36);
+      --text-primary: #ffffff;
+      --text-secondary: #9e9ead;
+      --text-muted: #6b6a78;
+      --accent: #8055d9;
+      --accent-soft: #b9a2f2;
+      --emerald: #34d399;
+    }
+    body {
+      background-color: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(16, 16, 20, 0.88);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .header-inner {
+      max-width: 1040px;
+      margin: 0 auto;
+      padding: 0 20px;
+      height: 64px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      color: var(--text-primary);
+      white-space: nowrap;
+    }
+    .brand img {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      object-fit: cover;
+      border: 1px solid var(--border-subtle);
+    }
+    .brand-title { font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
+    nav {
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      overflow-x: auto;
+      scrollbar-width: none;
+    }
+    nav::-webkit-scrollbar { display: none; }
+    nav a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 500;
+      white-space: nowrap;
+      transition: color 0.16s ease;
+    }
+    nav a:hover { color: var(--text-primary); }
+    nav a.active { color: var(--accent-soft); font-weight: 600; }
+    .btn-support {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #5865F2;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: #ffffff;
+      padding: 7px 13px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background-color 0.16s ease, transform 0.12s ease;
+    }
+    .btn-support:hover { background: #4752C4; }
+    .btn-support:active { transform: scale(0.98); }
+
+    main {
+      flex: 1;
+      max-width: 960px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 40px 20px 72px;
+    }
+    .doc-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      background: rgba(128, 85, 217, 0.12);
+      border: 1px solid var(--border-subtle);
+      color: var(--accent-soft);
+      font-size: 11px;
+      font-weight: 500;
+      margin-bottom: 12px;
+    }
+    h1 { font-size: clamp(26px, 4vw, 34px); font-weight: 600; letter-spacing: -0.02em; margin-bottom: 8px; }
+    .subtitle { font-size: 14px; color: var(--text-secondary); margin-bottom: 28px; }
+
+    .cta-banner {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px 22px;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+    .cta-banner h2 { font-size: 16px; font-weight: 600; margin-bottom: 4px; }
+    .cta-banner p { font-size: 13px; color: var(--text-secondary); }
+    .btn-primary {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--accent);
+      color: #ffffff;
+      padding: 9px 16px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+      transition: background-color 0.16s ease, transform 0.12s ease;
+    }
+    .btn-primary:hover { background: #6f45c7; }
+    .btn-primary:active { transform: scale(0.98); }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      margin-bottom: 40px;
+    }
+    .step-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      padding: 20px;
+      transition: border-color 0.18s ease;
+    }
+    .step-card:hover { border-color: var(--border-hover); }
+    .step-head {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .step-num {
+      width: 26px;
+      height: 26px;
+      border-radius: 8px;
+      background: rgba(128, 85, 217, 0.18);
+      border: 1px solid var(--border-subtle);
+      color: var(--accent-soft);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+      flex-shrink: 0;
+    }
+    .step-card h3 { font-size: 15px; font-weight: 600; }
+    .step-card p { font-size: 13px; color: var(--text-secondary); margin-bottom: 10px; }
+    .cmd-snippet {
+      background: var(--bg-elevated);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 10px;
+      padding: 9px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--accent-soft);
+    }
+    .btn-copy {
+      background: rgba(255,255,255,0.06);
+      border: 1px solid rgba(255,255,255,0.1);
+      color: var(--text-primary);
+      padding: 4px 10px;
+      border-radius: 7px;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      flex-shrink: 0;
+      transition: background-color 0.15s ease;
+    }
+    .btn-copy:hover { background: rgba(128, 85, 217, 0.28); }
+
+    /* Commands Toolbar */
+    .cmd-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .cmd-toolbar h2 { font-size: 20px; font-weight: 600; }
+    .cmd-controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .search-input {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-primary);
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 13px;
+      outline: none;
+      width: 220px;
+      transition: border-color 0.16s ease;
+    }
+    .search-input:focus { border-color: var(--accent-soft); }
+    .cat-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 16px;
+    }
+    .cat-btn {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      color: var(--text-secondary);
+      padding: 6px 12px;
+      border-radius: 9px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .cat-btn:hover { color: var(--text-primary); border-color: var(--border-hover); }
+    .cat-btn.active {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+
+    .table-wrap {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-subtle);
+      border-radius: 16px;
+      overflow-x: auto;
+      margin-bottom: 36px;
+    }
+    table { width: 100%; border-collapse: collapse; text-align: left; font-size: 13px; min-width: 580px; }
+    th {
+      background: var(--bg-elevated);
+      padding: 12px 16px;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    td {
+      padding: 13px 16px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      vertical-align: top;
+    }
+    tr:last-child td { border-bottom: none; }
+    tr:hover td { background: rgba(128, 85, 217, 0.05); }
+    .cmd-name {
+      display: inline-block;
+      background: rgba(128, 85, 217, 0.16);
+      border: 1px solid rgba(128, 85, 217, 0.3);
+      color: var(--accent-soft);
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .cmd-prefix { font-size: 11px; color: var(--text-muted); margin-top: 4px; display: block; }
+
+    footer {
+      border-top: 1px solid var(--border-subtle);
+      padding: 24px 20px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .footer-links {
+      margin-top: 8px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 16px;
+    }
+    .footer-links a { color: var(--text-secondary); text-decoration: none; transition: color 0.15s ease; }
+    .footer-links a:hover { color: var(--accent-soft); }
+
+    @media (max-width: 720px) {
+      .steps-grid { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .header-inner { padding: 0 14px; }
+      .btn-support span { display: none; }
+      main { padding: 26px 14px 56px; }
+      .search-input { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <a href="./" class="brand" data-nav="root">
+        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Radio">
+        <span class="brand-title">SyncInk Radio</span>
+      </a>
+      <nav>
+        <a href="./" data-nav="root">Dashboard</a>
+        <a href="./status" data-nav="status">Status</a>
+        <a href="./guide" class="active" data-nav="guide">Commands &amp; Guide</a>
+        <a href="./faq" data-nav="faq">FAQ</a>
+        <a href="./privacy" data-nav="privacy">Privacy</a>
+        <a href="./terms" data-nav="terms">Terms</a>
+      </nav>
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="btn-support" title="Official Discord Support Server">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+        <span>Support Server</span>
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <div class="doc-tag mono">Documentation &amp; Commands</div>
+    <h1>Setup Guide &amp; All Commands</h1>
+    <p class="subtitle">Everything needed to invite SyncInk Radio, configure Audia AI, tune global stations, and control playback from Discord or the dashboard.</p>
+
+    <div class="cta-banner">
+      <div>
+        <h2>Add SyncInk Radio to your Discord server</h2>
+        <p>Includes Connect, Speak, and Application Command permissions out of the box.</p>
+      </div>
+      <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" rel="noopener" class="btn-primary">
+        Invite SyncInk Radio
+      </a>
+    </div>
+
+    <div class="steps-grid">
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-num mono">1</div>
+          <h3>Join Voice &amp; Play Music</h3>
+        </div>
+        <p>Connect to any voice channel and search by song title, artist, YouTube URL, Spotify link, or SoundCloud link.</p>
+        <div class="cmd-snippet mono">
+          <span>/play query: Kesariya Arijit Singh</span>
+          <button class="btn-copy" onclick="copyCmd(this, '/play query: Kesariya Arijit Singh')">Copy</button>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-num mono">2</div>
+          <h3>Browse 30,000+ Live Radio Stations</h3>
+        </div>
+        <p>Stream worldwide stations interactively by country, or launch instant 24/7 lofi study feeds.</p>
+        <div class="cmd-snippet mono">
+          <span>/radio</span>
+          <button class="btn-copy" onclick="copyCmd(this, '/radio')">Copy</button>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-num mono">3</div>
+          <h3>Audia AI &amp; Unblock Controls</h3>
+        </div>
+        <p>Open the interactive Audia AI control panel to toggle AutoPlay, tune language/mood, inspect your profile, or block &amp; unblock artists.</p>
+        <div class="cmd-snippet mono">
+          <span>/audia</span>
+          <button class="btn-copy" onclick="copyCmd(this, '/audia')">Copy</button>
+        </div>
+      </div>
+
+      <div class="step-card">
+        <div class="step-head">
+          <div class="step-num mono">4</div>
+          <h3>Link Spotify Playlists</h3>
+        </div>
+        <p>Connect your Spotify account safely using OAuth PKCE or paste public playlist URLs into Discord or My Library.</p>
+        <div class="cmd-snippet mono">
+          <span>/spotify connect</span>
+          <button class="btn-copy" onclick="copyCmd(this, '/spotify connect')">Copy</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="cmd-toolbar">
+      <h2>Complete Command Reference</h2>
+      <div class="cmd-controls">
+        <input type="text" id="cmd-search" class="search-input" placeholder="Filter commands…" oninput="filterCommands()">
+      </div>
+    </div>
+
+    <div class="cat-pills">
+      <button class="cat-btn active" onclick="setCategory('all', this)">All</button>
+      <button class="cat-btn" onclick="setCategory('playback', this)">Playback</button>
+      <button class="cat-btn" onclick="setCategory('radio', this)">Radio</button>
+      <button class="cat-btn" onclick="setCategory('queue', this)">Queue &amp; Loop</button>
+      <button class="cat-btn" onclick="setCategory('audia', this)">Audia AI</button>
+      <button class="cat-btn" onclick="setCategory('spotify', this)">Spotify &amp; Utility</button>
+    </div>
+
+    <div class="table-wrap">
+      <table id="cmd-table">
+        <thead>
+          <tr>
+            <th>Slash / Prefix</th>
+            <th>Category</th>
+            <th>Parameters</th>
+            <th>Description</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/play</span><span class="cmd-prefix mono">?play, ?p</span></td>
+            <td>Playback</td>
+            <td class="mono">query</td>
+            <td>Search and stream tracks from YouTube, Spotify links, or SoundCloud.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/search</span><span class="cmd-prefix mono">?search</span></td>
+            <td>Playback</td>
+            <td class="mono">query</td>
+            <td>Opens an interactive multi-result picker to choose the exact version.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/pause</span><span class="cmd-prefix mono">?pause</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Pauses active voice playback while preserving timeline state.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/resume</span><span class="cmd-prefix mono">?resume</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Resumes paused playback seamlessly from where you left off.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/skip</span><span class="cmd-prefix mono">?skip, ?s, ?next</span></td>
+            <td>Playback</td>
+            <td class="mono">count (optional)</td>
+            <td>Skips the current track (or multiple queued tracks forward).</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/previous</span><span class="cmd-prefix mono">?previous, ?prev</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Replays the previous track from your current session history.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/replay</span><span class="cmd-prefix mono">?replay</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Restarts the current track from the beginning.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/volume</span><span class="cmd-prefix mono">?volume, ?vol</span></td>
+            <td>Playback</td>
+            <td class="mono">percent (1–200)</td>
+            <td>Displays or adjusts server playback gain volume.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/stop</span><span class="cmd-prefix mono">?stop</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Stops playback, disables active AutoPlay/radio, and clears the queue.</td>
+          </tr>
+          <tr data-cat="playback">
+            <td><span class="cmd-name mono">/leave</span><span class="cmd-prefix mono">?leave, ?dc</span></td>
+            <td>Playback</td>
+            <td class="mono">—</td>
+            <td>Disconnects the bot cleanly from the active voice channel.</td>
+          </tr>
+          <tr data-cat="radio">
+            <td><span class="cmd-name mono">/radio</span><span class="cmd-prefix mono">?radio</span></td>
+            <td>Radio</td>
+            <td class="mono">country (optional)</td>
+            <td>Browse interactive worldwide radio countries or tune directly by country.</td>
+          </tr>
+          <tr data-cat="radio">
+            <td><span class="cmd-name mono">/lofi</span><span class="cmd-prefix mono">?lofi</span></td>
+            <td>Radio</td>
+            <td class="mono">—</td>
+            <td>Starts 24/7 study and chill lofi radio playback immediately.</td>
+          </tr>
+          <tr data-cat="radio">
+            <td><span class="cmd-name mono">/247</span><span class="cmd-prefix mono">?247, ?alwayson</span></td>
+            <td>Radio</td>
+            <td class="mono">mode (on/off)</td>
+            <td>Keeps the bot connected in your voice channel 24/7 without inactivity timeout.</td>
+          </tr>
+          <tr data-cat="queue">
+            <td><span class="cmd-name mono">/queue</span><span class="cmd-prefix mono">?queue, ?q</span></td>
+            <td>Queue</td>
+            <td class="mono">action (optional)</td>
+            <td>Displays upcoming tracks interactively or clears the queue (`clear`).</td>
+          </tr>
+          <tr data-cat="queue">
+            <td><span class="cmd-name mono">/remove</span><span class="cmd-prefix mono">?remove, ?rm</span></td>
+            <td>Queue</td>
+            <td class="mono">position</td>
+            <td>Removes a specific track at the given upcoming queue index.</td>
+          </tr>
+          <tr data-cat="queue">
+            <td><span class="cmd-name mono">/shuffle</span><span class="cmd-prefix mono">?shuffle</span></td>
+            <td>Queue</td>
+            <td class="mono">—</td>
+            <td>Randomizes upcoming queued tracks.</td>
+          </tr>
+          <tr data-cat="queue">
+            <td><span class="cmd-name mono">/loop</span><span class="cmd-prefix mono">?loop, ?repeat</span></td>
+            <td>Queue</td>
+            <td class="mono">off / track / queue</td>
+            <td>Cycles or sets repeat mode across track or queue.</td>
+          </tr>
+          <tr data-cat="queue">
+            <td><span class="cmd-name mono">/np</span><span class="cmd-prefix mono">?np, ?nowplaying</span></td>
+            <td>Queue</td>
+            <td class="mono">—</td>
+            <td>Displays the current live progress bar card for the active track.</td>
+          </tr>
+          <tr data-cat="audia">
+            <td><span class="cmd-name mono">/audia</span><span class="cmd-prefix mono">?audia</span></td>
+            <td>Audia AI</td>
+            <td class="mono">—</td>
+            <td>Opens Audia AI Control Center to set mood/language/style and Block or Unblock artists.</td>
+          </tr>
+          <tr data-cat="audia">
+            <td><span class="cmd-name mono">/autoplay</span><span class="cmd-prefix mono">?autoplay</span></td>
+            <td>Audia AI</td>
+            <td class="mono">mode (on/off)</td>
+            <td>Enables or disables continuous AI track recommendations after queue end.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/spotify connect</span></td>
+            <td>Spotify</td>
+            <td class="mono">—</td>
+            <td>Generates a secure Spotify OAuth PKCE link to connect your library.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/spotify add</span></td>
+            <td>Spotify</td>
+            <td class="mono">url</td>
+            <td>Saves a public Spotify playlist link into your synced library.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/spotify status</span></td>
+            <td>Spotify</td>
+            <td class="mono">—</td>
+            <td>Shows your linked Spotify account status and synced playlists.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/spotify disconnect</span></td>
+            <td>Spotify</td>
+            <td class="mono">—</td>
+            <td>Removes saved Spotify OAuth tokens cleanly from the database.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/help</span><span class="cmd-prefix mono">?help</span></td>
+            <td>Utility</td>
+            <td class="mono">—</td>
+            <td>Displays the categorized interactive help menu in Discord.</td>
+          </tr>
+          <tr data-cat="spotify">
+            <td><span class="cmd-name mono">/invite</span><span class="cmd-prefix mono">?invite</span></td>
+            <td>Utility</td>
+            <td class="mono">—</td>
+            <td>Provides the official invite link to add SyncInk Radio to another guild.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+
+  <footer>
+    <div>© 2026 SyncInk Radio Platform</div>
+    <div class="footer-links">
+      <a href="./" data-nav="root">Dashboard</a>
+      <a href="./status" data-nav="status">Live Status</a>
+      <a href="./guide" data-nav="guide">Commands &amp; Guide</a>
+      <a href="./faq" data-nav="faq">FAQ</a>
+      <a href="./privacy" data-nav="privacy">Privacy Policy</a>
+      <a href="./terms" data-nav="terms">Terms of Use</a>
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener">Support Server</a>
+    </div>
+  </footer>
+
+  <script>
+    (function() {
+      const base = window.location.pathname.startsWith('/dashboard/radio') ? '/dashboard/radio' : '';
+      document.querySelectorAll('a[data-nav]').forEach(a => {
+        const dest = a.getAttribute('data-nav');
+        a.href = dest === 'root' ? (base ? base + '/' : '/') : (base + '/' + dest);
+      });
+    })();
+
+    let activeCat = 'all';
+    function setCategory(cat, btn) {
+      activeCat = cat;
+      document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      filterCommands();
+    }
+
+    function filterCommands() {
+      const q = (document.getElementById('cmd-search').value || '').trim().toLowerCase();
+      document.querySelectorAll('#cmd-table tbody tr').forEach(tr => {
+        const cat = tr.getAttribute('data-cat');
+        const txt = tr.textContent.toLowerCase();
+        const okCat = activeCat === 'all' || cat === activeCat;
+        const okQ = !q || txt.includes(q);
+        tr.style.display = (okCat && okQ) ? '' : 'none';
+      });
+    }
+
+    function copyCmd(btn, text) {
+      navigator.clipboard.writeText(text);
+      const orig = btn.textContent;
+      btn.textContent = 'Copied';
+      setTimeout(() => { btn.textContent = orig; }, 1200);
+    }
+  </script>
+</body>
+</html>

@@ -433,3 +433,81 @@ body.is-authenticated #demo-mode-btn {
   background: var(--accent-primary);
   border-radius: 999px;
 }
+
+/* ================================================================
+   Desktop Slidable / Collapsible Sidebar Rail (Full-Screen Dashboard)
+   ================================================================ */
+#sidebar {
+  width: 264px;
+  transition: width 0.26s cubic-bezier(0.16, 1, 0.3, 1), padding 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+  will-change: width;
+}
+
+#sidebar.sidebar-collapsed {
+  width: 76px;
+  padding-left: 10px;
+  padding-right: 10px;
+}
+
+#sidebar .nav-label,
+#sidebar .nav-badge,
+#sidebar .brand-meta,
+#sidebar .sidebar-section-label {
+  transition: opacity 0.16s ease;
+}
+
+#sidebar.sidebar-collapsed .nav-label,
+#sidebar.sidebar-collapsed .nav-badge,
+#sidebar.sidebar-collapsed .brand-meta,
+#sidebar.sidebar-collapsed .sidebar-section-label {
+  display: none !important;
+}
+
+#sidebar.sidebar-collapsed .sidebar-brand-row {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-left: 0;
+  padding-right: 0;
+}
+
+#sidebar.sidebar-collapsed .sidebar-brand-link {
+  justify-content: center;
+  padding: 4px;
+  width: 100%;
+}
+
+#sidebar.sidebar-collapsed .nav-item,
+#sidebar.sidebar-collapsed .sidebar-link,
+#sidebar.sidebar-collapsed #sidebar-status-card {
+  justify-content: center;
+  padding-left: 0;
+  padding-right: 0;
+  gap: 0;
+}
+
+#sidebar.sidebar-collapsed #sidebar-status-card {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+#sidebar .sidebar-collapsed-only {
+  display: none;
+}
+
+#sidebar.sidebar-collapsed .sidebar-collapsed-only {
+  display: inline-flex;
+}
+
+#sidebar.sidebar-collapsed .sidebar-expanded-only {
+  display: none !important;
+}
+
+#sidebar #sidebar-chevron-icon {
+  transition: transform 0.24s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+#sidebar.sidebar-collapsed #sidebar-chevron-icon {
+  transform: rotate(180deg);
+}

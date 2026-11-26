@@ -1601,12 +1601,30 @@ class DashboardAPI:
                     "title": cand_title,
                     "artist": "Song",
                     "duration": 0,
-                    "thumbnail": "https://files.catbox.moe/74l9su.png",
+                    "thumbnail": "",
                     "source": "youtube"
                 })
 
-        # Combine with verified iTunes results
+        # Combine with verified iTunes results and enrich any missing posters
         suggestions.extend(itunes_results)
+        try:
+            from services.artwork_service import ArtworkService
+            await ArtworkService.enrich_records(
+                suggestions,
+                db_conn=None,
+                key_title="title",
+                key_author="artist",
+                key_url="",
+                key_thumb="thumbnail",
+                max_network_lookups=6,
+            )
+            for s in suggestions:
+                if not s.get("thumbnail"):
+                    s["thumbnail"] = "https://files.catbox.moe/74l9su.png"
+        except Exception:
+            for s in suggestions:
+                if not s.get("thumbnail"):
+                    s["thumbnail"] = "https://files.catbox.moe/74l9su.png"
 
         return aiohttp.web.json_response({"suggestions": suggestions[:8]})
 
@@ -1796,7 +1814,7 @@ class DashboardAPI:
         collected = []
         seen_local = set(existing_titles)
 
-        def _append_item(title: str, artist: str, ts_val: float, play_count: int = 1, genre: str = ""):
+        def _append_item(title: str, artist: str, ts_val: float, play_count: int = 1, genre: str = "", thumb: str = ""):
             t_clean = (title or "").strip()
             a_clean = (artist or "Unknown Artist").strip()
             if not t_clean:
@@ -1810,6 +1828,7 @@ class DashboardAPI:
             if since_dt and dt < since_dt:
                 return
             seen_local.add(key)
+            cleaned_thumb = thumb.strip() if (thumb and "74l9su.png" not in thumb) else ""
             collected.append({
                 "id": 900000 + len(collected),
                 "guild_id": 0,
@@ -1821,7 +1840,7 @@ class DashboardAPI:
                 "platform": "audia",
                 "genre": genre or "",
                 "play_count": max(1, int(play_count or 1)),
-                "thumbnail_url": "https://files.catbox.moe/74l9su.png",
+                "thumbnail_url": cleaned_thumb,
                 "played_at": dt.strftime("%Y-%m-%dT%H:%M:%SZ"),
                 "_dt": dt,
                 "is_live_now": False,
@@ -1836,6 +1855,7 @@ class DashboardAPI:
                 item.get("last_played") or item.get("first_played") or 0,
                 play_count=item.get("play_count", 1),
                 genre=item.get("genre", ""),
+                thumb=item.get("thumbnail", ""),
             )
 
         for item in reversed(prof.recently_played or []):
@@ -1846,6 +1866,7 @@ class DashboardAPI:
                 item.get("artist", ""),
                 item.get("timestamp") or 0,
                 play_count=1,
+                thumb=item.get("thumbnail", ""),
             )
 
         collected.sort(key=lambda x: x["_dt"], reverse=True)
@@ -1977,7 +1998,14 @@ class DashboardAPI:
         full_history.extend([h for h in history if not live_entry or h.get("track_title", "").lower() != live_entry["track_title"].lower()])
         full_history.extend(ap_history)
 
-        return aiohttp.web.json_response({"history": full_history[:limit], "count": len(full_history), "authenticated": bool(user)})
+        page_items = full_history[:limit]
+        try:
+            from services.artwork_service import ArtworkService
+            await ArtworkService.enrich_records(page_items, db_conn=db)
+        except Exception as art_err:
+            log.debug(f"[History Artwork Enrich] {art_err}")
+
+        return aiohttp.web.json_response({"history": page_items, "count": len(full_history), "authenticated": bool(user)})
 
     @classmethod
     async def handle_delete_history_item(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -2062,7 +2090,13 @@ class DashboardAPI:
 
             t_key = (t_title, t_author)
             if t_key not in track_counts:
-                track_counts[t_key] = {"track_title": t_title, "track_author": t_author, "thumbnail_url": t_thumb, "play_count": 0}
+                track_counts[t_key] = {
+                    "track_title": t_title,
+                    "track_author": t_author,
+                    "track_url": row.get("track_url") or "",
+                    "thumbnail_url": t_thumb,
+                    "play_count": 0,
+                }
             track_counts[t_key]["play_count"] += 1
             if t_thumb and not track_counts[t_key]["thumbnail_url"]:
                 track_counts[t_key]["thumbnail_url"] = t_thumb
@@ -2086,7 +2120,13 @@ class DashboardAPI:
                 artist_counts[t_author] = artist_counts.get(t_author, 0) + pc
             t_key = (t_title, t_author)
             if t_key not in track_counts:
-                track_counts[t_key] = {"track_title": t_title, "track_author": t_author, "thumbnail_url": rec.get("thumbnail_url"), "play_count": 0}
+                track_counts[t_key] = {
+                    "track_title": t_title,
+                    "track_author": t_author,
+                    "track_url": rec.get("track_url") or "",
+                    "thumbnail_url": rec.get("thumbnail_url"),
+                    "play_count": 0,
+                }
             track_counts[t_key]["play_count"] += pc
             platforms["audia"] = platforms.get("audia", 0) + pc
             dt = rec.get("_dt")
@@ -2098,6 +2138,11 @@ class DashboardAPI:
             for a, c in sorted(artist_counts.items(), key=lambda x: x[1], reverse=True)[:8]
         ]
         top_tracks = sorted(track_counts.values(), key=lambda x: x["play_count"], reverse=True)[:8]
+        try:
+            from services.artwork_service import ArtworkService
+            await ArtworkService.enrich_records(top_tracks, db_conn=None)
+        except Exception as art_err:
+            log.debug(f"[Analytics Artwork Enrich] {art_err}")
 
         # Real-time live status from active playing voice channel
         live_active = False

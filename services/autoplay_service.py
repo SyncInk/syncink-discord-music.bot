@@ -929,14 +929,19 @@ class AutoPlayService:
         if real_artist and not any(l in real_artist.lower() for l in INDIAN_RECORD_LABELS.union(GENERIC_CHANNELS)):
             p.artist_play_counts[real_artist] = p.artist_play_counts.get(real_artist, 0) + 1
 
+        raw_thumb = (getattr(track, "thumbnail", "") or "").strip()
+        thumb = raw_thumb if (raw_thumb.startswith("http") and "74l9su.png" not in raw_thumb) else ""
+
         entry = next((item for item in p.memorized_tracks if titles_are_similar(item.get("title", ""), clean_title) and item.get("artist", "").lower() == real_artist.lower()), None)
         if entry:
             entry["play_count"] = entry.get("play_count", 1) + 1
             entry["last_played"] = time.time()
+            if thumb and not entry.get("thumbnail"):
+                entry["thumbnail"] = thumb
             if manual:
                 entry["manual_plays"] = entry.get("manual_plays", 0) + 1
         else:
-            p.memorized_tracks.append({
+            item_dict: Dict[str, Any] = {
                 "title": clean_title,
                 "artist": real_artist,
                 "genre": cluster_info.get("genre", "Pop"),
@@ -946,7 +951,10 @@ class AutoPlayService:
                 "manual_plays": 1 if manual else 0,
                 "first_played": time.time(),
                 "last_played": time.time(),
-            })
+            }
+            if thumb:
+                item_dict["thumbnail"] = thumb
+            p.memorized_tracks.append(item_dict)
             if len(p.memorized_tracks) > 500:
                 p.memorized_tracks = p.memorized_tracks[-500:]
 
@@ -968,11 +976,14 @@ class AutoPlayService:
             p.mood_affinity[mood] = p.mood_affinity.get(mood, 0.0) + (0.5 if manual else 0.1)
 
         # 3. Recently played
-        p.recently_played.append({
+        recent_item: Dict[str, Any] = {
             "title": clean_title,
             "artist": real_artist,
             "timestamp": time.time(),
-        })
+        }
+        if thumb:
+            recent_item["thumbnail"] = thumb
+        p.recently_played.append(recent_item)
         p.recently_played = p.recently_played[-50:]
         self.save_profiles()
 

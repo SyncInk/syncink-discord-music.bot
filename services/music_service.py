@@ -536,6 +536,17 @@ class MusicService:
             if not webpage_url:
                 continue
 
+            if limit <= 2 and detected_platform != "spotify":
+                try:
+                    from services.artwork_service import ArtworkService, is_fallback_artwork
+                    official = await ArtworkService.resolve_official_artwork(
+                        c_title, artist, webpage_url, existing_thumb=None, platform=detected_platform
+                    )
+                    if official and not is_fallback_artwork(official):
+                        thumb = official
+                except Exception:
+                    pass
+
             track = Track(
                 title=raw_title,
                 clean_title=c_title,

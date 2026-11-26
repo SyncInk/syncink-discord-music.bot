@@ -67,6 +67,7 @@ const state = {
 // ------------------- INITIALIZATION -------------------
 window.addEventListener('DOMContentLoaded', async () => {
   initIcons();
+  initSidebarToggle();
   resolveStaticRouteLinks();
   await checkAuthStatus();
   await loadServers();
@@ -135,7 +136,7 @@ function navigateTo(viewId) {
   }
 
   // Update navigation items active state (desktop + mobile drawer)
-  document.querySelectorAll('#sidebar .nav-item, #mobile-drawer .nav-item').forEach(item => {
+  document.querySelectorAll('#sidebar .nav-item[data-view], #mobile-drawer .nav-item[data-view]').forEach(item => {
     const isCurrent = item.getAttribute('data-view') === viewId;
     const isHidden = item.classList.contains('hidden');
     const baseCls = 'nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border transition-[background-color,color,border-color] duration-150';
@@ -166,6 +167,30 @@ function navigateTo(viewId) {
   else if (viewId === 'admin') loadAdminDiagnostics();
 
   initIcons();
+}
+
+function initSidebarToggle() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  const savedCollapsed = localStorage.getItem('syncink_sidebar_collapsed') === '1';
+  sidebar.classList.toggle('sidebar-collapsed', savedCollapsed);
+  const btn = document.getElementById('btn-toggle-sidebar');
+  if (btn) btn.setAttribute('aria-expanded', savedCollapsed ? 'false' : 'true');
+  const headerBtn = document.getElementById('btn-desktop-sidebar');
+  if (headerBtn) headerBtn.setAttribute('aria-expanded', savedCollapsed ? 'false' : 'true');
+}
+
+function toggleDesktopSidebar() {
+  const sidebar = document.getElementById('sidebar');
+  if (!sidebar) return;
+  const isCollapsed = sidebar.classList.toggle('sidebar-collapsed');
+  try {
+    localStorage.setItem('syncink_sidebar_collapsed', isCollapsed ? '1' : '0');
+  } catch (e) {}
+  const btn = document.getElementById('btn-toggle-sidebar');
+  if (btn) btn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
+  const headerBtn = document.getElementById('btn-desktop-sidebar');
+  if (headerBtn) headerBtn.setAttribute('aria-expanded', isCollapsed ? 'false' : 'true');
 }
 
 function toggleMobileMenu() {
@@ -476,7 +501,10 @@ async function fetchAnalyticsSilently() {
             const serverEl = document.getElementById('analytics-live-server');
             if (titleEl) titleEl.innerText = data.live_track.title;
             if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
-            if (artEl) artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+            if (artEl) {
+              artEl.onerror = () => { artEl.onerror = null; artEl.src = 'https://files.catbox.moe/74l9su.png'; };
+              artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+            }
             if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
           }
         }
@@ -1423,7 +1451,7 @@ async function loadOverviewData() {
         const card = document.createElement('div');
         card.className = 'glass-card-interactive p-3.5 flex items-center gap-3';
         card.innerHTML = `
-          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-11 h-11 rounded-xl object-cover shrink-0">
+          <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-11 h-11 rounded-xl object-cover shrink-0">
           <div class="min-w-0 flex-1">
             <h4 class="font-bold text-xs text-white truncate">${escapeHtml(h.track_title)}</h4>
             <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(h.track_author || 'Artist')}</p>
@@ -1434,6 +1462,7 @@ async function loadOverviewData() {
         `;
         container.appendChild(card);
       });
+      initIcons();
     }
   } catch (e) {
     console.warn('Overview history error:', e);
@@ -2508,7 +2537,7 @@ async function loadListeningHistory() {
       tr.innerHTML = `
         <td class="px-4 py-3">
           <div class="flex items-center gap-3">
-            <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
+            <img src="${h.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-8 h-8 rounded-lg object-cover shrink-0 shadow">
             <div class="min-w-0">
               <div class="flex items-center gap-2">
                 <span class="font-medium text-white truncate max-w-[180px] sm:max-w-xs">${escapeHtml(trackTitle)}</span>
@@ -2629,7 +2658,10 @@ async function loadAnalytics() {
           const serverEl = document.getElementById('analytics-live-server');
           if (titleEl) titleEl.innerText = data.live_track.title;
           if (artistEl) artistEl.innerText = `${data.live_track.author || 'Artist'} • ${data.live_channel_name || 'Voice'}`;
-          if (artEl) artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+          if (artEl) {
+            artEl.onerror = () => { artEl.onerror = null; artEl.src = 'https://files.catbox.moe/74l9su.png'; };
+            artEl.src = data.live_track.thumbnail || 'https://files.catbox.moe/74l9su.png';
+          }
           if (serverEl) serverEl.innerText = data.live_guild_name || 'Discord Server';
         }
       } else {
@@ -2728,7 +2760,7 @@ async function loadAnalytics() {
           div.innerHTML = `
             <div class="flex items-center gap-2.5 min-w-0">
               <span class="font-mono text-[#6B6A78] w-4">${i + 1}</span>
-              <img src="${t.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" class="w-7 h-7 rounded-lg object-cover shrink-0">
+              <img src="${t.thumbnail_url || 'https://files.catbox.moe/74l9su.png'}" onerror="this.onerror=null;this.src='https://files.catbox.moe/74l9su.png'" class="w-7 h-7 rounded-lg object-cover shrink-0">
               <span class="font-bold text-white truncate max-w-xs">${escapeHtml(t.track_title)}</span>
             </div>
             <span class="font-semibold text-brand-secondary shrink-0">${t.play_count} plays</span>
@@ -3175,6 +3207,10 @@ function resolveStaticRouteLinks() {
 }
 
 async function refreshSidebarStatus() {
+  const dotIds = ['gateway-dot', 'mobile-gateway-dot', 'header-gateway-dot'];
+  const pingIds = ['sidebar-status-ping', 'mobile-status-ping', 'header-status-ping'];
+  const railDot = document.getElementById('gateway-dot-rail');
+
   try {
     const res = await fetch('/api/status', { cache: 'no-store' });
     if (!res.ok) return;
@@ -3184,22 +3220,44 @@ async function refreshSidebarStatus() {
       ? `${d.ping_ms} ms`
       : (typeof d.db_latency_ms === 'number' ? `${d.db_latency_ms} ms` : 'Live');
 
-    ['gateway-dot', 'mobile-gateway-dot'].forEach(id => {
+    dotIds.forEach(id => {
       const dot = document.getElementById(id);
       if (dot) {
         dot.className = isOp
-          ? 'w-2 h-2 rounded-full bg-emerald-400 shrink-0'
-          : 'w-2 h-2 rounded-full bg-brand-secondary shrink-0';
+          ? 'w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.6)]'
+          : 'w-2.5 h-2.5 rounded-full bg-brand-secondary shrink-0';
       }
     });
-    ['sidebar-status-ping', 'mobile-status-ping'].forEach(id => {
+    if (railDot) {
+      railDot.className = isOp
+        ? 'absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400'
+        : 'absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-brand-secondary';
+    }
+    pingIds.forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.textContent = pingText;
+      if (el) {
+        const marginCls = id === 'header-status-ping' ? '' : 'ml-auto ';
+        const badgeCls = id === 'sidebar-status-ping' ? ' nav-badge' : '';
+        el.textContent = pingText;
+        el.className = isOp
+          ? `${marginCls}font-mono text-[11px] font-semibold text-emerald-400 tabular-nums${badgeCls}`
+          : `${marginCls}font-mono text-[11px] font-semibold text-brand-secondary tabular-nums${badgeCls}`;
+      }
     });
   } catch (e) {
-    ['sidebar-status-ping', 'mobile-status-ping'].forEach(id => {
+    dotIds.forEach(id => {
+      const dot = document.getElementById(id);
+      if (dot) dot.className = 'w-2.5 h-2.5 rounded-full bg-rose-400 shrink-0';
+    });
+    if (railDot) railDot.className = 'absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-rose-400';
+    pingIds.forEach(id => {
       const el = document.getElementById(id);
-      if (el) el.textContent = 'Offline';
+      if (el) {
+        const marginCls = id === 'header-status-ping' ? '' : 'ml-auto ';
+        const badgeCls = id === 'sidebar-status-ping' ? ' nav-badge' : '';
+        el.textContent = 'Offline';
+        el.className = `${marginCls}font-mono text-[11px] font-semibold text-rose-400 tabular-nums${badgeCls}`;
+      }
     });
   }
 }

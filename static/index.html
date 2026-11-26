@@ -47,29 +47,37 @@
   <script src="https://unpkg.com/lucide@latest"></script>
   
   <!-- Custom Cyber Violet Stylesheet -->
-  <link rel="stylesheet" href="static/style.css?v=2.9.0">
+  <link rel="stylesheet" href="static/style.css?v=3.0.0">
 </head>
 <body class="bg-[#101014] text-white flex h-screen overflow-hidden antialiased select-none font-sans">
 
-  <!-- ==================== DESKTOP SIDEBAR ==================== -->
-  <aside id="sidebar" class="hidden md:flex flex-col w-[264px] bg-[#14131a] border-r border-brand-border/40 px-3.5 py-4 shrink-0 z-30 transition-colors duration-200 select-none">
-    <!-- Brand Logo & Header -->
-    <div class="flex items-center gap-3 px-2.5 py-1.5 mb-5 cursor-pointer rounded-xl hover:bg-white/[0.03] transition-colors" onclick="navigateTo('overview')">
-      <div class="relative shrink-0">
-        <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
-        <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-[#14131a] rounded-full"></span>
+  <!-- ==================== DESKTOP SIDEBAR (SLIDABLE / COLLAPSIBLE) ==================== -->
+  <aside id="sidebar" class="hidden md:flex flex-col w-[264px] bg-[#14131a] border-r border-brand-border/40 px-3.5 pt-4 pb-28 shrink-0 z-30 select-none overflow-x-hidden">
+    <!-- Brand Logo & Slide Toggle Header -->
+    <div class="sidebar-brand-row flex items-center justify-between gap-2 px-1.5 py-1.5 mb-4">
+      <div class="sidebar-brand-link flex items-center gap-3 min-w-0 flex-1 px-1.5 py-1 cursor-pointer rounded-xl hover:bg-white/[0.03] transition-colors" onclick="navigateTo('overview')" title="SyncInk Radio">
+        <div class="relative shrink-0">
+          <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
+          <span class="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-emerald-400 border-2 border-[#14131a] rounded-full"></span>
+        </div>
+        <div class="brand-meta min-w-0">
+          <h1 class="font-semibold text-[15px] leading-tight tracking-tight text-white truncate">SyncInk Radio</h1>
+          <p class="text-[11px] text-[#9E9EAD] font-medium truncate">Audia Audio Engine</p>
+        </div>
       </div>
-      <div class="min-w-0">
-        <h1 class="font-semibold text-[15px] leading-tight tracking-tight text-white truncate">SyncInk Radio</h1>
-        <p class="text-[11px] text-[#9E9EAD] font-medium truncate">Audia Audio Engine</p>
-      </div>
+      <button id="btn-toggle-sidebar" type="button" onclick="toggleDesktopSidebar()" class="shrink-0 w-7 h-7 flex items-center justify-center rounded-lg text-[#B8B7C7] hover:text-white hover:bg-brand-surface border border-brand-border/25 hover:border-brand-primary/50 transition-all" aria-label="Collapse or expand sidebar" aria-expanded="true" title="Slide sidebar (Full View)">
+        <svg id="sidebar-chevron-icon" width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12.5 5 7.5 10l5 5"/>
+          <path d="M5 4.5v11"/>
+        </svg>
+      </button>
     </div>
 
     <!-- Navigation Links -->
     <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none pr-0.5" aria-label="Primary Navigation">
-      <div class="px-2.5 pb-1 text-[11px] font-medium text-[#6B6A78]">Studio</div>
+      <div class="sidebar-section-label px-2.5 pb-1 text-[11px] font-medium text-[#8C8B9C]">Studio</div>
 
-      <a href="#overview" onclick="navigateTo('overview')" class="nav-item active-nav group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap transition-[background-color,color,border-color] duration-150 text-white bg-brand-primary/20 border border-brand-primary/35" data-view="overview">
+      <a href="#overview" onclick="navigateTo('overview')" title="Home Overview" class="nav-item active-nav group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap transition-[background-color,color,border-color] duration-150 text-white bg-brand-primary/20 border border-brand-primary/35" data-view="overview">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="2.75" y="2.75" width="6.25" height="7.5" rx="1.75"/>
@@ -78,10 +86,10 @@
             <rect x="2.75" y="12.5" width="6.25" height="4.75" rx="1.75"/>
           </svg>
         </span>
-        <span class="truncate">Home Overview</span>
+        <span class="nav-label truncate">Home Overview</span>
       </a>
 
-      <a href="#radio" onclick="navigateTo('radio')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="radio">
+      <a href="#radio" onclick="navigateTo('radio')" title="Radio & Discover" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="radio">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <circle cx="10" cy="8.5" r="1.75" fill="currentColor" stroke="none"/>
@@ -93,11 +101,11 @@
             <path d="M7.25 17.25h5.5"/>
           </svg>
         </span>
-        <span class="truncate">Radio &amp; Discover</span>
-        <span class="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/15 text-brand-secondary tabular-nums">30K+</span>
+        <span class="nav-label truncate">Radio &amp; Discover</span>
+        <span class="nav-badge ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/15 text-brand-secondary tabular-nums">30K+</span>
       </a>
 
-      <a href="#audia" onclick="navigateTo('audia')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="audia">
+      <a href="#audia" onclick="navigateTo('audia')" title="Audia AI Studio" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="audia">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 10v0"/>
@@ -108,13 +116,13 @@
             <circle cx="10" cy="10" r="1.4" fill="#14131a"/>
           </svg>
         </span>
-        <span class="truncate">Audia AI Studio</span>
-        <span class="ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/20 text-brand-secondary">AI</span>
+        <span class="nav-label truncate">Audia AI Studio</span>
+        <span class="nav-badge ml-auto shrink-0 whitespace-nowrap font-mono text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-brand-primary/20 text-brand-secondary">AI</span>
       </a>
 
-      <div class="px-2.5 pb-1 pt-3 text-[11px] font-medium text-[#6B6A78]">Library &amp; Activity</div>
+      <div class="sidebar-section-label px-2.5 pb-1 pt-3 text-[11px] font-medium text-[#8C8B9C]">Library &amp; Activity</div>
 
-      <a href="#library" onclick="navigateTo('library')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="library">
+      <a href="#library" onclick="navigateTo('library')" title="My Library" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="library">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="4" width="10.5" height="12.5" rx="2"/>
@@ -122,10 +130,10 @@
             <path d="M13.5 6.5h2.25a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H13.5"/>
           </svg>
         </span>
-        <span class="truncate">My Library</span>
+        <span class="nav-label truncate">My Library</span>
       </a>
 
-      <a href="#history" onclick="navigateTo('history')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="history">
+      <a href="#history" onclick="navigateTo('history')" title="Listening History" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="history">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3.5 9.75a6.5 6.5 0 1 1 1.55 4.25"/>
@@ -133,10 +141,10 @@
             <path d="M10 6.5v3.75l2.5 1.5"/>
           </svg>
         </span>
-        <span class="truncate">Listening History</span>
+        <span class="nav-label truncate">Listening History</span>
       </a>
 
-      <a href="#analytics" onclick="navigateTo('analytics')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="analytics">
+      <a href="#analytics" onclick="navigateTo('analytics')" title="Analytics" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="analytics">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <path d="M3 16.5h14"/>
@@ -145,10 +153,10 @@
             <rect x="13.25" y="8" width="2.25" height="8.5" rx="0.75"/>
           </svg>
         </span>
-        <span class="truncate">Analytics</span>
+        <span class="nav-label truncate">Analytics</span>
       </a>
 
-      <a href="#servers" onclick="navigateTo('servers')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="servers">
+      <a href="#servers" onclick="navigateTo('servers')" title="My Servers" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="servers">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
             <rect x="3" y="3.5" width="14" height="5" rx="1.5"/>
@@ -158,47 +166,100 @@
             <path d="M11 6h3M11 14h3"/>
           </svg>
         </span>
-        <span class="truncate">My Servers</span>
+        <span class="nav-label truncate">My Servers</span>
+      </a>
+
+      <!-- Resources, Docs, Legal & Support -->
+      <div class="sidebar-section-label px-2.5 pb-1 pt-3 text-[11px] font-medium text-[#8C8B9C]">Resources</div>
+
+      <a href="/guide" data-route-link="guide" title="Commands & Guide" class="sidebar-link group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#B8B7C7] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2.75" y="3.5" width="14.5" height="13" rx="2.25"/>
+            <path d="M6.25 8l2.5 2-2.5 2"/>
+            <path d="M10.5 12h3.25"/>
+          </svg>
+        </span>
+        <span class="nav-label truncate">Commands &amp; Guide</span>
+      </a>
+
+      <a href="/faq" data-route-link="faq" title="FAQ & Help" class="sidebar-link group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#B8B7C7] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <circle cx="10" cy="10" r="7.25"/>
+            <path d="M7.75 7.75a2.35 2.35 0 0 1 4.5.75c0 1.5-2.25 1.75-2.25 3"/>
+            <circle cx="10" cy="14.25" r="0.65" fill="currentColor" stroke="none"/>
+          </svg>
+        </span>
+        <span class="nav-label truncate">FAQ &amp; Help</span>
+      </a>
+
+      <a href="/privacy" data-route-link="privacy" title="Privacy Policy" class="sidebar-link group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#B8B7C7] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="4.5" y="9" width="11" height="8.25" rx="2"/>
+            <path d="M6.75 9V6.75a3.25 3.25 0 0 1 6.5 0V9"/>
+            <circle cx="10" cy="13.25" r="1" fill="currentColor" stroke="none"/>
+          </svg>
+        </span>
+        <span class="nav-label truncate">Privacy Policy</span>
+      </a>
+
+      <a href="/terms" data-route-link="terms" title="Terms of Use" class="sidebar-link group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#B8B7C7] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M5.5 2.75h6.25L15.5 6.5v10.75a1.5 1.5 0 0 1-1.5 1.5H5.5a1.5 1.5 0 0 1-1.5-1.5V4.25a1.5 1.5 0 0 1 1.5-1.5z"/>
+            <path d="M11.5 2.75v4h4"/>
+            <path d="M7 10.5h6"/>
+            <path d="M7 13.75h4.25"/>
+          </svg>
+        </span>
+        <span class="nav-label truncate">Terms of Use</span>
+      </a>
+
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" title="Support Server (Discord)" class="sidebar-link group flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#B8B7C7] hover:text-white hover:bg-[#5865F2]/15">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#7984F5] group-hover:text-white transition-colors">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+        </span>
+        <span class="nav-label truncate">Support Server</span>
       </a>
 
       <!-- Protected Admin Section (Only visible for system admins) -->
       <div id="nav-admin-section" class="pt-3 pb-1 hidden">
         <div class="h-px bg-brand-border/25 w-full mb-2.5"></div>
-        <p class="px-2.5 pb-1 text-[11px] font-medium text-[#6B6A78]">System</p>
-        <a href="#admin" onclick="navigateTo('admin')" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="admin">
+        <p class="sidebar-section-label px-2.5 pb-1 text-[11px] font-medium text-[#8C8B9C]">System</p>
+        <a href="#admin" onclick="navigateTo('admin')" title="System Admin" class="nav-item group flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent transition-[background-color,color,border-color] duration-150 text-[#9E9EAD] hover:text-white hover:bg-brand-surface" data-view="admin">
           <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0] group-hover:text-brand-secondary transition-colors">
             <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
               <path d="M10 2.75 16.25 5.2v4.7c0 3.7-2.6 6.7-6.25 7.6-3.65-.9-6.25-3.9-6.25-7.6V5.2L10 2.75z"/>
               <path d="M7.5 10.25 9.25 12l3.5-3.75"/>
             </svg>
           </span>
-          <span class="truncate">System Admin</span>
+          <span class="nav-label truncate">System Admin</span>
         </a>
       </div>
     </nav>
 
-    <!-- Quiet Real-Time Status & Legal Footer -->
-    <div class="mt-auto pt-3 border-t border-brand-border/25 space-y-2.5 shrink-0">
-      <a href="/status" data-route-link="status" class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-brand-surface/70 hover:bg-brand-surface border border-brand-border/30 text-xs font-medium text-[#9E9EAD] hover:text-white transition-[background-color,color,border-color] duration-150 whitespace-nowrap">
-        <span id="gateway-dot" class="w-2 h-2 rounded-full bg-emerald-400 shrink-0"></span>
-        <span id="gateway-status" class="truncate">Live Bot Status</span>
-        <span id="sidebar-status-ping" class="ml-auto font-mono text-[11px] text-[#6B6A78] tabular-nums">-- ms</span>
+    <!-- Prominent Live Bot Status Card (Positioned cleanly above #bottom-player) -->
+    <div class="mt-auto pt-3 border-t border-brand-border/30 shrink-0">
+      <a id="sidebar-status-card" href="/status" data-route-link="status" title="Live Bot Status" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-brand-surface/90 hover:bg-brand-surface border border-brand-border/40 hover:border-emerald-400/50 text-xs font-semibold text-[#E4E3F0] hover:text-white transition-[background-color,color,border-color] duration-150 whitespace-nowrap shadow-sm">
+        <span class="sidebar-collapsed-only relative w-5 h-5 items-center justify-center shrink-0 text-emerald-400">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2.5 10.5h3l2-5 3.25 9 2.25-4h4.5"/>
+          </svg>
+          <span id="gateway-dot-rail" class="absolute -top-0.5 -right-0.5 w-2 h-2 rounded-full bg-emerald-400"></span>
+        </span>
+        <span id="gateway-dot" class="sidebar-expanded-only w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
+        <span id="gateway-status" class="nav-label truncate">Live Bot Status</span>
+        <span id="sidebar-status-ping" class="nav-badge ml-auto font-mono text-[11px] font-semibold text-emerald-400 tabular-nums">-- ms</span>
       </a>
-      <div class="flex items-center justify-between px-2.5 text-[11px] text-[#6B6A78]">
-        <div class="flex items-center gap-2">
-          <a href="/privacy" data-route-link="privacy" class="hover:text-brand-secondary transition-colors">Privacy</a>
-          <span aria-hidden="true">·</span>
-          <a href="/terms" data-route-link="terms" class="hover:text-brand-secondary transition-colors">Terms</a>
-        </div>
-        <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="hover:text-brand-secondary transition-colors">Support</a>
-      </div>
     </div>
   </aside>
 
   <!-- ==================== MOBILE SLIDE-OUT DRAWER ==================== -->
   <div id="mobile-drawer-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 hidden md:hidden" onclick="closeMobileMenu()"></div>
-  <aside id="mobile-drawer" class="fixed top-0 bottom-0 left-0 w-72 bg-[#14131a] border-r border-brand-border/40 p-4 shrink-0 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col md:hidden select-none">
-    <div class="flex items-center justify-between mb-5 px-1">
+  <aside id="mobile-drawer" class="fixed top-0 bottom-0 left-0 w-72 bg-[#14131a] border-r border-brand-border/40 p-4 pb-7 shrink-0 z-50 transform -translate-x-full transition-transform duration-300 flex flex-col md:hidden select-none">
+    <div class="flex items-center justify-between mb-4 px-1">
       <div class="flex items-center gap-2.5 cursor-pointer" onclick="navigateTo('overview'); closeMobileMenu();">
         <img src="https://files.catbox.moe/74l9su.png" alt="SyncInk Logo" class="w-9 h-9 rounded-xl border border-brand-border/40 object-cover">
         <div>
@@ -211,60 +272,99 @@
       </button>
     </div>
 
-    <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none">
+    <nav class="flex-1 space-y-1 overflow-y-auto scrollbar-none pr-0.5">
+      <div class="px-2.5 pb-1 text-[11px] font-medium text-[#8C8B9C]">Studio</div>
+
       <a href="#overview" onclick="navigateTo('overview')" data-view="overview" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap text-white bg-brand-primary/20 border border-brand-primary/35">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="2.75" width="6.25" height="7.5" rx="1.75"/><rect x="11" y="2.75" width="6.25" height="4.5" rx="1.75"/><rect x="11" y="9.5" width="6.25" height="7.75" rx="1.75"/><rect x="2.75" y="12.5" width="6.25" height="4.75" rx="1.75"/></svg>
         </span>
-        <span>Home Overview</span>
+        <span class="nav-label truncate">Home Overview</span>
       </a>
       <a href="#radio" onclick="navigateTo('radio')" data-view="radio" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="8.5" r="1.75" fill="currentColor" stroke="none"/><path d="M6.4 11.7a4.9 4.9 0 0 1 0-6.4"/><path d="M13.6 5.3a4.9 4.9 0 0 1 0 6.4"/><path d="M3.8 14a8.4 8.4 0 0 1 0-11"/><path d="M16.2 3a8.4 8.4 0 0 1 0 11"/><path d="M10 10.25V17.25"/><path d="M7.25 17.25h5.5"/></svg>
         </span>
-        <span>Radio &amp; Discover</span>
-        <span class="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/15 text-brand-secondary">30K+</span>
+        <span class="nav-label truncate">Radio &amp; Discover</span>
+        <span class="nav-badge ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/15 text-brand-secondary">30K+</span>
       </a>
       <a href="#audia" onclick="navigateTo('audia')" data-view="audia" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10v0"/><path d="M6.25 7.25v5.5"/><path d="M10 4.25v11.5"/><path d="M13.75 6.25v7.5"/><path d="M17 8.5v3"/><circle cx="10" cy="10" r="1.4" fill="#14131a"/></svg>
         </span>
-        <span>Audia AI Studio</span>
-        <span class="ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/20 text-brand-secondary">AI</span>
+        <span class="nav-label truncate">Audia AI Studio</span>
+        <span class="nav-badge ml-auto font-mono text-[10px] px-1.5 py-0.5 rounded bg-brand-primary/20 text-brand-secondary">AI</span>
       </a>
+
+      <div class="px-2.5 pb-1 pt-2.5 text-[11px] font-medium text-[#8C8B9C]">Library &amp; Activity</div>
+
       <a href="#library" onclick="navigateTo('library')" data-view="library" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="10.5" height="12.5" rx="2"/><circle cx="8.25" cy="10.25" r="2.25"/><path d="M13.5 6.5h2.25a1.5 1.5 0 0 1 1.5 1.5v7a1.5 1.5 0 0 1-1.5 1.5H13.5"/></svg>
         </span>
-        <span>My Library</span>
+        <span class="nav-label truncate">My Library</span>
       </a>
       <a href="#history" onclick="navigateTo('history')" data-view="history" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 9.75a6.5 6.5 0 1 1 1.55 4.25"/><path d="M3.25 6.25v3.5h3.5"/><path d="M10 6.5v3.75l2.5 1.5"/></svg>
         </span>
-        <span>Listening History</span>
+        <span class="nav-label truncate">Listening History</span>
       </a>
       <a href="#analytics" onclick="navigateTo('analytics')" data-view="analytics" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M3 16.5h14"/><rect x="4.5" y="10.5" width="2.25" height="6" rx="0.75"/><rect x="8.875" y="5.5" width="2.25" height="11" rx="0.75"/><rect x="13.25" y="8" width="2.25" height="8.5" rx="0.75"/></svg>
         </span>
-        <span>Analytics</span>
+        <span class="nav-label truncate">Analytics</span>
       </a>
       <a href="#servers" onclick="navigateTo('servers')" data-view="servers" class="nav-item flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3.5" width="14" height="5" rx="1.5"/><rect x="3" y="11.5" width="14" height="5" rx="1.5"/><circle cx="6" cy="6" r="0.85" fill="currentColor" stroke="none"/><circle cx="6" cy="14" r="0.85" fill="currentColor" stroke="none"/><path d="M11 6h3M11 14h3"/></svg>
         </span>
-        <span>My Servers</span>
+        <span class="nav-label truncate">My Servers</span>
       </a>
       <a href="#admin" id="mobile-nav-admin" onclick="navigateTo('admin')" data-view="admin" class="nav-item hidden flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-[13.5px] font-medium whitespace-nowrap border border-transparent text-[#9E9EAD] hover:text-white hover:bg-brand-surface">
         <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#8E8EA0]">
           <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2.75 16.25 5.2v4.7c0 3.7-2.6 6.7-6.25 7.6-3.65-.9-6.25-3.9-6.25-7.6V5.2L10 2.75z"/><path d="M7.5 10.25 9.25 12l3.5-3.75"/></svg>
         </span>
-        <span>System Admin</span>
+        <span class="nav-label truncate">System Admin</span>
+      </a>
+
+      <!-- Mobile Resources, Docs & Legal -->
+      <div class="px-2.5 pb-1 pt-2.5 text-[11px] font-medium text-[#8C8B9C]">Resources</div>
+
+      <a href="/guide" data-route-link="guide" class="sidebar-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent text-[#D0CFD9] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="2.75" y="3.5" width="14.5" height="13" rx="2.25"/><path d="M6.25 8l2.5 2-2.5 2"/><path d="M10.5 12h3.25"/></svg>
+        </span>
+        <span>Commands &amp; Guide</span>
+      </a>
+      <a href="/faq" data-route-link="faq" class="sidebar-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent text-[#D0CFD9] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-brand-secondary">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="10" r="7.25"/><path d="M7.75 7.75a2.35 2.35 0 0 1 4.5.75c0 1.5-2.25 1.75-2.25 3"/><circle cx="10" cy="14.25" r="0.65" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span>FAQ &amp; Help</span>
+      </a>
+      <a href="/privacy" data-route-link="privacy" class="sidebar-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent text-[#D0CFD9] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#9E9EAD]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="9" width="11" height="8.25" rx="2"/><path d="M6.75 9V6.75a3.25 3.25 0 0 1 6.5 0V9"/><circle cx="10" cy="13.25" r="1" fill="currentColor" stroke="none"/></svg>
+        </span>
+        <span>Privacy Policy</span>
+      </a>
+      <a href="/terms" data-route-link="terms" class="sidebar-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent text-[#D0CFD9] hover:text-white hover:bg-brand-surface">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#9E9EAD]">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round"><path d="M5.5 2.75h6.25L15.5 6.5v10.75a1.5 1.5 0 0 1-1.5 1.5H5.5a1.5 1.5 0 0 1-1.5-1.5V4.25a1.5 1.5 0 0 1 1.5-1.5z"/><path d="M11.5 2.75v4h4"/><path d="M7 10.5h6"/><path d="M7 13.75h4.25"/></svg>
+        </span>
+        <span>Terms of Use</span>
+      </a>
+      <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="sidebar-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-[13px] font-medium whitespace-nowrap border border-transparent text-[#D0CFD9] hover:text-white hover:bg-[#5865F2]/20">
+        <span class="nav-icon w-5 h-5 flex items-center justify-center shrink-0 text-[#7984F5]">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd" aria-hidden="true"><path d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03zM8.02 15.33c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.956-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.956 2.418-2.157 2.418zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.21 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418z"/></svg>
+        </span>
+        <span>Support Server</span>
       </a>
 
       <!-- Mobile Bot Invite CTA -->
-      <div class="pt-3 pb-1 border-t border-brand-border/25 mt-3">
+      <div class="pt-3 pb-2 border-t border-brand-border/25 mt-2">
         <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" rel="noopener" class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/15 border border-brand-primary/30 hover:bg-brand-primary/25 transition-colors">
           <i data-lucide="plus-circle" class="w-4 h-4 text-brand-secondary"></i>
           <span>Invite Bot to Server</span>
@@ -272,21 +372,13 @@
       </div>
     </nav>
 
-    <!-- Mobile Drawer Footer -->
-    <div class="mt-auto pt-3 border-t border-brand-border/25 space-y-2.5 shrink-0">
-      <a href="/status" data-route-link="status" class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-brand-surface/70 border border-brand-border/30 text-xs font-medium text-[#9E9EAD] hover:text-white whitespace-nowrap">
-        <span class="w-2 h-2 rounded-full bg-emerald-400 shrink-0" id="mobile-gateway-dot"></span>
+    <!-- Mobile Drawer Live Status Footer -->
+    <div class="mt-auto pt-3 border-t border-brand-border/30 shrink-0">
+      <a href="/status" data-route-link="status" class="flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl bg-brand-surface border border-brand-border/40 text-xs font-semibold text-[#E4E3F0] hover:text-white whitespace-nowrap shadow-sm">
+        <span class="w-2.5 h-2.5 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.6)]" id="mobile-gateway-dot"></span>
         <span>Live Bot Status</span>
-        <span id="mobile-status-ping" class="ml-auto font-mono text-[11px] text-[#6B6A78] tabular-nums">-- ms</span>
+        <span id="mobile-status-ping" class="ml-auto font-mono text-[11px] font-semibold text-emerald-400 tabular-nums">-- ms</span>
       </a>
-      <div class="flex items-center justify-between px-2 text-[11px] text-[#6B6A78]">
-        <div class="flex items-center gap-2">
-          <a href="/privacy" data-route-link="privacy" class="hover:text-brand-secondary">Privacy</a>
-          <span>·</span>
-          <a href="/terms" data-route-link="terms" class="hover:text-brand-secondary">Terms</a>
-        </div>
-        <a href="https://discord.gg/PmxfJwmQuB" target="_blank" rel="noopener" class="hover:text-brand-secondary">Support</a>
-      </div>
     </div>
   </aside>
 
@@ -295,10 +387,19 @@
 
     <!-- Top Navigation Bar -->
     <header class="relative z-50 h-16 border-b border-brand-border/30 bg-[#14131a]/85 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between shrink-0">
-      <div class="flex items-center gap-3 sm:gap-4">
+      <div class="flex items-center gap-2.5 sm:gap-3.5">
         <!-- Mobile Menu Toggle -->
         <button id="btn-mobile-menu" class="md:hidden p-2 rounded-xl text-[#9E9EAD] hover:text-white hover:bg-brand-surface" onclick="toggleMobileMenu()" aria-label="Open Navigation">
           <i data-lucide="menu" class="w-5 h-5"></i>
+        </button>
+
+        <!-- Desktop Slidable Sidebar Toggle -->
+        <button id="btn-desktop-sidebar" type="button" class="hidden md:inline-flex p-2 rounded-xl text-[#9E9EAD] hover:text-white hover:bg-brand-surface border border-transparent hover:border-brand-border/40 transition-colors" onclick="toggleDesktopSidebar()" aria-label="Toggle Sidebar Width" title="Slide Sidebar (Full View)">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <rect x="2.75" y="3.25" width="14.5" height="13.5" rx="2.5"/>
+            <path d="M7.5 3.25v13.5"/>
+            <path d="M12.75 8l-2 2 2 2"/>
+          </svg>
         </button>
 
         <!-- Active Server Dropdown Selector -->
@@ -324,8 +425,15 @@
         </div>
       </div>
 
-      <!-- Right Header Actions (Preferences + Discord User Login) -->
-      <div class="flex items-center gap-2.5 sm:gap-3">
+      <!-- Right Header Actions (Live Status + Invite + Preferences + Discord User Login) -->
+      <div class="flex items-center gap-2 sm:gap-3">
+        <!-- Always-Visible Live Bot Status Pill (PC) -->
+        <a id="header-status-pill" href="/status" data-route-link="status" title="Open Live Telemetry & Status Console" class="hidden md:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-[#E4E3F0] hover:text-white bg-brand-surface/90 border border-brand-border/40 hover:border-emerald-400/50 transition-all">
+          <span id="header-gateway-dot" class="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_8px_rgba(52,211,153,0.6)]"></span>
+          <span>Live Status</span>
+          <span id="header-status-ping" class="font-mono text-[11px] text-emerald-400 tabular-nums">-- ms</span>
+        </a>
+
         <!-- Invite SyncInk Bot CTA -->
         <a href="https://discord.com/oauth2/authorize?client_id=1500567606648897819&permissions=8&scope=bot%20applications.commands" target="_blank" class="hidden lg:inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold text-brand-secondary bg-brand-primary/10 border border-brand-primary/30 hover:bg-brand-primary/20 transition-all">
           <i data-lucide="plus-circle" class="w-4 h-4"></i> Invite Bot
@@ -1655,6 +1763,6 @@
   <div id="toast-container"></div>
 
   <!-- Main Client Application Logic -->
-  <script src="static/app.js?v=2.9.0"></script>
+  <script src="static/app.js?v=3.0.0"></script>
 </body>
 </html>
