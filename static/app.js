@@ -9,9 +9,9 @@ const BASE_PATH = (window.SYNCINK_BASE_PATH !== undefined)
   ? window.SYNCINK_BASE_PATH
   : (window.location.pathname.startsWith('/dashboard/radio') ? '/dashboard/radio' : '');
 
-const DEFAULT_LOGO = `${BASE_PATH}/static/radio-bot.jpg`;
+const DEFAULT_LOGO = `${BASE_PATH}/static/syncink-main.jpg`;
 function resolveArtUrl(url) {
-  if (!url || typeof url !== 'string' || url.includes('74l9su.png')) return DEFAULT_LOGO;
+  if (!url || typeof url !== 'string' || url.includes('74l9su.png') || url.includes('radio-bot.jpg')) return DEFAULT_LOGO;
   return url;
 }
 

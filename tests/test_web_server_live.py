@@ -44,6 +44,7 @@ class TestLiveWebServer(AioHTTPTestCase):
         self.assertIn("Powered by Audia AI", text)
         self.assertNotIn("Audia Audio Engine", text)
         self.assertIn("static/radio-bot.jpg", text)
+        self.assertIn("static/syncink-main.jpg", text)
         self.assertIn("toggleDesktopSidebar", text)
         self.assertIn("-right-3.5 top-1/2", text)
         self.assertIn("sidebar-status-card", text)
@@ -59,6 +60,10 @@ class TestLiveWebServer(AioHTTPTestCase):
         self.assertEqual(resp_logo.status, 200)
         resp_sub_logo = await self.client.request("GET", "/dashboard/radio/static/radio-bot.jpg")
         self.assertEqual(resp_sub_logo.status, 200)
+        resp_main_logo = await self.client.request("GET", "/static/syncink-main.jpg")
+        self.assertEqual(resp_main_logo.status, 200)
+        resp_sub_main = await self.client.request("GET", "/dashboard/radio/static/syncink-main.jpg")
+        self.assertEqual(resp_sub_main.status, 200)
 
         resp_css = await self.client.request("GET", "/static/style.css")
         self.assertEqual(resp_css.status, 200)

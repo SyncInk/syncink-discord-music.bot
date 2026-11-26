@@ -36,6 +36,7 @@ ERROR_MESSAGE = (
 
 BRAND_COLOR = 0x7b2cbf  # SyncInk Cyber Violet
 BRAND_LOGO_URL = "https://syncink.site/dashboard/radio/static/radio-bot.jpg"
+MAIN_LOGO_URL = "https://syncink.site/dashboard/radio/static/syncink-main.jpg"
 
 def get_music_booster_role_id() -> Optional[int]:
     raw = os.getenv("MUSIC_BOOSTER_ROLE_ID")
@@ -63,7 +64,7 @@ def make_radio_track(station: dict, country_name: str, requester: discord.Member
     homepage = station.get("homepage") or stream_url
     favicon = station.get("favicon", "").strip() if station.get("favicon") else ""
     if not favicon or not (favicon.startswith("http://") or favicon.startswith("https://")):
-        favicon = BRAND_LOGO_URL
+        favicon = MAIN_LOGO_URL
     return Track(
         title=name,
         clean_title=name,
@@ -171,6 +172,8 @@ def build_now_playing_embed(queue: GuildMusicQueue) -> discord.Embed:
 
     if current.thumbnail and current.thumbnail.startswith("http"):
         embed.set_thumbnail(url=current.thumbnail)
+    else:
+        embed.set_thumbnail(url=MAIN_LOGO_URL)
 
     embed.set_footer(
         text="SyncInk Platform",
@@ -211,7 +214,7 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
         # 1. Top Section: Track Title, Artist, and Duration with Thumbnail accessory
         title_text = f"### {Emojis.PLAYING} Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}** `[{current.formatted_duration}]`"
         text_disp = discord.ui.TextDisplay(title_text)
-        thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else BRAND_LOGO_URL
+        thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else MAIN_LOGO_URL
         sec = discord.ui.Section(text_disp, accessory=discord.ui.Thumbnail(thumb_url))
 
         # 2. Controls Action Row (Clean, icon-only buttons matching Chip bot reference)
@@ -527,7 +530,7 @@ class TrackEnqueuedLayoutView(discord.ui.LayoutView):
 
     def build_components(self):
         self.clear_items()
-        thumb_url = self.track.thumbnail if (self.track.thumbnail and self.track.thumbnail.startswith("http")) else BRAND_LOGO_URL
+        thumb_url = self.track.thumbnail if (self.track.thumbnail and self.track.thumbnail.startswith("http")) else MAIN_LOGO_URL
         header_text = (
             f"### Queued at position #{self.position}\n"
             f"[{self.track.clean_title}]({self.track.url}) by **{self.track.author}** `[{self.track.formatted_duration}]`"
@@ -565,7 +568,7 @@ class NowPlayingLayoutView(discord.ui.LayoutView):
             self.add_item(discord.ui.Container(txt, accent_color=BRAND_COLOR))
             return
 
-        thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else BRAND_LOGO_URL
+        thumb_url = current.thumbnail if (current.thumbnail and current.thumbnail.startswith("http")) else MAIN_LOGO_URL
         sec = discord.ui.Section(
             discord.ui.TextDisplay(f"### {Emojis.PLAYING} Now Playing\n[{current.clean_title}]({current.url}) by **{current.author}**"),
             accessory=discord.ui.Thumbnail(thumb_url)

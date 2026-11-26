@@ -231,7 +231,9 @@ class TestFixesVerification(unittest.TestCase):
         self.assertTrue(is_fallback_artwork(""))
         self.assertTrue(is_fallback_artwork("https://files.catbox.moe/74l9su.png"))
         self.assertTrue(is_fallback_artwork("static/radio-bot.jpg"))
+        self.assertTrue(is_fallback_artwork("static/syncink-main.jpg"))
         self.assertTrue(is_fallback_artwork("https://syncink.site/dashboard/radio/static/radio-bot.jpg"))
+        self.assertTrue(is_fallback_artwork("https://syncink.site/dashboard/radio/static/syncink-main.jpg"))
         self.assertFalse(is_fallback_artwork("https://is1-ssl.mzstatic.com/image/thumb/cover/600x600bb.jpg"))
 
         self.assertEqual(
@@ -246,9 +248,12 @@ class TestFixesVerification(unittest.TestCase):
 
         static_dir = Path(__file__).resolve().parent.parent / "static"
         self.assertTrue((static_dir / "radio-bot.jpg").exists(), "Missing static/radio-bot.jpg")
+        self.assertTrue((static_dir / "syncink-main.jpg").exists(), "Missing static/syncink-main.jpg")
+        index_html = (static_dir / "index.html").read_text(encoding="utf-8")
+        self.assertIn("static/syncink-main.jpg", index_html)
         for page in ("index.html", "status.html", "guide.html", "faq.html", "privacy.html", "terms.html"):
             html = (static_dir / page).read_text(encoding="utf-8")
-            self.assertIn("static/radio-bot.jpg", html, f"{page} missing updated radio-bot.jpg logo")
+            self.assertIn("static/radio-bot.jpg", html, f"{page} missing radio-bot.jpg brand logo")
             self.assertIn("M8.02 15.33", html, f"{page} missing full Discord Clyde eye cutout path")
             self.assertIn('fill-rule="evenodd"', html, f"{page} missing fill-rule='evenodd' on Discord SVG")
 

@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import aiohttp
 from utils.logger import log
 
-DEFAULT_LOGO_URL = "static/radio-bot.jpg"
+DEFAULT_LOGO_URL = "static/syncink-main.jpg"
 
 _GENERIC_AUTHORS = {
     "", "artist", "unknown artist", "various artists", "song", "radio", "unknown"
@@ -27,7 +27,7 @@ def is_fallback_artwork(url: Optional[str]) -> bool:
     cleaned = url.strip()
     if not cleaned.startswith(("http://", "https://")):
         return True
-    return ("74l9su.png" in cleaned) or ("radio-bot.jpg" in cleaned)
+    return ("74l9su.png" in cleaned) or ("radio-bot.jpg" in cleaned) or ("syncink-main.jpg" in cleaned)
 
 
 def extract_youtube_poster(url: Optional[str]) -> Optional[str]:

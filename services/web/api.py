@@ -128,7 +128,7 @@ class DashboardAPI:
         if user.get("avatar"):
             avatar_url = f"https://cdn.discordapp.com/avatars/{user_id}/{user['avatar']}.png?size=256"
         else:
-            avatar_url = "static/radio-bot.jpg"
+            avatar_url = "static/syncink-main.jpg"
 
         prefs_row = await db.fetchrow("SELECT * FROM user_preferences WHERE discord_user_id = $1", user_id)
         prefs = dict(prefs_row) if prefs_row else {
@@ -206,7 +206,7 @@ class DashboardAPI:
                 "id": "999888777",
                 "username": "SyncInk Listener",
                 "discriminator": "0001",
-                "avatar_url": "static/radio-bot.jpg",
+                "avatar_url": "static/syncink-main.jpg",
                 "is_admin": True
             }
         })
@@ -271,7 +271,7 @@ class DashboardAPI:
             {
                 "id": "110000000000000001",
                 "name": "SyncInk Cyber Lounge (Demo)",
-                "icon": "static/radio-bot.jpg",
+                "icon": "static/syncink-main.jpg",
                 "member_count": 142,
                 "connected": True,
                 "voice_channel": "Lofi Chill & Beats",
@@ -286,7 +286,7 @@ class DashboardAPI:
             {
                 "id": "110000000000000002",
                 "name": "Vibrant Anime Cafe (Demo)",
-                "icon": "static/radio-bot.jpg",
+                "icon": "static/syncink-main.jpg",
                 "member_count": 89,
                 "connected": True,
                 "voice_channel": "J-Rock Radio 24/7",
@@ -340,7 +340,7 @@ class DashboardAPI:
                 if not is_member and not is_sys_admin:
                     continue
 
-                icon_url = str(g.icon.url) if g.icon else "static/radio-bot.jpg"
+                icon_url = str(g.icon.url) if g.icon else "static/syncink-main.jpg"
                 queue = MusicService.get_instance().get_queue(g.id)
                 vc = g.voice_client
 
@@ -921,7 +921,7 @@ class DashboardAPI:
                 "stationuuid": s.get("stationuuid") or s.get("name"),
                 "name": s.get("name"),
                 "url": s.get("url_resolved") or s.get("url"),
-                "favicon": s.get("favicon") or "static/radio-bot.jpg",
+                "favicon": s.get("favicon") or "static/syncink-main.jpg",
                 "country": s.get("country") or country,
                 "tags": s.get("tags", ""),
                 "votes": s.get("votes", 0),
@@ -1020,7 +1020,7 @@ class DashboardAPI:
             "name": station_name or "Live Radio",
             "url": stream_url,
             "url_resolved": stream_url,
-            "favicon": body.get("favicon", "static/radio-bot.jpg"),
+            "favicon": body.get("favicon", "static/syncink-main.jpg"),
             "country": country
         }
 
@@ -1181,7 +1181,7 @@ class DashboardAPI:
         item_id = body.get("item_id", "")
         title = body.get("title", "")
         subtitle = body.get("subtitle", "")
-        image_url = body.get("image_url", "static/radio-bot.jpg")
+        image_url = body.get("image_url", "static/syncink-main.jpg")
         url = body.get("url", "")
 
         query = """
@@ -1276,7 +1276,7 @@ class DashboardAPI:
         author = body.get("author", "Artist")
         url = body.get("url", "")
         duration = int(body.get("duration", 0))
-        thumbnail = body.get("thumbnail", "static/radio-bot.jpg")
+        thumbnail = body.get("thumbnail", "static/syncink-main.jpg")
         platform = body.get("platform", "youtube")
 
         query = """
@@ -1351,7 +1351,7 @@ class DashboardAPI:
                             "author": nt.artist,
                             "url": nt.original_url or f"https://open.spotify.com/track/{nt.id}",
                             "duration": int((nt.duration_ms or 0) / 1000),
-                            "thumbnail": nt.artwork or "static/radio-bot.jpg",
+                            "thumbnail": nt.artwork or "static/syncink-main.jpg",
                             "platform": "spotify"
                         })
             except Exception as e:
@@ -1391,7 +1391,7 @@ class DashboardAPI:
                                                 "author": t_author,
                                                 "url": t_url,
                                                 "duration": t_dur,
-                                                "thumbnail": "static/radio-bot.jpg",
+                                                "thumbnail": "static/syncink-main.jpg",
                                                 "platform": "spotify"
                                             })
                 except Exception as e:
@@ -1430,7 +1430,7 @@ class DashboardAPI:
                         if not e_url:
                             continue
                         e_dur = int(entry.get("duration") or 0)
-                        thumb = "static/radio-bot.jpg"
+                        thumb = "static/syncink-main.jpg"
                         if entry.get("thumbnails"):
                             thumb = entry["thumbnails"][-1].get("url", thumb)
                         extracted_tracks.append({
@@ -1495,7 +1495,7 @@ class DashboardAPI:
                 parsed_sp = SpotifyResolver.parse_resource(url)
                 if parsed_sp:
                     _, res_id = parsed_sp
-                    first_thumb = extracted_tracks[0].get("thumbnail") if extracted_tracks else "static/radio-bot.jpg"
+                    first_thumb = extracted_tracks[0].get("thumbnail") if extracted_tracks else "static/syncink-main.jpg"
                     await db.execute("""
                         INSERT INTO user_spotify_playlists (
                             discord_user_id, spotify_playlist_id, name, description, url, image_url, tracks_total, updated_at
@@ -1594,7 +1594,7 @@ class DashboardAPI:
                                     if k not in seen_titles:
                                         seen_titles.add(k)
                                         duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
-                                        thumb = item.get("artworkUrl100") or "static/radio-bot.jpg"
+                                        thumb = item.get("artworkUrl100") or "static/syncink-main.jpg"
                                         itunes_results.append({
                                             "title": track_name,
                                             "artist": artist_name,
@@ -1632,11 +1632,11 @@ class DashboardAPI:
             )
             for s in suggestions:
                 if not s.get("thumbnail"):
-                    s["thumbnail"] = "static/radio-bot.jpg"
+                    s["thumbnail"] = "static/syncink-main.jpg"
         except Exception:
             for s in suggestions:
                 if not s.get("thumbnail"):
-                    s["thumbnail"] = "static/radio-bot.jpg"
+                    s["thumbnail"] = "static/syncink-main.jpg"
 
         return aiohttp.web.json_response({"suggestions": suggestions[:8]})
 
@@ -1840,7 +1840,7 @@ class DashboardAPI:
             if since_dt and dt < since_dt:
                 return
             seen_local.add(key)
-            cleaned_thumb = thumb.strip() if (thumb and "74l9su.png" not in thumb and "radio-bot.jpg" not in thumb) else ""
+            cleaned_thumb = thumb.strip() if (thumb and "74l9su.png" not in thumb and "radio-bot.jpg" not in thumb and "syncink-main.jpg" not in thumb) else ""
             collected.append({
                 "id": 900000 + len(collected),
                 "guild_id": 0,
@@ -1965,7 +1965,7 @@ class DashboardAPI:
                             "track_url": q.current_track.url or "",
                             "duration": int(q.current_track.duration or 0),
                             "platform": t_plat,
-                            "thumbnail_url": q.current_track.thumbnail or "static/radio-bot.jpg",
+                            "thumbnail_url": q.current_track.thumbnail or "static/syncink-main.jpg",
                             "played_at": "Now Playing",
                             "is_live_now": True
                         }
@@ -1990,7 +1990,7 @@ class DashboardAPI:
                             "track_url": trk.url or "",
                             "duration": int(trk.duration or 0),
                             "platform": t_plat,
-                            "thumbnail_url": trk.thumbnail or "static/radio-bot.jpg",
+                            "thumbnail_url": trk.thumbnail or "static/syncink-main.jpg",
                             "played_at": datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
                             "is_live_now": False
                         })
@@ -2185,7 +2185,7 @@ class DashboardAPI:
                     live_track = {
                         "title": q.current_track.clean_title or q.current_track.title,
                         "author": q.current_track.author or "Artist",
-                        "thumbnail": q.current_track.thumbnail or "static/radio-bot.jpg",
+                        "thumbnail": q.current_track.thumbnail or "static/syncink-main.jpg",
                         "duration": int(q.current_track.duration or 0),
                         "is_radio": q.current_track.is_radio
                     }

@@ -930,7 +930,7 @@ class AutoPlayService:
             p.artist_play_counts[real_artist] = p.artist_play_counts.get(real_artist, 0) + 1
 
         raw_thumb = (getattr(track, "thumbnail", "") or "").strip()
-        thumb = raw_thumb if (raw_thumb.startswith("http") and "74l9su.png" not in raw_thumb and "radio-bot.jpg" not in raw_thumb) else ""
+        thumb = raw_thumb if (raw_thumb.startswith("http") and "74l9su.png" not in raw_thumb and "radio-bot.jpg" not in raw_thumb and "syncink-main.jpg" not in raw_thumb) else ""
 
         entry = next((item for item in p.memorized_tracks if titles_are_similar(item.get("title", ""), clean_title) and item.get("artist", "").lower() == real_artist.lower()), None)
         if entry:
