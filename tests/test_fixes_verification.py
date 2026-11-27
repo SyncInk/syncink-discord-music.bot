@@ -356,6 +356,108 @@ class TestFixesVerification(unittest.TestCase):
         finally:
             mock_bot.loop.close()
 
+    def test_lyrics_service_parsing_and_bot_commands(self):
+        """Verifies LRC timestamp parsing, noise stripping, /lyrics & ?lyrics execution with active line highlighting."""
+        import asyncio
+        import time
+        from unittest.mock import AsyncMock, MagicMock, patch
+        from services.lyrics_service import LyricsService, parse_lrc, clean_lyrics_metadata
+        import cogs.music as music_mod
+        from services.music_service import Track
+
+        title, artist = clean_lyrics_metadata("Arijit Singh - Kesariya (Official Video) | Brahmastra", "Sony Music India")
+        self.assertEqual(artist, "Arijit Singh")
+        self.assertEqual(title, "Kesariya")
+
+        sample_lrc = "[00:05.25]First <00:05.50>line here\n[00:10.00][01:05.500]Chorus repeats\n[00:12.00]\n"
+        parsed = parse_lrc(sample_lrc)
+        self.assertEqual([round(p["time"], 2) for p in parsed], [5.25, 10.0, 12.0, 65.5])
+        self.assertEqual(parsed[0]["text"], "First line here")
+        self.assertEqual(parsed[1]["text"], "Chorus repeats")
+        self.assertEqual(parsed[2]["text"], "♪")
+
+        mock_bot = MagicMock()
+        mock_bot.user = MagicMock()
+        mock_bot.user.id = 1500567606648897819
+        mock_bot.loop = asyncio.new_event_loop()
+
+        try:
+            music_cog = music_mod.Music(mock_bot)
+            self.assertTrue(hasattr(music_cog, "slash_lyrics"))
+            self.assertTrue(hasattr(music_cog, "cmd_lyrics"))
+
+            q = music_cog.service.get_queue(777555333)
+            q.current_track = Track(
+                title="Kesariya",
+                clean_title="Kesariya",
+                author="Arijit Singh",
+                duration=240,
+                url="https://youtube.com/watch?v=BddP6PYo2gs",
+                stream_url="https://example.com/stream",
+                thumbnail="https://example.com/thumb.jpg",
+                platform="youtube",
+                requested_by=DummyUser(111222),
+            )
+            q.start_time = time.time() - 10.5
+            q.paused_at = None
+            q.total_paused_duration = 0.0
+            q.voice_client = MagicMock()
+            q.voice_client.is_playing = MagicMock(return_value=True)
+            q.voice_client.is_paused = MagicMock(return_value=False)
+
+            mocked_result = {
+                "found": True,
+                "synced": True,
+                "instrumental": False,
+                "track_title": "Kesariya",
+                "artist_name": "Arijit Singh",
+                "album_name": "Brahmastra",
+                "duration": 240,
+                "source": "LRCLIB",
+                "lines": [
+                    {"time": 3.0, "text": "Mujhko itna bataye koi"},
+                    {"time": 9.0, "text": "Kaise tujhse dil na lagaye koi"},
+                    {"time": 18.0, "text": "Kesariya tera ishq hai piya"},
+                ],
+                "plain_lines": [
+                    "Mujhko itna bataye koi",
+                    "Kaise tujhse dil na lagaye koi",
+                    "Kesariya tera ishq hai piya",
+                ],
+                "plain_lyrics": "Mujhko itna bataye koi",
+            }
+
+            async def _test_lyrics_cmds():
+                with patch.object(LyricsService, "get_lyrics", new=AsyncMock(return_value=dict(mocked_result))):
+                    inter = MagicMock(spec=discord.Interaction)
+                    inter.guild_id = 777555333
+                    inter.user = DummyUser(111222)
+                    inter.response = MagicMock()
+                    inter.response.defer = AsyncMock()
+                    inter.followup = MagicMock()
+                    inter.followup.send = AsyncMock()
+
+                    await music_cog.slash_lyrics.callback(music_cog, inter, query=None)
+                    self.assertEqual(inter.response.defer.await_count, 1)
+                    self.assertEqual(inter.followup.send.await_count, 1)
+                    sent_kwargs = inter.followup.send.call_args.kwargs
+                    emb = sent_kwargs["embed"]
+                    view = sent_kwargs["view"]
+                    self.assertIsInstance(view, music_mod.LyricsPaginationView)
+                    self.assertIn("▸ `00:09` **Kaise tujhse dil na lagaye koi**", emb.description)
+
+                    ctx = MagicMock()
+                    ctx.guild = MagicMock()
+                    ctx.guild.id = 777555333
+                    ctx.author = DummyUser(111222)
+                    ctx.send = AsyncMock()
+                    await music_cog.cmd_lyrics.callback(music_cog, ctx, query="Kesariya")
+                    self.assertEqual(ctx.send.await_count, 1)
+
+            mock_bot.loop.run_until_complete(_test_lyrics_cmds())
+        finally:
+            mock_bot.loop.close()
+
 
 if __name__ == "__main__":
     unittest.main()

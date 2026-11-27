@@ -235,7 +235,12 @@ class DashboardWebSocketManager:
                 "requested_by": str(current.requested_by) if current.requested_by else None,
             }
 
-        position = queue.get_playback_time() if (is_playing or is_paused) else 0.0
+        if is_playing and queue.start_time:
+            position = max(0.0, time.time() - queue.start_time - queue.total_paused_duration)
+        elif is_paused and queue.paused_at is not None and queue.start_time:
+            position = max(0.0, queue.paused_at - queue.start_time - queue.total_paused_duration)
+        else:
+            position = 0.0
 
         upcoming = []
         for t in queue.tracks[:25]:

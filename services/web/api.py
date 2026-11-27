@@ -2740,3 +2740,120 @@ class DashboardAPI:
             "support_url": "https://discord.gg/PmxfJwmQuB",
             "timestamp": int(now)
         }, headers=headers)
+
+    @classmethod
+    async def handle_get_lyrics(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
+        """Resolves real-time synchronized LRC or plain lyrics for the currently playing track or explicit query."""
+        from services.lyrics_service import LyricsService
+
+        req_title = (request.query.get("title") or request.query.get("q") or "").strip()
+        req_artist = (request.query.get("artist") or "").strip()
+        try:
+            req_duration = int(float(request.query.get("duration") or 0))
+        except (ValueError, TypeError):
+            req_duration = 0
+
+        guild_id_str = (request.query.get("guild_id") or "").strip()
+        playback_position = 0.0
+        is_playing = False
+        is_paused = False
+        is_radio = False
+        bot = request.app.get("bot")
+
+        if guild_id_str:
+            try:
+                gid = int(guild_id_str)
+            except (ValueError, TypeError):
+                return aiohttp.web.json_response({"error": "Invalid guild_id"}, status=400)
+
+            if str(gid).startswith("110000"):
+                from services.web.websocket import DashboardWebSocketManager
+                snap = DashboardWebSocketManager.get_instance().serialize_guild_playback(gid, bot)
+                cur = snap.get("current_track") or {}
+                playback_position = float(snap.get("position") or 0.0)
+                is_playing = bool(snap.get("is_playing"))
+                is_paused = bool(snap.get("is_paused"))
+                is_radio = bool(cur.get("is_radio") or snap.get("radio_station"))
+                if not req_title and cur:
+                    req_title = str(cur.get("clean_title") or cur.get("title") or "").strip()
+                    req_artist = str(cur.get("author") or "").strip()
+                    req_duration = int(cur.get("duration") or 0)
+            else:
+                user = await cls.get_session_user(request)
+                if not user and not req_title:
+                    return aiohttp.web.json_response({"error": "Authentication required"}, status=401)
+                queue = MusicService.get_instance().get_queue(gid)
+                guild = bot.get_guild(gid) if bot else None
+                vc = (guild.voice_client if guild else None) or queue.voice_client
+                is_playing = bool(vc and vc.is_connected() and vc.is_playing())
+                is_paused = bool(vc and vc.is_connected() and vc.is_paused())
+                if is_playing and queue.start_time:
+                    playback_position = max(0.0, float(time.time() - queue.start_time - queue.total_paused_duration))
+                elif is_paused and queue.paused_at is not None and queue.start_time:
+                    playback_position = max(0.0, float(queue.paused_at - queue.start_time - queue.total_paused_duration))
+
+                cur = queue.current_track
+                if cur:
+                    is_radio = bool(cur.is_radio or cur.platform == "radio" or queue.active_radio_station)
+                    if not req_title:
+                        # Ensure requester belongs to guild before exposing guild track metadata
+                        uid = user["discord_user_id"]
+                        is_admin = DashboardAuthManager.is_system_admin(uid, bot)
+                        can_manage = bool(guild and DashboardAuthManager.can_manage_guild(uid, guild))
+                        in_guild = bool(guild and (guild.get_member(uid) is not None))
+                        if not (is_admin or can_manage or in_guild) and user.get("access_token"):
+                            user_guilds = await DashboardAuthManager.get_instance().fetch_user_guilds(user["access_token"])
+                            in_guild = any(int(g.get("id", 0)) == gid for g in user_guilds)
+                        if not (is_admin or can_manage or in_guild):
+                            return aiohttp.web.json_response({"error": "Forbidden"}, status=403)
+                        req_title = (cur.clean_title or cur.title or "").strip()
+                        req_artist = (cur.author or "").strip()
+                        req_duration = int(cur.duration or 0)
+
+        if is_radio:
+            return aiohttp.web.json_response({
+                "found": False,
+                "synced": False,
+                "instrumental": False,
+                "is_radio": True,
+                "track_title": req_title or "Live Radio",
+                "artist_name": req_artist or "24/7 Live Broadcast",
+                "duration": 0,
+                "source": "none",
+                "lines": [],
+                "plain_lines": [],
+                "plain_lyrics": "",
+                "message": "Synchronized lyrics are not available during live 24/7 radio streams.",
+                "playback_position": playback_position,
+                "is_playing": is_playing,
+                "is_paused": is_paused,
+                "server_time": time.time(),
+            })
+
+        if not req_title:
+            return aiohttp.web.json_response({
+                "found": False,
+                "synced": False,
+                "instrumental": False,
+                "is_radio": False,
+                "track_title": "",
+                "artist_name": "",
+                "duration": 0,
+                "source": "none",
+                "lines": [],
+                "plain_lines": [],
+                "plain_lyrics": "",
+                "message": "No active track is currently playing.",
+                "playback_position": 0.0,
+                "is_playing": False,
+                "is_paused": False,
+                "server_time": time.time(),
+            })
+
+        data = await LyricsService.get_instance().get_lyrics(req_title, req_artist, req_duration)
+        data["is_radio"] = False
+        data["playback_position"] = playback_position
+        data["is_playing"] = is_playing
+        data["is_paused"] = is_paused
+        data["server_time"] = time.time()
+        return aiohttp.web.json_response(data)

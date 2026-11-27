@@ -644,6 +644,205 @@ class QueueLayoutView(discord.ui.View):
         await interaction.followup.send(embed=embed_shuf, ephemeral=True)
 
 
+class LyricsPaginationView(discord.ui.View):
+    """Interactive Discord view displaying synchronized or full song lyrics with live voice re-sync."""
+
+    def __init__(
+        self,
+        music_cog: 'Music',
+        guild_id: int,
+        author_id: int,
+        lyrics_data: dict,
+        artwork_url: Optional[str] = None,
+        is_live_track: bool = False,
+        target_track_url: Optional[str] = None,
+    ):
+        super().__init__(timeout=240.0)
+        self.music_cog = music_cog
+        self.guild_id = guild_id
+        self.author_id = author_id
+        self.lyrics_data = lyrics_data
+        self.artwork_url = artwork_url
+        self.is_live_track = is_live_track
+        self.target_track_url = target_track_url
+        self.current_page = 0
+        self.pages: list[discord.Embed] = []
+        self._chunk_ranges: list[tuple[int, int]] = []
+        self._build_pages(jump_to_live=True)
+        self._build_buttons()
+
+    def _get_live_position(self) -> float:
+        queue = self.music_cog.service.get_queue(self.guild_id)
+        if not queue.current_track or not self.is_live_track:
+            return 0.0
+        vc = queue.voice_client
+        if vc and vc.is_paused() and queue.paused_at is not None and queue.start_time:
+            return max(0.0, float(queue.paused_at - queue.start_time - queue.total_paused_duration))
+        if vc and vc.is_playing() and queue.start_time:
+            return max(0.0, float(time.time() - queue.start_time - queue.total_paused_duration))
+        return float(queue.get_playback_time())
+
+    def _build_pages(self, jump_to_live: bool = False):
+        self.pages.clear()
+        self._chunk_ranges.clear()
+        synced = bool(self.lyrics_data.get("synced") and self.lyrics_data.get("lines"))
+        lines = self.lyrics_data.get("lines") or []
+        plain_lines = self.lyrics_data.get("plain_lines") or []
+
+        active_idx = -1
+        pos = 0.0
+        if synced and self.is_live_track:
+            pos = self._get_live_position()
+            for idx, ln in enumerate(lines):
+                if ln["time"] <= pos + 0.35:
+                    active_idx = idx
+                else:
+                    break
+
+        formatted_rows: list[str] = []
+        if synced:
+            for idx, ln in enumerate(lines):
+                text = ln.get("text", "").strip()
+                if not text or text == "♪":
+                    text = "♪  Instrumental"
+                t_sec = int(ln["time"])
+                ts_pill = f"`{t_sec // 60:02d}:{t_sec % 60:02d}`"
+                if idx == active_idx:
+                    formatted_rows.append(f"▸ {ts_pill} **{text}**")
+                elif active_idx >= 0 and idx < active_idx:
+                    formatted_rows.append(f"· {ts_pill} {text}")
+                else:
+                    formatted_rows.append(f"{ts_pill} {text}")
+        else:
+            formatted_rows = [ln for ln in plain_lines if ln.strip()]
+
+        if not formatted_rows:
+            formatted_rows = ["No lyric lines found for this track."]
+
+        # Chunk rows into balanced embed pages (~15 lines / max 1300 chars each)
+        chunks: list[tuple[int, int, list[str]]] = []
+        cur_start = 0
+        cur_rows: list[str] = []
+        cur_len = 0
+        for idx, row in enumerate(formatted_rows):
+            add_len = len(row) + 1
+            if cur_rows and (len(cur_rows) >= 15 or cur_len + add_len > 1250):
+                chunks.append((cur_start, idx - 1, cur_rows))
+                cur_start = idx
+                cur_rows = [row]
+                cur_len = len(row)
+            else:
+                cur_rows.append(row)
+                cur_len += add_len
+        if cur_rows:
+            chunks.append((cur_start, len(formatted_rows) - 1, cur_rows))
+
+        title = self.lyrics_data.get("track_title") or "Lyrics"
+        artist = self.lyrics_data.get("artist_name") or "Artist"
+        source = self.lyrics_data.get("source") or "LRCLIB"
+        thumb = self.artwork_url if (self.artwork_url and self.artwork_url.startswith("http")) else MAIN_LOGO_URL
+        status_badge = (
+            f"{Emojis.PLAYING} Live Synchronized • `{format_duration(int(pos))}`"
+            if (synced and self.is_live_track)
+            else (f"{Emojis.SYNCINK_MUSIC} Synchronized Lyrics" if synced else f"{Emojis.SYNCINK_MUSIC} Full Lyrics")
+        )
+
+        total_pages = len(chunks)
+        for p_idx, (start_i, end_i, chunk_rows) in enumerate(chunks, start=1):
+            self._chunk_ranges.append((start_i, end_i))
+            if jump_to_live and active_idx >= 0 and start_i <= active_idx <= end_i:
+                self.current_page = p_idx - 1
+
+            desc = f"{status_badge}\n**{artist}**\n───────────────────────────────\n" + "\n".join(chunk_rows)
+            embed = discord.Embed(
+                title=title[:250],
+                url=self.target_track_url or "https://syncink.site/dashboard/radio/",
+                description=desc[:4000],
+                color=BRAND_COLOR,
+            )
+            embed.set_thumbnail(url=thumb)
+            embed.set_footer(
+                text=f"SyncInk Radio • Source: {source} • Page {p_idx}/{total_pages}",
+                icon_url=BRAND_LOGO_URL,
+            )
+            self.pages.append(embed)
+
+        if self.current_page >= len(self.pages):
+            self.current_page = max(0, len(self.pages) - 1)
+
+    def _build_buttons(self):
+        self.clear_items()
+        prev_btn = discord.ui.Button(
+            label="◀ Prev",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.current_page <= 0),
+            custom_id="lyrics_prev",
+            row=0,
+        )
+        prev_btn.callback = self.on_prev
+
+        page_btn = discord.ui.Button(
+            label=f"Page {self.current_page + 1}/{max(1, len(self.pages))}",
+            style=discord.ButtonStyle.primary,
+            disabled=True,
+            custom_id="lyrics_indicator",
+            row=0,
+        )
+
+        next_btn = discord.ui.Button(
+            label="Next ▶",
+            style=discord.ButtonStyle.secondary,
+            disabled=(self.current_page >= len(self.pages) - 1),
+            custom_id="lyrics_next",
+            row=0,
+        )
+        next_btn.callback = self.on_next
+
+        self.add_item(prev_btn)
+        self.add_item(page_btn)
+        self.add_item(next_btn)
+
+        if self.is_live_track and self.lyrics_data.get("synced"):
+            sync_btn = discord.ui.Button(
+                label="Sync Live",
+                emoji=EmojiPartials.REFRESH,
+                style=discord.ButtonStyle.success,
+                custom_id="lyrics_resync",
+                row=0,
+            )
+            sync_btn.callback = self.on_resync
+            self.add_item(sync_btn)
+
+        web_btn = discord.ui.Button(
+            label="Live Glow UI",
+            style=discord.ButtonStyle.link,
+            url="https://syncink.site/dashboard/radio/#overview",
+            row=0,
+        )
+        self.add_item(web_btn)
+
+    async def on_prev(self, interaction: discord.Interaction):
+        if self.current_page > 0:
+            self.current_page -= 1
+        if self.is_live_track and self.lyrics_data.get("synced"):
+            self._build_pages(jump_to_live=False)
+        self._build_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
+    async def on_next(self, interaction: discord.Interaction):
+        if self.current_page < len(self.pages) - 1:
+            self.current_page += 1
+        if self.is_live_track and self.lyrics_data.get("synced"):
+            self._build_pages(jump_to_live=False)
+        self._build_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
+    async def on_resync(self, interaction: discord.Interaction):
+        self._build_pages(jump_to_live=True)
+        self._build_buttons()
+        await interaction.response.edit_message(embed=self.pages[self.current_page], view=self)
+
+
 class CountrySearchModal(discord.ui.Modal, title="Search Radio Countries"):
     query_input = discord.ui.TextInput(
         label="Country Name or ISO Code",
@@ -3861,6 +4060,84 @@ class Music(commands.Cog):
         view.add_item(btn)
         await interaction.response.send_message(embed=embed, view=view)
 
+    async def _build_lyrics_payload_for_command(
+        self,
+        guild_id: int,
+        author_id: int,
+        query: Optional[str] = None,
+    ) -> tuple[Optional[discord.Embed], Optional[LyricsPaginationView], Optional[discord.Embed]]:
+        """Resolves synced/plain lyrics for the currently playing track or explicit search query."""
+        from services.lyrics_service import LyricsService
+
+        queue = self.service.get_queue(guild_id)
+        is_live_track = False
+        artwork_url = MAIN_LOGO_URL
+        track_url = None
+        title = ""
+        author = ""
+        duration = 0
+
+        if query and query.strip():
+            title = query.strip()
+        else:
+            cur = queue.current_track
+            if not cur:
+                return None, None, make_error_embed(
+                    description="Nothing is currently playing.",
+                    details="Play a song with `/play` or pass a song title: `/lyrics <song name>`.",
+                    is_warning=True,
+                )
+            if cur.is_radio or cur.platform == "radio" or queue.active_radio_station:
+                return None, None, make_error_embed(
+                    description="Synchronized lyrics are not available for live 24/7 radio broadcasts.",
+                    details="You can still look up any song directly with `/lyrics <song name>`.",
+                    is_warning=True,
+                )
+            title = cur.clean_title or cur.title or ""
+            author = cur.author or ""
+            duration = int(cur.duration or 0)
+            is_live_track = True
+            artwork_url = cur.thumbnail if (cur.thumbnail and cur.thumbnail.startswith("http")) else MAIN_LOGO_URL
+            track_url = cur.url
+
+        data = await LyricsService.get_instance().get_lyrics(title, author, duration)
+        if not data.get("found"):
+            if data.get("instrumental"):
+                return None, None, make_error_embed(
+                    description=f"**{data.get('track_title') or title}** appears to be an instrumental track without vocal lyrics.",
+                    is_warning=True,
+                )
+            return None, None, make_error_embed(
+                description=f"No lyrics found for **{title}**.",
+                details="Try searching with artist + title: `/lyrics Arijit Singh Kesariya`.",
+                is_warning=True,
+            )
+
+        view = LyricsPaginationView(
+            self,
+            guild_id=guild_id,
+            author_id=author_id,
+            lyrics_data=data,
+            artwork_url=artwork_url,
+            is_live_track=is_live_track,
+            target_track_url=track_url,
+        )
+        return view.pages[view.current_page], view, None
+
+    @app_commands.command(name="lyrics", description="Show live synchronized lyrics for the current track or search a song.")
+    @app_commands.describe(query="Optional song name or 'artist - title' (defaults to currently playing track)")
+    async def slash_lyrics(self, interaction: discord.Interaction, query: Optional[str] = None):
+        await interaction.response.defer()
+        embed, view, err_embed = await self._build_lyrics_payload_for_command(
+            guild_id=interaction.guild_id,
+            author_id=interaction.user.id,
+            query=query,
+        )
+        if err_embed is not None:
+            await interaction.followup.send(embed=err_embed, ephemeral=True)
+            return
+        await interaction.followup.send(embed=embed, view=view)
+
     # ==========================================
     # PREFIX COMMANDS (?)
     # ==========================================
@@ -4311,6 +4588,18 @@ class Music(commands.Cog):
             emoji=EmojiPartials.SYNCINK_MUSIC
         )
         view.add_item(btn)
+        await ctx.send(embed=embed, view=view)
+
+    @commands.command(name="lyrics", aliases=["ly", "lyric"], description="Show synchronized or full lyrics for the active track or a query.")
+    async def cmd_lyrics(self, ctx: commands.Context, *, query: Optional[str] = None):
+        embed, view, err_embed = await self._build_lyrics_payload_for_command(
+            guild_id=ctx.guild.id,
+            author_id=ctx.author.id,
+            query=query,
+        )
+        if err_embed is not None:
+            await ctx.send(embed=err_embed, delete_after=15)
+            return
         await ctx.send(embed=embed, view=view)
 
 async def setup(bot: commands.Bot):

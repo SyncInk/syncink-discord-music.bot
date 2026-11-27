@@ -122,6 +122,7 @@ class Help(commands.Cog):
         playback_cmds = [
             ("/play <query>", "Stream audio from YouTube, Spotify, or SoundCloud directly into voice."),
             ("/search <query>", "Interactively search and select from top 5 audio results."),
+            ("/lyrics [song]", "Display real-time synchronized lyrics for the active song or look up any song."),
             ("/pause / /resume", "Pause or resume current playback."),
             ("/skip", "Skip currently playing track or switch to next radio station."),
             ("/previous", "Play previously played track."),

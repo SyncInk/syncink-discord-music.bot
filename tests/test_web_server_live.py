@@ -380,6 +380,63 @@ class TestLiveWebServer(AioHTTPTestCase):
             ap.save_profiles()
             await auth_mgr.destroy_session(session_id)
 
+    async def test_realtime_lyrics_endpoint_and_ui_markup(self):
+        """Verifies /api/lyrics, /dashboard/radio/api/lyrics, radio gating, auth gating, and frontend lyrics DOM."""
+        from unittest.mock import AsyncMock, patch
+        from services.lyrics_service import LyricsService
+
+        fake_lyrics = {
+            "found": True,
+            "synced": True,
+            "instrumental": False,
+            "track_title": "Mock Track",
+            "artist_name": "Mock Artist",
+            "album_name": "Mock Album",
+            "duration": 180,
+            "source": "LRCLIB",
+            "lines": [
+                {"time": 1.5, "text": "First glowing lyric line"},
+                {"time": 6.0, "text": "Second glowing lyric line"},
+            ],
+            "plain_lines": ["First glowing lyric line", "Second glowing lyric line"],
+            "plain_lyrics": "First glowing lyric line\nSecond glowing lyric line",
+        }
+
+        with patch.object(LyricsService, "get_lyrics", new=AsyncMock(return_value=dict(fake_lyrics))):
+            for path in ("/api/lyrics?title=Mock%20Track&artist=Mock%20Artist", "/dashboard/radio/api/lyrics?title=Mock%20Track"):
+                resp = await self.client.request("GET", path)
+                self.assertEqual(resp.status, 200)
+                data = await resp.json()
+                self.assertTrue(data["found"])
+                self.assertTrue(data["synced"])
+                self.assertEqual(len(data["lines"]), 2)
+                self.assertEqual(data["lines"][0]["text"], "First glowing lyric line")
+
+        # Demo Radio Guild reports live radio safely without faking lyrics
+        r_radio = await self.client.request("GET", "/api/lyrics?guild_id=110000000000000002")
+        self.assertEqual(r_radio.status, 200)
+        radio_data = await r_radio.json()
+        self.assertTrue(radio_data.get("is_radio"))
+        self.assertFalse(radio_data.get("found"))
+
+        # Real guild without authentication & without explicit title rejects with 401
+        r_unauth = await self.client.request("GET", "/api/lyrics?guild_id=999111222")
+        self.assertEqual(r_unauth.status, 401)
+
+        # Verify desktop & mobile lyrics hooks in served assets
+        index_text = await (await self.client.request("GET", "/")).text()
+        self.assertIn("lyrics-panel", index_text)
+        self.assertIn("mfp-lyrics-lines", index_text)
+        self.assertIn("spotlight-lyrics-btn", index_text)
+        self.assertIn("player-btn-lyrics", index_text)
+        css_text = await (await self.client.request("GET", "/static/style.css")).text()
+        self.assertIn(".lyric-line.lyric-active", css_text)
+        self.assertIn("--lyric-progress", css_text)
+        js_text = await (await self.client.request("GET", "/static/app.js")).text()
+        self.assertIn("initLyricsSystem", js_text)
+        self.assertIn("syncLyricsActiveLine", js_text)
+        self.assertIn("switchMobilePlayerTab", js_text)
+
 
 if __name__ == "__main__":
     unittest.main()

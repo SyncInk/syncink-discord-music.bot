@@ -99,6 +99,7 @@ class UnifiedWebServer:
         _route("POST", "/api/playlists/{id}/play", DashboardAPI.handle_play_playlist)
         _route("DELETE", "/api/playlists/{id}/tracks/{track_id}", DashboardAPI.handle_remove_playlist_track)
         _route("GET", "/api/search/suggestions", DashboardAPI.handle_search_suggestions)
+        _route("GET", "/api/lyrics", DashboardAPI.handle_get_lyrics)
         _route("GET", "/api/history", DashboardAPI.handle_get_history)
         _route("DELETE", "/api/history/{id}", DashboardAPI.handle_delete_history_item)
         _route("POST", "/api/history/clear", DashboardAPI.handle_clear_history)
