@@ -437,6 +437,130 @@ class TestLiveWebServer(AioHTTPTestCase):
         self.assertIn("syncLyricsActiveLine", js_text)
         self.assertIn("switchMobilePlayerTab", js_text)
 
+    async def test_dashboard_play_control_and_json_error_middleware(self):
+        """Verifies dashboard play control works end-to-end without asyncio NameError, handles error JSON cleanly, and keeps toasts spam-free."""
+        from types import SimpleNamespace
+        from unittest.mock import AsyncMock, patch
+        from services.web.auth import DashboardAuthManager
+        from services.music_service import MusicService, Track
+        from services.web.api import DashboardAPI
+
+        auth_mgr = DashboardAuthManager.get_instance()
+        owner_user = {"id": "111222333", "username": "OwnerUser"}
+        session_id = await auth_mgr.create_session(owner_user, {"access_token": "tok_owner", "expires_in": 3600})
+        headers = {"Cookie": f"syncink_session={session_id}"}
+
+        bot = self.app["bot"]
+        guild = bot.get_guild(999111222)
+        orig_vc = guild.voice_client
+        orig_channels = getattr(guild, "voice_channels", [])
+        orig_get_cog = bot.get_cog
+
+        mock_vc = MagicMock()
+        mock_vc.is_connected.return_value = True
+        mock_vc.is_playing.return_value = True
+        mock_vc.is_paused.return_value = False
+        mock_vc.channel = SimpleNamespace(id=777, name="Music", members=[])
+
+        mock_music_cog = MagicMock()
+        mock_music_cog.play_track = AsyncMock(return_value=True)
+
+        guild.voice_client = mock_vc
+        guild.voice_channels = [SimpleNamespace(id=777, name="Music", members=[])]
+        bot.get_cog = lambda name: mock_music_cog if name == "Music" else None
+
+        service = MusicService.get_instance()
+        fake_track = Track(
+            title="Maahi Ve Highway",
+            clean_title="Maahi Ve Highway",
+            author="A.R. Rahman",
+            duration=240,
+            url="https://youtube.com/watch?v=abc123",
+            stream_url="https://stream.example.com/abc123.opus",
+            thumbnail="https://img.example.com/art.jpg",
+            platform="youtube",
+            requested_by=SimpleNamespace(id=111222333, display_name="OwnerUser"),
+        )
+
+        try:
+            # 1. Play succeeds and returns clean JSON with message (no NameError: asyncio)
+            with patch.object(service, "search_and_extract", new=AsyncMock(return_value=[fake_track])), \
+                 patch.object(DashboardAPI, "_send_discord_player_card", new=AsyncMock()):
+                resp = await self.client.request(
+                    "POST",
+                    "/api/servers/999111222/control",
+                    headers=headers,
+                    json={"action": "play", "query": "Maahi Ve Highway"},
+                )
+                self.assertEqual(resp.status, 200)
+                self.assertIn("application/json", resp.headers.get("Content-Type", ""))
+                data = await resp.json()
+                self.assertTrue(data["success"])
+                self.assertEqual(data.get("message"), 'Playing "Maahi Ve Highway" on Discord')
+                mock_music_cog.play_track.assert_awaited_once()
+
+                # Simulate current track active -> 2nd play queues instead of overwriting
+                service.get_queue(999111222).current_track = fake_track
+                resp_q = await self.client.request(
+                    "POST",
+                    "/api/servers/999111222/control",
+                    headers=headers,
+                    json={"action": "play", "query": "Maahi Ve Highway"},
+                )
+                self.assertEqual(resp_q.status, 200)
+                q_data = await resp_q.json()
+                self.assertEqual(q_data.get("message"), 'Added "Maahi Ve Highway" to queue')
+
+            # 2. No voice channel -> returns 400 clean JSON error (not fake 200)
+            service.queues.pop(999111222, None)
+            guild.voice_client = None
+            guild.voice_channels = []
+            with patch.object(service, "search_and_extract", new=AsyncMock(return_value=[fake_track])):
+                resp_no_vc = await self.client.request(
+                    "POST",
+                    "/api/servers/999111222/control",
+                    headers=headers,
+                    json={"action": "play", "query": "Maahi Ve Highway"},
+                )
+                self.assertEqual(resp_no_vc.status, 400)
+                self.assertIn("application/json", resp_no_vc.headers.get("Content-Type", ""))
+                no_vc_data = await resp_no_vc.json()
+                self.assertIn("voice channel", no_vc_data["error"].lower())
+
+            # 3. Unknown /api/ route & unhandled API error return clean JSON (never HTML)
+            resp_404 = await self.client.request("GET", "/api/does_not_exist")
+            self.assertEqual(resp_404.status, 404)
+            self.assertIn("application/json", resp_404.headers.get("Content-Type", ""))
+            err_404 = await resp_404.json()
+            self.assertTrue(err_404.get("error"))
+
+            with patch.object(service, "get_queue", side_effect=RuntimeError("simulated crash")):
+                resp_500 = await self.client.request(
+                    "POST",
+                    "/api/radio/tune",
+                    headers=headers,
+                    json={"guild_id": 999111222, "url": "https://stream.example.com/live.mp3", "station_name": "TestFM"},
+                )
+                self.assertEqual(resp_500.status, 500)
+                self.assertIn("application/json", resp_500.headers.get("Content-Type", ""))
+                err_500 = await resp_500.json()
+                self.assertEqual(err_500.get("error"), "Something went wrong on the server. Please try again.")
+
+            # 4. Verify frontend spam-free wrapped toast & error sanitizer assets
+            js_text = await (await self.client.request("GET", "/static/app.js")).text()
+            self.assertIn("function formatDashboardError", js_text)
+            self.assertIn("async function readApiPayload", js_text)
+            self.assertIn("_toastCooldowns", js_text)
+            self.assertNotIn("showToast('Failed to execute command: ' + err", js_text)
+            css_text = await (await self.client.request("GET", "/static/style.css")).text()
+            self.assertIn(".toast.toast-error", css_text)
+        finally:
+            guild.voice_client = orig_vc
+            guild.voice_channels = orig_channels
+            bot.get_cog = orig_get_cog
+            service.queues.pop(999111222, None)
+            await auth_mgr.destroy_session(session_id)
+
 
 if __name__ == "__main__":
     unittest.main()

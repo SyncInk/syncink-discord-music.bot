@@ -2,6 +2,7 @@ import os
 import time
 import aiohttp.web
 from typing import Optional, Any
+from database import db
 from utils.logger import log
 from services.web.auth import DashboardAuthManager
 from services.web.websocket import DashboardWebSocketManager
@@ -11,6 +12,30 @@ from services.spotify.web_server import (
     CALLBACK_HTML_ERROR,
     SpotifyUserAuthManager
 )
+
+
+@aiohttp.web.middleware
+async def _api_json_error_middleware(request: aiohttp.web.Request, handler: Any) -> aiohttp.web.StreamResponse:
+    """Guarantees API endpoints always return clean JSON error payloads instead of HTML 500 dumps."""
+    is_api = request.path.startswith("/api/") or request.path.startswith("/dashboard/radio/api/")
+    try:
+        return await handler(request)
+    except aiohttp.web.HTTPException as http_err:
+        if is_api and http_err.status >= 400:
+            ct = (http_err.content_type or "").lower()
+            if "json" not in ct:
+                msg = http_err.reason or "Request failed"
+                return aiohttp.web.json_response({"error": msg}, status=http_err.status)
+        raise
+    except Exception as exc:
+        log.error(f"[Unified Web Server] Unhandled error on {request.method} {request.path}: {exc}", exc_info=True)
+        if is_api:
+            return aiohttp.web.json_response(
+                {"error": "Something went wrong on the server. Please try again."},
+                status=500,
+            )
+        raise
+
 
 class UnifiedWebServer:
     """
@@ -25,7 +50,7 @@ class UnifiedWebServer:
     def __init__(self, port: int = 8888, host: str = "0.0.0.0", bot: Optional[Any] = None):
         self.port = port
         self.host = host
-        self.app = aiohttp.web.Application()
+        self.app = aiohttp.web.Application(middlewares=[_api_json_error_middleware])
         self.app["bot"] = bot
         self.app["_start_time"] = time.time()
         self.runner: Optional[aiohttp.web.AppRunner] = None

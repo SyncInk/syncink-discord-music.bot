@@ -1341,14 +1341,19 @@ function toggleMobilePlayerLyricsTab() {
 }
 
 // ------------------- PLAYER CONTROLS & COMMANDS -------------------
-async function sendControlAction(action, payload = {}) {
+async function sendControlAction(action, payload = {}, options = {}) {
   if (!state.currentUser) {
     showToast('Please log in with Discord to control playback!', 'warning');
-    return;
+    return false;
   }
   if (!state.activeGuildId) {
     showToast('Please select a Discord server first in the top bar!', 'warning');
-    return;
+    return false;
+  }
+
+  const toastKey = options.replaceKey || (action === 'play' ? 'playback-status' : '');
+  if (options.pendingMessage) {
+    showToast(options.pendingMessage, 'info', toastKey ? { replaceKey: toastKey } : {});
   }
 
   try {
@@ -1357,22 +1362,34 @@ async function sendControlAction(action, payload = {}) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(Object.assign({ action }, payload))
     });
-    if (res.status === 401) {
-      showToast('Authentication required. Please log in with Discord.', 'warning');
-      return;
+    const result = await readApiPayload(res, 'Could not complete playback command.');
+    if (result.status === 401) {
+      showToast('Authentication required. Please log in with Discord.', 'warning', toastKey ? { replaceKey: toastKey } : {});
+      return false;
     }
-    if (res.status === 403) {
-      const errData = await res.json().catch(() => ({}));
-      showToast(errData.error || 'You do not have permission to control playback on this server.', 'error');
-      return;
+    if (!result.ok) {
+      const errMsg = result.error || (result.status === 403
+        ? 'You do not have permission to control playback on this server.'
+        : 'Could not complete playback command.');
+      showToast(errMsg, 'error', toastKey ? { replaceKey: toastKey } : {});
+      return false;
     }
-    const data = await res.json();
+    const data = result.data || {};
     if (data.success && data.state) {
       updatePlaybackState(data.state);
     }
+    if (data.message || options.successMessage) {
+      showToast(data.message || options.successMessage, 'success', toastKey ? { replaceKey: toastKey } : {});
+    }
+    return true;
   } catch (err) {
     console.error('Player action failed:', err);
-    showToast('Failed to execute command: ' + err, 'error');
+    showToast(
+      formatDashboardError(err, 'Could not complete playback command.'),
+      'error',
+      toastKey ? { replaceKey: toastKey } : {}
+    );
+    return false;
   }
 }
 
@@ -1532,8 +1549,11 @@ function selectSearchSuggestion(title, artist) {
   if (input) input.value = fullQuery;
   const dropdown = document.getElementById('search-suggestions-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
-  sendControlAction('play', { query: fullQuery });
-  showToast(`Playing "${title}" on Discord...`, 'success');
+  sendControlAction('play', { query: fullQuery }, {
+    replaceKey: 'playback-status',
+    pendingMessage: `Starting "${title}" on Discord...`,
+    successMessage: `Playing "${title}" on Discord`
+  });
 }
 
 function triggerQuickPlay() {
@@ -1546,9 +1566,12 @@ function triggerQuickPlay() {
   if (!query) return;
   const dropdown = document.getElementById('search-suggestions-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
-  sendControlAction('play', { query });
-  input.value = '';
-  showToast(`Enqueuing "${query}"...`, 'info');
+  sendControlAction('play', { query }, {
+    replaceKey: 'playback-status',
+    pendingMessage: `Searching "${query}"...`
+  }).then((ok) => {
+    if (ok && input) input.value = '';
+  });
 }
 
 function tunePresetRadio(stationId) {
@@ -1556,8 +1579,11 @@ function tunePresetRadio(stationId) {
     showToast('Please log in with Discord to stream radio in a server!', 'warning');
     return;
   }
-  sendControlAction('play', { query: `radio:${stationId}` });
-  showToast(`Tuning into ${stationId.toUpperCase()} Radio...`, 'info');
+  sendControlAction('play', { query: `radio:${stationId}` }, {
+    replaceKey: 'playback-status',
+    pendingMessage: `Tuning into ${stationId.toUpperCase()} Radio...`,
+    successMessage: `Tuned into ${stationId.toUpperCase()} Radio`
+  });
 }
 
 function toggleServerAutoplay() {
@@ -1840,16 +1866,16 @@ async function openServerSettings(guildId) {
   }
   try {
     const res = await fetch(`/api/servers/${guildId}/settings`);
-    if (res.status === 401) {
+    const result = await readApiPayload(res, 'Could not load server settings.');
+    if (result.status === 401) {
       showToast('Authentication required. Please log in with Discord.', 'warning');
       return;
     }
-    if (res.status === 403) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || 'Forbidden: You do not have permission to manage this server.', 'error');
+    if (!result.ok) {
+      showToast(result.error || 'Could not load server settings.', 'error');
       return;
     }
-    const data = await res.json();
+    const data = result.data || {};
     const card = document.getElementById('server-settings-card');
     if (!card) return;
     card.classList.remove('hidden');
@@ -1924,11 +1950,11 @@ async function saveServerSettings() {
       closeServerSettings();
       loadServers();
     } else {
-      const err = await res.json();
-      showToast(err.error || 'Permission denied', 'error');
+      const result = await readApiPayload(res, 'Could not save server settings.');
+      showToast(result.error || 'Permission denied', 'error');
     }
   } catch (err) {
-    showToast('Failed to save settings: ' + err, 'error');
+    showToast(formatDashboardError(err, 'Could not save server settings.'), 'error');
   }
 }
 
@@ -2226,6 +2252,7 @@ async function tuneStation(st) {
     return;
   }
 
+  showToast(`Tuning into ${st.name}...`, 'info', { replaceKey: 'playback-status' });
   try {
     const res = await fetch('/api/radio/tune', {
       method: 'POST',
@@ -2238,20 +2265,18 @@ async function tuneStation(st) {
         favicon: st.favicon
       })
     });
-    if (res.status === 401) {
-      showToast('Authentication required. Please log in with Discord.', 'warning');
+    const result = await readApiPayload(res, 'Could not tune radio station.');
+    if (result.status === 401) {
+      showToast('Authentication required. Please log in with Discord.', 'warning', { replaceKey: 'playback-status' });
       return;
     }
-    if (res.status === 403) {
-      const err = await res.json().catch(() => ({}));
-      showToast(err.error || 'You do not have permission to tune radio on this server.', 'error');
+    if (!result.ok) {
+      showToast(result.error || 'Could not tune radio station.', 'error', { replaceKey: 'playback-status' });
       return;
     }
-    if (res.ok) {
-      showToast(`Tuned into ${st.name}!`, 'success');
-    }
+    showToast(`Tuned into ${st.name}!`, 'success', { replaceKey: 'playback-status' });
   } catch (err) {
-    showToast('Failed to tune station: ' + err, 'error');
+    showToast(formatDashboardError(err, 'Could not tune radio station.'), 'error', { replaceKey: 'playback-status' });
   }
 }
 
@@ -2663,25 +2688,26 @@ async function playPlaylist(id) {
     return;
   }
   try {
-    showToast('Starting playlist playback in Discord voice channel...', 'info');
+    showToast('Starting playlist playback in Discord voice channel...', 'info', { replaceKey: 'playback-status' });
     const res = await fetch(`/api/playlists/${id}/play`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ guild_id: state.activeGuildId })
     });
-    const data = await res.json();
-    if (res.ok) {
-      showToast(`Playing playlist "${data.playlist_name}" (${data.enqueued_count} tracks queued)!`, 'success');
+    const result = await readApiPayload(res, 'Failed to start playlist.');
+    const data = result.data || {};
+    if (result.ok) {
+      showToast(`Playing playlist "${data.playlist_name}" (${data.enqueued_count} tracks queued)!`, 'success', { replaceKey: 'playback-status' });
       closePlaylistTracksModal();
       navigateTo('overview');
       if (state.activeGuildId) {
         subscribeToGuild(state.activeGuildId);
       }
     } else {
-      showToast(data.error || 'Failed to start playlist', 'error');
+      showToast(result.error || 'Failed to start playlist', 'error', { replaceKey: 'playback-status' });
     }
   } catch (err) {
-    showToast('Error playing playlist: ' + err, 'error');
+    showToast(formatDashboardError(err, 'Failed to start playlist.'), 'error', { replaceKey: 'playback-status' });
   }
 }
 
@@ -3022,14 +3048,15 @@ async function submitImportPlaylist() {
       })
     });
 
-    const data = await res.json();
-    if (res.ok && data.success) {
+    const result = await readApiPayload(res, 'Failed to import playlist.');
+    const data = result.data || {};
+    if (result.ok && data.success) {
       showToast(`Successfully imported ${data.imported_count} tracks into "${data.playlist_name}"!`, 'success');
       closeImportPlaylistModal();
       loadCustomPlaylists();
       switchLibraryTab('playlists');
     } else {
-      const errMsg = data.error || 'Failed to import playlist.';
+      const errMsg = result.error || 'Failed to import playlist.';
       if (statusMsg) {
         statusMsg.className = 'text-xs py-2 px-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 block';
         statusMsg.textContent = errMsg;
@@ -3038,11 +3065,12 @@ async function submitImportPlaylist() {
     }
   } catch (err) {
     console.error('Import playlist error:', err);
+    const cleanErr = formatDashboardError(err, 'Could not import playlist right now.');
     if (statusMsg) {
       statusMsg.className = 'text-xs py-2 px-3 rounded-xl bg-rose-500/20 text-rose-300 border border-rose-500/40 block';
-      statusMsg.textContent = 'Network or server error while importing playlist: ' + err.message;
+      statusMsg.textContent = cleanErr;
     }
-    showToast('Error importing playlist: ' + err.message, 'error');
+    showToast(cleanErr, 'error');
   } finally {
     if (submitBtn) {
       submitBtn.disabled = false;
@@ -3495,29 +3523,174 @@ function escapeHtml(text) {
   return String(text).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function showToast(message, type = 'info') {
+const _toastCooldowns = new Map();
+
+function formatDashboardError(err, fallback = 'Something went wrong. Please try again.') {
+  let raw = '';
+  if (typeof err === 'string') {
+    raw = err;
+  } else if (err && typeof err === 'object') {
+    raw = err.error || err.message || '';
+  }
+  let text = String(raw || '').replace(/\s+/g, ' ').trim();
+  const noisyPrefixes = /^(?:Error|TypeError|SyntaxError|ReferenceError|Failed to execute command|Failed to load settings|Failed to save settings|Failed to tune station|Failed to save favorite|Failed to update Audia settings|Error playing playlist|Error importing playlist|Error syncing playlist|Error disconnecting Spotify|Failed to remove track|Failed to create playlist|Failed to add track):\s*/i;
+  for (let i = 0; i < 3; i++) {
+    const stripped = text.replace(noisyPrefixes, '').trim();
+    if (stripped === text) break;
+    text = stripped;
+  }
+
+  if (!text || text === '[object Object]') return fallback;
+  if (/<!doctype|<html|unexpected token|unexpected non-whitespace|json\.parse|not valid json/i.test(text)) {
+    return 'Server returned an unexpected response. Please try again.';
+  }
+  if (/failed to fetch|networkerror|network request failed|load failed|err_connection/i.test(text)) {
+    return 'Could not reach the server. Check your connection.';
+  }
+  if (/aborterror|timed out|timeout/i.test(text)) {
+    return 'Request timed out. Please try again.';
+  }
+  if (/traceback|nameerror|attributeerror|keyerror|valueerror/i.test(text)) {
+    return fallback;
+  }
+
+  if (text.length > 120) {
+    const cut = text.slice(0, 117);
+    const lastSpace = cut.lastIndexOf(' ');
+    return (lastSpace > 70 ? cut.slice(0, lastSpace) : cut).trim() + '...';
+  }
+  return text;
+}
+
+async function readApiPayload(res, fallbackError = 'Request failed. Please try again.') {
+  const status = res.status;
+  let rawText = '';
+  try {
+    rawText = await res.text();
+  } catch (_) {
+    rawText = '';
+  }
+
+  let data = null;
+  if (rawText) {
+    try {
+      data = JSON.parse(rawText);
+    } catch (_) {
+      data = null;
+    }
+  }
+
+  if (res.ok) {
+    return { ok: true, status, data: data || {}, error: null };
+  }
+
+  let statusFallback = fallbackError;
+  if (status === 401) statusFallback = 'Authentication required. Please log in with Discord.';
+  else if (status === 403) statusFallback = 'You do not have permission for this action.';
+  else if (status === 404) statusFallback = 'Requested item could not be found.';
+  else if (status === 429) statusFallback = 'Too many requests. Please wait a moment.';
+  else if (status >= 500) statusFallback = 'Something went wrong on the server. Please try again.';
+
+  const rawMsg = data && typeof data.error === 'string' ? data.error : statusFallback;
+  return {
+    ok: false,
+    status,
+    data,
+    error: formatDashboardError(rawMsg, statusFallback)
+  };
+}
+
+function _scheduleToastDismiss(toast, durationMs) {
+  if (toast._dismissTimer) {
+    clearTimeout(toast._dismissTimer);
+  }
+  if (toast._removeTimer) {
+    clearTimeout(toast._removeTimer);
+  }
+  toast.style.opacity = '1';
+  toast.style.transition = '';
+  toast._dismissTimer = setTimeout(() => {
+    toast.style.opacity = '0';
+    toast.style.transition = 'opacity 0.25s ease';
+    toast._removeTimer = setTimeout(() => toast.remove(), 260);
+  }, durationMs);
+}
+
+function showToast(message, type = 'info', options = {}) {
   const container = document.getElementById('toast-container');
   if (!container) return;
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  
+
+  const cleanMessage = type === 'error'
+    ? formatDashboardError(message)
+    : String(message || '').replace(/\s+/g, ' ').trim();
+  if (!cleanMessage) return;
+
+  const replaceKey = options.replaceKey || '';
+  const dedupeKey = `${type}::${cleanMessage.toLowerCase()}`;
+  const now = Date.now();
+  const durationMs = type === 'error' ? 4500 : 3500;
+
+  let existing = null;
+  if (replaceKey) {
+    existing = Array.from(container.children).find(el => el.dataset && el.dataset.toastKey === replaceKey) || null;
+  }
+  if (!existing && type === 'error') {
+    existing = Array.from(container.children).find(el => el.classList && el.classList.contains('toast-error')) || null;
+  }
+  if (!existing) {
+    existing = Array.from(container.children).find(el => el.dataset && el.dataset.dedupeKey === dedupeKey) || null;
+  }
+
+  if (!existing && !options.force) {
+    const lastShown = _toastCooldowns.get(dedupeKey) || 0;
+    if (now - lastShown < 2500) {
+      return;
+    }
+  }
+  _toastCooldowns.set(dedupeKey, now);
+
   let iconName = 'info';
-  if (type === 'success') iconName = 'check-circle';
-  else if (type === 'warning') iconName = 'alert-triangle';
-  else if (type === 'error') iconName = 'alert-octagon';
+  let iconClass = 'text-brand-secondary';
+  if (type === 'success') {
+    iconName = 'check-circle';
+    iconClass = 'text-brand-secondary';
+  } else if (type === 'warning') {
+    iconName = 'alert-triangle';
+    iconClass = 'text-brand-secondary';
+  } else if (type === 'error') {
+    iconName = 'alert-circle';
+    iconClass = 'text-rose-400';
+  }
+
+  const toast = existing || document.createElement('div');
+  toast.className = `toast toast-${type}`;
+  if (replaceKey) {
+    toast.dataset.toastKey = replaceKey;
+  } else if (toast.dataset.toastKey && !existing) {
+    delete toast.dataset.toastKey;
+  }
+  toast.dataset.dedupeKey = dedupeKey;
 
   toast.innerHTML = `
-    <i data-lucide="${iconName}" class="w-4 h-4 text-brand-secondary shrink-0"></i>
-    <span class="truncate max-w-sm">${escapeHtml(message)}</span>
+    <i data-lucide="${iconName}" class="w-4 h-4 ${iconClass} shrink-0 mt-0.5"></i>
+    <span class="flex-1 min-w-0 break-words whitespace-normal leading-snug">${escapeHtml(cleanMessage)}</span>
+    <button type="button" onclick="this.closest('.toast')?.remove()" class="text-[#6B6A78] hover:text-white shrink-0 -mr-1 ml-1 transition-colors" aria-label="Dismiss notification">
+      <i data-lucide="x" class="w-3.5 h-3.5"></i>
+    </button>
   `;
-  container.appendChild(toast);
-  initIcons();
 
-  setTimeout(() => {
-    toast.style.opacity = '0';
-    toast.style.transition = 'opacity 0.3s ease';
-    setTimeout(() => toast.remove(), 300);
-  }, 3500);
+  if (!existing) {
+    while (container.children.length >= 2) {
+      const oldest = container.firstElementChild;
+      if (oldest._dismissTimer) clearTimeout(oldest._dismissTimer);
+      if (oldest._removeTimer) clearTimeout(oldest._removeTimer);
+      oldest.remove();
+    }
+    container.appendChild(toast);
+  }
+
+  initIcons();
+  _scheduleToastDismiss(toast, durationMs);
 }
 
 // ------------------- URL QUERY PARAMETER HANDLING -------------------
@@ -3661,16 +3834,17 @@ function closeSpotifyDisconnectModal(e) {
 async function performSpotifyDisconnect() {
   try {
     const res = await fetch('/api/spotify/disconnect', { method: 'POST' });
-    const data = await res.json();
-    if (res.ok && data.success) {
+    const result = await readApiPayload(res, 'Failed to disconnect Spotify.');
+    const data = result.data || {};
+    if (result.ok && data.success) {
       showToast('Spotify account disconnected successfully.', 'info');
       closeSpotifyDisconnectModal();
       await checkSpotifyStatus();
     } else {
-      showToast(data.error || 'Failed to disconnect Spotify.', 'error');
+      showToast(result.error || 'Failed to disconnect Spotify.', 'error');
     }
   } catch (err) {
-    showToast('Error disconnecting Spotify: ' + err, 'error');
+    showToast(formatDashboardError(err, 'Could not disconnect Spotify.'), 'error');
   }
 }
 
@@ -3721,8 +3895,9 @@ async function quickAddSpotifyPlaylist() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ url: url })
     });
-    const data = await res.json();
-    if (res.ok && data.success && data.playlist) {
+    const result = await readApiPayload(res, 'Failed to sync Spotify playlist.');
+    const data = result.data || {};
+    if (result.ok && data.success && data.playlist) {
       showToast(`Added "${data.playlist.name}" (${data.playlist.tracks_total} tracks) to your Spotify library!`, 'success');
       input.value = '';
       await loadUserSpotifyPlaylists();
@@ -3732,10 +3907,10 @@ async function quickAddSpotifyPlaylist() {
       const nameInput = document.getElementById('import-playlist-name');
       if (nameInput) nameInput.value = data.playlist.name;
     } else {
-      showToast(data.error || 'Failed to sync Spotify playlist. Please ensure the link is public.', 'error');
+      showToast(result.error || 'Failed to sync Spotify playlist. Please ensure the link is public.', 'error');
     }
   } catch (err) {
-    showToast('Error syncing playlist: ' + err.message, 'error');
+    showToast(formatDashboardError(err, 'Could not sync Spotify playlist.'), 'error');
   } finally {
     if (btn) {
       btn.disabled = false;

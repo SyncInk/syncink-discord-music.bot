@@ -2,8 +2,9 @@ import os
 import time
 import json
 import random
+import asyncio
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Tuple
 from types import SimpleNamespace
 import aiohttp.web
 from database import db
@@ -568,11 +569,14 @@ class DashboardAPI:
         service = MusicService.get_instance()
         queue = service.get_queue(guild_id)
         vc = (guild.voice_client if guild else None) or queue.voice_client
+        if vc and vc.is_connected():
+            queue.voice_client = vc
+        response_message = None
 
         if action == "play":
-            query = body.get("query")
+            query = (body.get("query") or "").strip()
             if not query:
-                return aiohttp.web.json_response({"error": "Missing query parameter"}, status=400)
+                return aiohttp.web.json_response({"error": "Enter a song name or link first."}, status=400)
 
             voice_channel_id = body.get("voice_channel_id")
             requester = member or SimpleNamespace(
@@ -586,43 +590,88 @@ class DashboardAPI:
             # Start track extraction immediately in parallel with voice connection!
             search_task = asyncio.create_task(service.search_and_extract(query, requester, limit=1))
 
+            async def _cancel_search():
+                if search_task and not search_task.done():
+                    search_task.cancel()
+                    try:
+                        await search_task
+                    except (asyncio.CancelledError, Exception):
+                        pass
+
             if (not vc or not vc.is_connected()) and guild:
                 target_vc = None
                 if voice_channel_id:
-                    target_vc = guild.get_channel(int(voice_channel_id))
-                elif member and member.voice and member.voice.channel:
+                    try:
+                        target_vc = guild.get_channel(int(voice_channel_id))
+                    except (TypeError, ValueError):
+                        target_vc = None
+                if not target_vc and member and member.voice and member.voice.channel:
                     target_vc = member.voice.channel
-                elif guild.voice_channels:
+                if not target_vc and guild.voice_channels:
                     for ch in guild.voice_channels:
                         if any(not m.bot for m in ch.members):
                             target_vc = ch
                             break
                     if not target_vc:
                         target_vc = guild.voice_channels[0]
-                if target_vc:
-                    try:
-                        vc = await target_vc.connect(self_deaf=True, timeout=15.0, reconnect=True)
-                        queue.voice_client = vc
-                    except Exception as ce:
-                        log.warning(f"Voice connect error: {ce}")
+
+                if not target_vc:
+                    await _cancel_search()
+                    return aiohttp.web.json_response(
+                        {"error": "No voice channel available. Join a Discord voice channel first."},
+                        status=400,
+                    )
+
+                try:
+                    vc = await target_vc.connect(self_deaf=True, timeout=15.0, reconnect=True)
+                    queue.voice_client = vc
+                except Exception as ce:
+                    log.warning(f"[Dashboard Voice Connect Error] guild={guild_id}: {ce}")
+                    await _cancel_search()
+                    return aiohttp.web.json_response(
+                        {"error": "Could not join the Discord voice channel. Check bot permissions."},
+                        status=400,
+                    )
 
             try:
                 tracks = await search_task
-                if tracks:
-                    track = tracks[0]
-                    track.requested_by = requester
-                    if not queue.current_track:
-                        music_cog = bot.get_cog("Music") if bot else None
-                        if music_cog:
-                            await music_cog.play_track(queue, track)
-                            asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False))
-                    else:
-                        queue.tracks.append(track)
-                        asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=True, enqueued_position=len(queue.tracks)))
+                if not tracks:
+                    return aiohttp.web.json_response(
+                        {"error": "No matching track found. Try a different title or link."},
+                        status=404,
+                    )
+                track = tracks[0]
+                track.requested_by = requester
+                if not queue.current_track:
+                    music_cog = bot.get_cog("Music") if bot else None
+                    if not music_cog:
+                        return aiohttp.web.json_response(
+                            {"error": "Music player is still starting up. Please try again."},
+                            status=503,
+                        )
+                    started = await music_cog.play_track(queue, track)
+                    if started is False:
+                        return aiohttp.web.json_response(
+                            {"error": "Could not stream this track. Please try another song."},
+                            status=502,
+                        )
+                    asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False))
+                    response_message = f'Playing "{track.title}" on Discord'
+                else:
+                    queue.tracks.append(track)
+                    asyncio.create_task(
+                        cls._send_discord_player_card(
+                            bot, guild, queue, track, is_enqueued=True, enqueued_position=len(queue.tracks)
+                        )
+                    )
+                    response_message = f'Added "{track.title}" to queue'
             except Exception as pe:
-                if not search_task.done():
-                    search_task.cancel()
-                return aiohttp.web.json_response({"error": f"Failed to enqueue: {pe}"}, status=500)
+                log.error(f"[Dashboard Play Error] guild={guild_id} query={query!r}: {pe}", exc_info=True)
+                await _cancel_search()
+                return aiohttp.web.json_response(
+                    {"error": "Could not start playback right now. Please try again."},
+                    status=500,
+                )
 
         elif action == "pause":
             if vc and vc.is_playing():
@@ -710,7 +759,10 @@ class DashboardAPI:
         # Real-time WebSocket broadcast in <1 second
         await DashboardWebSocketManager.get_instance().broadcast_playback_update(guild_id, bot)
         state = DashboardWebSocketManager.get_instance().serialize_guild_playback(guild_id, bot)
-        return aiohttp.web.json_response({"success": True, "state": state})
+        resp_payload: Dict[str, Any] = {"success": True, "state": state}
+        if response_message:
+            resp_payload["message"] = response_message
+        return aiohttp.web.json_response(resp_payload)
 
     @classmethod
     async def handle_get_server_settings(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -1001,20 +1053,33 @@ class DashboardAPI:
         queue = service.get_queue(guild_id)
 
         # Auto-connect if not connected
-        guild = bot.get_guild(guild_id) if bot else None
-        if guild and (not queue.voice_client or not queue.voice_client.is_connected()):
-            for ch in guild.voice_channels:
-                if any(not m.bot for m in ch.members):
-                    try:
-                        queue.voice_client = await ch.connect()
+        vc = (guild.voice_client if guild else None) or queue.voice_client
+        if vc and vc.is_connected():
+            queue.voice_client = vc
+        elif guild:
+            connected_vc = None
+            target_ch = member.voice.channel if (member and member.voice and member.voice.channel) else None
+            if not target_ch:
+                for ch in guild.voice_channels:
+                    if any(not m.bot for m in ch.members):
+                        target_ch = ch
                         break
-                    except Exception:
-                        pass
-            if not queue.voice_client and guild.voice_channels:
-                try:
-                    queue.voice_client = await guild.voice_channels[0].connect()
-                except Exception:
-                    pass
+            if not target_ch and guild.voice_channels:
+                target_ch = guild.voice_channels[0]
+            if not target_ch:
+                return aiohttp.web.json_response(
+                    {"error": "No voice channel available. Join a Discord voice channel first."},
+                    status=400,
+                )
+            try:
+                connected_vc = await target_ch.connect(self_deaf=True, timeout=15.0, reconnect=True)
+                queue.voice_client = connected_vc
+            except Exception as ce:
+                log.warning(f"[Dashboard Radio Voice Connect Error] guild={guild_id}: {ce}")
+                return aiohttp.web.json_response(
+                    {"error": "Could not join the Discord voice channel. Check bot permissions."},
+                    status=400,
+                )
 
         station_dict = {
             "name": station_name or "Live Radio",
@@ -1032,11 +1097,16 @@ class DashboardAPI:
         queue.active_radio_station_info = station_dict
         queue.tracks.clear()
 
-        await music_cog.play_track(queue, track)
-        await cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False)
+        started = await music_cog.play_track(queue, track)
+        if started is False:
+            return aiohttp.web.json_response(
+                {"error": "Could not stream that radio station right now."},
+                status=502,
+            )
+        asyncio.create_task(cls._send_discord_player_card(bot, guild, queue, track, is_enqueued=False))
         await DashboardWebSocketManager.get_instance().broadcast_playback_update(guild_id, bot)
 
-        return aiohttp.web.json_response({"success": True, "station": station_name})
+        return aiohttp.web.json_response({"success": True, "station": station_name, "message": f'Tuned into {station_name or "Live Radio"}'})
 
     # ------------------ 4. Audia AI Engine ------------------
 
@@ -1320,8 +1390,6 @@ class DashboardAPI:
             return aiohttp.web.json_response({"error": "Please provide a playlist URL."}, status=400)
 
         import re
-        import asyncio
-        import json
         import urllib.parse
         from services.spotify.resolver import SpotifyResolver
 
