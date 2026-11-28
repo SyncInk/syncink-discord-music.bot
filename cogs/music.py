@@ -365,7 +365,8 @@ class MusicPlayerLayoutView(discord.ui.LayoutView):
             msg = f"{Emojis.PLAY_BUTTON} Music playback resumed."
         else:
             vc.pause()
-            self.queue.paused_at = time.time()
+            if self.queue.paused_at is None:
+                self.queue.paused_at = time.time()
             msg = f"{Emojis.PAUSE_BUTTON} Music playback paused."
 
         self.build_components()
@@ -676,11 +677,10 @@ class LyricsPaginationView(discord.ui.View):
         if not queue.current_track or not self.is_live_track:
             return 0.0
         vc = queue.voice_client
-        if vc and vc.is_paused() and queue.paused_at is not None and queue.start_time:
-            return max(0.0, float(queue.paused_at - queue.start_time - queue.total_paused_duration))
-        if vc and vc.is_playing() and queue.start_time:
-            return max(0.0, float(time.time() - queue.start_time - queue.total_paused_duration))
-        return float(queue.get_playback_time())
+        return queue.get_playback_time_exact(
+            is_playing=bool(vc and vc.is_playing()),
+            is_paused=bool(vc and vc.is_paused()),
+        )
 
     def _build_pages(self, jump_to_live: bool = False):
         self.pages.clear()
@@ -2598,25 +2598,45 @@ class Music(commands.Cog):
                     else:
                         await interaction.response.send_message(view=view)
 
-    async def play_track(self, queue: GuildMusicQueue, track: Track) -> bool:
+    async def play_track(self, queue: GuildMusicQueue, track: Track, start_position: float = 0.0) -> bool:
         queue.playback_token += 1
         playback_token = queue.playback_token
         queue.current_track = track
-        queue.start_time = time.time()
+        queue.start_time = 0.0
         queue.paused_at = None
         queue.total_paused_duration = 0.0
+        queue.seek_offset = max(0.0, float(start_position or 0.0))
+        queue.active_audio_source = None
 
         if not track.is_radio:
             queue.active_radio_station = None
             queue.active_radio_station_info = None
 
+        def _on_first_frame():
+            if queue.playback_token != playback_token:
+                return
+            if queue.start_time == 0.0:
+                queue.start_time = time.time()
+            try:
+                if self.bot and hasattr(self.bot, "loop") and self.bot.loop and not self.bot.loop.is_closed():
+                    self.bot.loop.call_soon_threadsafe(self.notify_dashboard, queue.guild_id)
+            except Exception:
+                pass
+
         try:
             # yt-dlp media URLs are signed and short-lived. Resolve again when the
             # track actually starts, especially for items that waited in the queue.
             await self.service.refresh_stream_url(track)
-            audio_source = self.service.create_audio_source(track, volume=queue.volume)
+            audio_source = self.service.create_audio_source(
+                track,
+                volume=queue.volume,
+                seek_seconds=queue.seek_offset,
+                on_first_frame=_on_first_frame,
+            )
+            queue.active_audio_source = audio_source
         except Exception as src_err:
             log.error(f"[Audio Source Error] {src_err}")
+            queue.active_audio_source = None
             if queue.voice_client and (queue.voice_client.is_playing() or queue.voice_client.is_paused()):
                 try:
                     queue.voice_client.stop()
@@ -2639,6 +2659,8 @@ class Music(commands.Cog):
             return False
 
         def _after_playback(error):
+            if queue.playback_token == playback_token:
+                queue.active_audio_source = None
             if error:
                 log.error(f"[Audio Playback Error] {error}")
             if not self.bot.loop.is_closed():
@@ -2651,10 +2673,12 @@ class Music(commands.Cog):
                 if queue.voice_client.is_playing() or queue.voice_client.is_paused():
                     queue.voice_client.stop()
                     for _ in range(25):
-                        if not queue.voice_client.is_playing():
+                        if not queue.voice_client.is_playing() and not queue.voice_client.is_paused():
                             break
                         await asyncio.sleep(0.01)
                 queue.voice_client.play(audio_source, after=_after_playback)
+                if not hasattr(audio_source, "real_frames_read") and queue.start_time == 0.0:
+                    queue.start_time = time.time()
                 queue.cancel_inactivity()
 
                 # Broadcast to real-time Web Dashboard
@@ -2664,69 +2688,70 @@ class Music(commands.Cog):
                 except Exception:
                     pass
 
-                # Log play to dashboard analytics & history
-                try:
-                    user_id = track.requested_by.id if track.requested_by and hasattr(track.requested_by, "id") else 0
-                    if user_id == 0 and queue.voice_client and queue.voice_client.channel:
-                        human_members = [m for m in queue.voice_client.channel.members if not m.bot]
-                        if human_members:
-                            user_id = human_members[0].id
+                # Log play to dashboard analytics & history (skip duplicate entries when seeking)
+                if queue.seek_offset <= 0.0:
+                    try:
+                        user_id = track.requested_by.id if track.requested_by and hasattr(track.requested_by, "id") else 0
+                        if user_id == 0 and queue.voice_client and queue.voice_client.channel:
+                            human_members = [m for m in queue.voice_client.channel.members if not m.bot]
+                            if human_members:
+                                user_id = human_members[0].id
 
-                    async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb, trk_obj=None):
-                        try:
-                            from database import db
-                            from services.artwork_service import ArtworkService, is_fallback_artwork
-                            # Verify user preference for private listening if user id is known
-                            if uid:
-                                pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
-                                if pref and pref.get("private_listening"):
-                                    return
+                        async def _record_history_log(gid, uid, title, author, url, dur, plat, thumb, trk_obj=None):
+                            try:
+                                from database import db
+                                from services.artwork_service import ArtworkService, is_fallback_artwork
+                                # Verify user preference for private listening if user id is known
+                                if uid:
+                                    pref = await db.fetchrow("SELECT private_listening FROM user_preferences WHERE discord_user_id = $1", uid)
+                                    if pref and pref.get("private_listening"):
+                                        return
 
-                            # Resolve official song cover poster when missing or generic YT/fallback thumbnail
-                            resolved_thumb = thumb if (thumb and not is_fallback_artwork(thumb)) else ""
-                            if (not resolved_thumb or "ytimg.com" in resolved_thumb) and (plat or "").lower() != "radio":
-                                official = await ArtworkService.resolve_official_artwork(
-                                    title, author, url, existing_thumb=None, platform=plat
-                                )
-                                if official and not is_fallback_artwork(official):
-                                    resolved_thumb = official
-                                    if trk_obj is not None and is_fallback_artwork(getattr(trk_obj, "thumbnail", None)):
-                                        trk_obj.thumbnail = official
-                                        self.notify_dashboard(gid)
+                                # Resolve official song cover poster when missing or generic YT/fallback thumbnail
+                                resolved_thumb = thumb if (thumb and not is_fallback_artwork(thumb)) else ""
+                                if (not resolved_thumb or "ytimg.com" in resolved_thumb) and (plat or "").lower() != "radio":
+                                    official = await ArtworkService.resolve_official_artwork(
+                                        title, author, url, existing_thumb=None, platform=plat
+                                    )
+                                    if official and not is_fallback_artwork(official):
+                                        resolved_thumb = official
+                                        if trk_obj is not None and is_fallback_artwork(getattr(trk_obj, "thumbnail", None)):
+                                            trk_obj.thumbnail = official
+                                            self.notify_dashboard(gid)
 
-                            q = """
-                                INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
-                                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-                            """
-                            await db.execute(q, gid, uid or 0, title, author, url, int(dur or 0), plat or "audio", resolved_thumb)
-                            log.info(f"[Listening History] Successfully recorded '{title}' for user {uid} in guild {gid}")
-                        except Exception as h_err:
-                            log.warning(f"[Listening History] Could not record playback: {h_err}")
+                                q = """
+                                    INSERT INTO listening_history (guild_id, discord_user_id, track_title, track_author, track_url, duration, platform, thumbnail_url)
+                                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                                """
+                                await db.execute(q, gid, uid or 0, title, author, url, int(dur or 0), plat or "audio", resolved_thumb)
+                                log.info(f"[Listening History] Successfully recorded '{title}' for user {uid} in guild {gid}")
+                            except Exception as h_err:
+                                log.warning(f"[Listening History] Could not record playback: {h_err}")
 
-                    asyncio.create_task(_record_history_log(
-                        queue.guild_id,
-                        user_id,
-                        track.clean_title or track.title or "Unknown Track",
-                        track.author or "Unknown Artist",
-                        track.url or "",
-                        int(track.duration or 0),
-                        track.platform or "youtube",
-                        track.thumbnail or "",
-                        track,
-                    ))
-                except Exception as log_err:
-                    log.warning(f"[Listening History Task Init] {log_err}")
+                        asyncio.create_task(_record_history_log(
+                            queue.guild_id,
+                            user_id,
+                            track.clean_title or track.title or "Unknown Track",
+                            track.author or "Unknown Artist",
+                            track.url or "",
+                            int(track.duration or 0),
+                            track.platform or "youtube",
+                            track.thumbnail or "",
+                            track,
+                        ))
+                    except Exception as log_err:
+                        log.warning(f"[Listening History Task Init] {log_err}")
 
-                if not track.is_radio:
-                    norm_key = normalize_title(track.clean_title)
-                    queue.session_played_history.append(norm_key)
-                    queue.session_played_history = queue.session_played_history[-50:]
-                    queue.session_artists.append(track.author)
-                    queue.session_artists = queue.session_artists[-20:]
-                    if track.requested_by and hasattr(track.requested_by, "id"):
-                        AutoPlayService.get_instance().record_track_play(track.requested_by.id, track, manual=not queue.autoplay)
-                    if queue.autoplay:
-                        AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
+                    if not track.is_radio:
+                        norm_key = normalize_title(track.clean_title)
+                        queue.session_played_history.append(norm_key)
+                        queue.session_played_history = queue.session_played_history[-50:]
+                        queue.session_artists.append(track.author)
+                        queue.session_artists = queue.session_artists[-20:]
+                        if track.requested_by and hasattr(track.requested_by, "id"):
+                            AutoPlayService.get_instance().record_track_play(track.requested_by.id, track, manual=not queue.autoplay)
+                        if queue.autoplay:
+                            AutoPlayService.get_instance().trigger_prefetch(queue, self.service)
                 return True
             except Exception as play_err:
                 log.error(f"[Playback Play Error] {play_err}")
@@ -2773,7 +2798,10 @@ class Music(commands.Cog):
             or (queue.active_radio_station_info.get("name") if queue.active_radio_station_info else None)
             or (queue.active_radio_station if queue.active_radio_station else "Live Radio")
         )
-        stream_duration = time.time() - queue.start_time if queue.start_time > 0 else 0.0
+        stream_duration = max(
+            queue.get_playback_time_exact(),
+            (time.time() - queue.start_time) if queue.start_time > 0 else 0.0,
+        )
 
         # Record track completion in Audia AI memory if listened through naturally without manual skip
         if last_track and not was_radio and not was_manual_skip and stream_duration >= 25.0:
@@ -3703,7 +3731,8 @@ class Music(commands.Cog):
             await self.send_error_embed(interaction, description="Nothing is currently playing.", is_warning=True)
             return
         queue.voice_client.pause()
-        queue.paused_at = time.time()
+        if queue.paused_at is None:
+            queue.paused_at = time.time()
         self.notify_dashboard(interaction.guild_id)
         embed = make_success_embed(f"### {Emojis.PAUSE_BUTTON} Playback paused.\nResume anytime with `/resume`.")
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -4151,6 +4180,7 @@ class Music(commands.Cog):
                 if queue.paused_at is not None:
                     queue.total_paused_duration += (time.time() - queue.paused_at)
                     queue.paused_at = None
+                self.notify_dashboard(ctx.guild.id)
                 embed = discord.Embed(description=f"### {Emojis.PLAY_BUTTON} Playback resumed.", color=BRAND_COLOR)
                 await ctx.send(embed=embed, delete_after=5)
                 return
@@ -4263,7 +4293,9 @@ class Music(commands.Cog):
             await self.send_error_embed(ctx, description="Nothing is currently playing.", is_warning=True)
             return
         queue.voice_client.pause()
-        queue.paused_at = time.time()
+        if queue.paused_at is None:
+            queue.paused_at = time.time()
+        self.notify_dashboard(ctx.guild.id)
         embed = make_success_embed(f"### {Emojis.PAUSE_BUTTON} Playback paused.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
@@ -4285,6 +4317,7 @@ class Music(commands.Cog):
         if queue.paused_at is not None:
             queue.total_paused_duration += (time.time() - queue.paused_at)
             queue.paused_at = None
+        self.notify_dashboard(ctx.guild.id)
         embed = make_success_embed(f"### {Emojis.PLAY_BUTTON} Playback resumed.")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
@@ -4453,6 +4486,7 @@ class Music(commands.Cog):
             await self.send_error_embed(ctx, description="Need at least 2 tracks in queue to shuffle.", is_warning=True)
             return
         random.shuffle(queue.tracks)
+        self.notify_dashboard(ctx.guild.id)
         embed = make_success_embed(f"### {Emojis.SHUFFLE} Randomized **{len(queue.tracks)}** upcoming tracks!")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:
@@ -4471,6 +4505,7 @@ class Music(commands.Cog):
         else:
             m = mode.lower().strip()
             queue.repeat_mode = m if m in ("off", "track", "queue") else "track"
+        self.notify_dashboard(ctx.guild.id)
         embed = make_success_embed(f"### {Emojis.REPEAT} Repeat mode set to: **{queue.repeat_mode.upper()}**")
         await ctx.send(embed=embed, delete_after=5)
         if ctx.message:

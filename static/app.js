@@ -71,7 +71,9 @@ const state = {
   playbackClock: {
     basePos: 0,
     anchorPerf: typeof performance !== 'undefined' ? performance.now() : 0,
-    playing: false
+    playing: false,
+    playbackToken: 0,
+    trackKey: ''
   },
   lyrics: {
     open: false,
@@ -80,6 +82,7 @@ const state = {
     autoScroll: true,
     manualScrollPauseUntil: 0,
     trackKey: '',
+    playbackToken: 0,
     manualQuery: '',
     loading: false,
     found: false,
@@ -370,6 +373,10 @@ function initWebSocket() {
             if (state.currentView === 'history') loadListeningHistory();
             if (state.currentView === 'analytics') loadAnalytics();
           }
+        } else if (payload.event === 'playback_tick') {
+          if (!state.activeGuildId || state.activeGuildId === payload.guild_id) {
+            applyPlaybackTick(payload.data);
+          }
         }
       } catch (err) {
         console.warn('[WS Parse Error]', err);
@@ -415,15 +422,77 @@ async function fetchGuildSnapshot(guildId) {
 }
 
 // ------------------- PLAYBACK TIMELINE & TICKER -------------------
+function syncPlaybackClockFromState(data, isFullState = true) {
+  const prevClock = state.playbackClock || { basePos: 0, anchorPerf: performance.now(), playing: false, playbackToken: 0, trackKey: '' };
+  const nextPlaying = Boolean(data.is_playing && !data.is_paused && data.audio_started !== false);
+  const nextPos = Math.max(0, Number(data.position !== undefined ? data.position : (state.playback.position || 0)));
+  const nextToken = Number(data.playback_token !== undefined ? data.playback_token : (prevClock.playbackToken || 0));
+  const trk = isFullState ? data.current_track : state.playback.current_track;
+  const rad = isFullState ? data.radio_station : state.playback.radio_station;
+  const nextTrackKey = trk
+    ? `${trk.url || trk.title || ''}::${trk.author || ''}::${trk.is_radio ? 'radio' : 'track'}`
+    : (rad ? `radio::${rad}` : '');
+
+  const tokenChanged = (nextToken > 0 && prevClock.playbackToken > 0 && nextToken !== prevClock.playbackToken);
+  const trackChanged = Boolean(nextTrackKey !== prevClock.trackKey);
+  const jumpedBack = (prevClock.basePos > 6 && nextPos < 2.5 && Boolean(data.is_playing || !data.is_paused));
+  const playStateChanged = (prevClock.playing !== nextPlaying);
+  const currentInterpolated = getInterpolatedPlaybackSeconds();
+  const drift = Math.abs(nextPos - currentInterpolated);
+
+  if (tokenChanged || trackChanged || jumpedBack || playStateChanged || !nextPlaying || drift > 0.35) {
+    state.playbackClock = {
+      basePos: nextPos,
+      anchorPerf: performance.now(),
+      playing: nextPlaying,
+      playbackToken: nextToken,
+      trackKey: nextTrackKey
+    };
+    state.playback.position = nextPos;
+  } else {
+    state.playbackClock.playbackToken = nextToken;
+    state.playbackClock.trackKey = nextTrackKey;
+  }
+
+  if (tokenChanged || jumpedBack) {
+    state.lyrics.activeIndex = -1;
+    state.lyrics.manualScrollPauseUntil = 0;
+  }
+  return { tokenChanged, jumpedBack, trackChanged, playStateChanged };
+}
+
+function applyPlaybackTick(tick) {
+  if (!tick || typeof tick !== 'object') return;
+  const prevPlayingState = Boolean(state.playback.is_playing && !state.playback.is_paused);
+  if (tick.is_playing !== undefined) state.playback.is_playing = tick.is_playing;
+  if (tick.is_paused !== undefined) state.playback.is_paused = tick.is_paused;
+  if (tick.duration !== undefined && tick.duration > 0) state.playback.duration = tick.duration;
+  if (tick.repeat_mode !== undefined) state.playback.repeat_mode = tick.repeat_mode;
+  if (tick.playback_token !== undefined) state.playback.playback_token = tick.playback_token;
+  if (tick.audio_started !== undefined) state.playback.audio_started = tick.audio_started;
+
+  const { tokenChanged, jumpedBack, playStateChanged } = syncPlaybackClockFromState(tick, false);
+  const nextPlayingState = Boolean(state.playback.is_playing && !state.playback.is_paused);
+  renderTimelineOnly();
+  if (prevPlayingState !== nextPlayingState || playStateChanged) {
+    renderBottomPlayer();
+    renderSpotlightCard();
+    initIcons();
+  }
+  if (tokenChanged || jumpedBack || playStateChanged) {
+    syncLyricsActiveLine(true);
+  }
+}
+
 function startLocalPlaybackTicker() {
   if (state.localTicker) clearInterval(state.localTicker);
+  let analyticsSubTicks = 0;
   state.localTicker = setInterval(() => {
-    // 1. Bottom Player timeline
-    if (state.playback.is_playing && !state.playback.is_paused) {
-      state.playback.position += 1;
-      if (state.playback.duration > 0 && state.playback.position > state.playback.duration) {
-        state.playback.position = state.playback.duration;
-      }
+    analyticsSubTicks = (analyticsSubTicks + 1) % 4;
+
+    // 1. Unified single-clock timeline (locked to 20ms PCM frames + performance.now)
+    if (state.playbackClock.playing) {
+      state.playback.position = getInterpolatedPlaybackSeconds();
       renderTimelineOnly();
       checkUpcomingTrackNotice();
     } else {
@@ -431,10 +500,10 @@ function startLocalPlaybackTicker() {
     }
 
     // 2. Real-time Analytics Live 1-Second Sync with Discord Voice
-    if (state.currentView === 'analytics' && state.currentUser) {
+    if (analyticsSubTicks === 0 && state.currentView === 'analytics' && state.currentUser) {
       tickAnalyticsEverySecond();
     }
-  }, 1000);
+  }, 250);
 }
 
 function checkUpcomingTrackNotice() {
@@ -551,11 +620,7 @@ async function fetchAnalyticsSilently() {
 
 function updatePlaybackState(data) {
   state.playback = Object.assign({}, state.playback, data);
-  state.playbackClock = {
-    basePos: Number(state.playback.position || 0),
-    anchorPerf: performance.now(),
-    playing: Boolean(state.playback.is_playing && !state.playback.is_paused)
-  };
+  syncPlaybackClockFromState(data, true);
   const statLatency = document.getElementById('stat-latency');
   if (statLatency) {
     const lat = data.voice_latency || data.latency_ms;
@@ -585,7 +650,9 @@ function renderTimelineOnly() {
   const mfpTotalEl = document.getElementById('mfp-total-time');
   const mfpBarEl = document.getElementById('mfp-progress-bar');
 
-  const curFormatted = formatDuration(state.playback.position);
+  const livePos = getInterpolatedPlaybackSeconds();
+  state.playback.position = livePos;
+  const curFormatted = formatDuration(livePos);
   const totFormatted = state.playback.duration > 0 ? formatDuration(state.playback.duration) : 'LIVE';
 
   if (currentEl) currentEl.innerText = curFormatted;
@@ -594,7 +661,7 @@ function renderTimelineOnly() {
   if (mfpTotalEl) mfpTotalEl.innerText = totFormatted;
 
   if (state.playback.duration > 0) {
-    const pct = Math.min(100, Math.max(0, (state.playback.position / state.playback.duration) * 100));
+    const pct = Math.min(100, Math.max(0, (livePos / state.playback.duration) * 100));
     if (barEl) barEl.style.width = `${pct}%`;
     if (knobEl) knobEl.style.left = `${pct}%`;
     if (mobileBarEl) mobileBarEl.style.width = `${pct}%`;
@@ -859,7 +926,7 @@ function initLyricsSystem() {
   if (state.lyrics.timer) clearInterval(state.lyrics.timer);
   state.lyrics.timer = setInterval(() => {
     syncLyricsActiveLine(false);
-  }, 120);
+  }, 90);
 
   renderLyricsContainers();
 }
@@ -880,6 +947,7 @@ function onPlaybackTrackUpdatedForLyrics() {
   const nextKey = track
     ? `${track.title || ''}::${track.author || ''}::${track.is_radio ? 'radio' : 'track'}`
     : (radioName ? `radio::${radioName}` : '');
+  const nextToken = Number(state.playback.playback_token || 0);
 
   syncLyricsHeaderArtwork();
 
@@ -887,11 +955,19 @@ function onPlaybackTrackUpdatedForLyrics() {
     return;
   }
   if (nextKey === state.lyrics.trackKey) {
+    if (nextToken > 0 && nextToken !== state.lyrics.playbackToken) {
+      state.lyrics.playbackToken = nextToken;
+      state.lyrics.activeIndex = -1;
+      state.lyrics.manualScrollPauseUntil = 0;
+      syncLyricsActiveLine(true);
+      return;
+    }
     syncLyricsActiveLine(false);
     return;
   }
 
   state.lyrics.trackKey = nextKey;
+  state.lyrics.playbackToken = nextToken;
   state.lyrics.activeIndex = -1;
   state.lyrics.manualScrollPauseUntil = 0;
 
@@ -1100,8 +1176,8 @@ function syncLyricsActiveLine(forceScroll = false) {
   const posSec = getInterpolatedPlaybackSeconds();
   const lines = state.lyrics.lines;
   let activeIdx = -1;
-  // Subtle 0.18s visual anticipation aligns smoothly with WebSocket/Opus frame delivery
-  const checkTime = posSec + 0.18;
+  // Subtle 0.05s alignment keeps highlight snappy on frame-exact PCM delivery
+  const checkTime = posSec + 0.05;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].time <= checkTime) {
       activeIdx = i;
@@ -1136,10 +1212,14 @@ function syncLyricsActiveLine(forceScroll = false) {
       });
 
       const canAutoScroll = state.lyrics.autoScroll && (forceScroll || performance.now() > state.lyrics.manualScrollPauseUntil);
-      if (canAutoScroll && activeIdx >= 0 && nodes[activeIdx]) {
-        const target = nodes[activeIdx];
-        const centerTop = target.offsetTop - (container.clientHeight * 0.42) + (target.clientHeight / 2);
-        container.scrollTo({ top: Math.max(0, centerTop), behavior: 'smooth' });
+      if (canAutoScroll) {
+        if (activeIdx >= 0 && nodes[activeIdx]) {
+          const target = nodes[activeIdx];
+          const centerTop = target.offsetTop - (container.clientHeight * 0.42) + (target.clientHeight / 2);
+          container.scrollTo({ top: Math.max(0, centerTop), behavior: 'smooth' });
+        } else if (activeIdx < 0 && posSec < 2.0) {
+          container.scrollTo({ top: 0, behavior: 'smooth' });
+        }
       }
     }
 
@@ -1429,20 +1509,21 @@ function handleSeek(e) {
     showToast('Please log in with Discord to seek tracks!', 'warning');
     return;
   }
-  if (state.playback.duration <= 0) return;
+  const track = state.playback.current_track;
+  if (state.playback.duration <= 0 || !track || track.is_radio || track.is_live) return;
   const bar = e.currentTarget;
   const rect = bar.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const pct = Math.max(0, Math.min(1, clickX / rect.width));
   const targetSec = Math.floor(pct * state.playback.duration);
   state.playback.position = targetSec;
-  state.playbackClock = {
-    basePos: targetSec,
-    anchorPerf: performance.now(),
-    playing: Boolean(state.playback.is_playing && !state.playback.is_paused)
-  };
+  state.playbackClock.basePos = targetSec;
+  state.playbackClock.anchorPerf = performance.now();
+  state.playbackClock.playing = false;
+  state.lyrics.activeIndex = -1;
   renderTimelineOnly();
   syncLyricsActiveLine(true);
+  sendControlAction('seek', { position: targetSec }, { replaceKey: 'playback-status' });
 }
 
 function changeVolume(val) {
@@ -1506,21 +1587,29 @@ function handleSearchInput(val) {
       const suggestions = data.suggestions || [];
       dropdown.innerHTML = '';
       if (suggestions.length === 0) {
-        dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#6B6A78]">No song matches found</div>';
+        dropdown.innerHTML = '<div class="p-3 text-center text-xs text-[#6B6A78]">No official lyrics-supported songs found</div>';
         dropdown.classList.remove('hidden');
         return;
       }
       suggestions.forEach(item => {
         const div = document.createElement('div');
         div.className = 'flex items-center gap-3 p-2.5 rounded-xl hover:bg-brand-surface-elevated cursor-pointer group transition-all';
-        div.onclick = () => selectSearchSuggestion(item.title, item.artist);
+        div.onclick = () => selectSearchSuggestion(item);
+        const lyrBadge = item.lyrics_synced
+          ? '<span class="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-brand-primary/25 border border-brand-primary/40 text-brand-secondary shrink-0">Synced</span>'
+          : (item.has_lyrics
+            ? '<span class="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/[0.06] border border-white/10 text-[#C8C7D8] shrink-0">Lyrics</span>'
+            : '<span class="text-[9px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-white/[0.04] text-[#8E8EA0] shrink-0">Official</span>');
         div.innerHTML = `
           <img src="${resolveArtUrl(item.thumbnail)}" onerror="this.onerror=null;this.src=DEFAULT_LOGO" class="w-10 h-10 rounded-lg object-cover border border-brand-border/40 shrink-0 shadow">
           <div class="min-w-0 flex-1">
-            <p class="text-xs font-bold text-white group-hover:text-brand-secondary truncate transition-colors">${escapeHtml(item.title)}</p>
+            <div class="flex items-center gap-1.5 min-w-0">
+              <p class="text-xs font-bold text-white group-hover:text-brand-secondary truncate transition-colors">${escapeHtml(item.title)}</p>
+              ${lyrBadge}
+            </div>
             <p class="text-[11px] text-[#9E9EAD] truncate">${escapeHtml(item.artist)}</p>
           </div>
-          <span class="text-[10px] text-[#6B6A78] font-mono mr-1">${item.duration ? formatDuration(item.duration) : ''}</span>
+          <span class="text-[10px] text-[#6B6A78] font-mono mr-1 shrink-0">${item.duration ? formatDuration(item.duration) : ''}</span>
           <button class="w-7 h-7 rounded-lg bg-brand-primary/20 text-brand-secondary group-hover:bg-brand-primary group-hover:text-white flex items-center justify-center transition-all shrink-0">
             <i data-lucide="play" class="w-3.5 h-3.5 fill-current"></i>
           </button>
@@ -1542,14 +1631,27 @@ function handleSearchFocus() {
   }
 }
 
-function selectSearchSuggestion(title, artist) {
+function selectSearchSuggestion(itemOrTitle, maybeArtist = '') {
+  const isObj = itemOrTitle && typeof itemOrTitle === 'object';
+  const title = isObj ? String(itemOrTitle.title || '') : String(itemOrTitle || '');
+  const artist = isObj ? String(itemOrTitle.artist || '') : String(maybeArtist || '');
+  const expectedDuration = isObj ? Number(itemOrTitle.duration || 0) : 0;
+  const artwork = isObj ? String(itemOrTitle.thumbnail || '') : '';
+
   const input = document.getElementById('overview-quick-play-input');
-  const isGeneric = !artist || ['Song Result', 'Music Result', 'Music Track'].includes(artist.trim());
+  const isGeneric = !artist || ['Song Result', 'Music Result', 'Music Track', 'Song'].includes(artist.trim());
   const fullQuery = isGeneric ? title.trim() : `${title} ${artist}`.trim();
   if (input) input.value = fullQuery;
   const dropdown = document.getElementById('search-suggestions-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
-  sendControlAction('play', { query: fullQuery }, {
+  sendControlAction('play', {
+    query: fullQuery,
+    title: title.trim(),
+    artist: isGeneric ? '' : artist.trim(),
+    expected_duration: expectedDuration > 0 ? expectedDuration : null,
+    artwork: artwork && artwork.startsWith('http') ? artwork : '',
+    prefer_official_music: true
+  }, {
     replaceKey: 'playback-status',
     pendingMessage: `Starting "${title}" on Discord...`,
     successMessage: `Playing "${title}" on Discord`
@@ -1566,7 +1668,11 @@ function triggerQuickPlay() {
   if (!query) return;
   const dropdown = document.getElementById('search-suggestions-dropdown');
   if (dropdown) dropdown.classList.add('hidden');
-  sendControlAction('play', { query }, {
+  const isRawUrlOrRadio = /^https?:\/\//i.test(query) || /^radio:/i.test(query);
+  sendControlAction('play', {
+    query,
+    prefer_official_music: !isRawUrlOrRadio
+  }, {
     replaceKey: 'playback-status',
     pendingMessage: `Searching "${query}"...`
   }).then((ok) => {

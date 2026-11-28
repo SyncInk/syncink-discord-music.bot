@@ -1,8 +1,10 @@
 import os
+import re
 import time
 import json
 import random
 import asyncio
+import urllib.parse
 from datetime import datetime, timedelta
 from typing import Optional, Dict, Any, List, Tuple
 from types import SimpleNamespace
@@ -579,6 +581,17 @@ class DashboardAPI:
                 return aiohttp.web.json_response({"error": "Enter a song name or link first."}, status=400)
 
             voice_channel_id = body.get("voice_channel_id")
+            is_url = query.startswith("http://") or query.startswith("https://")
+            prefer_official = bool(body.get("prefer_official_music", not is_url and not query.lower().startswith("radio:")))
+            exp_dur = body.get("expected_duration")
+            try:
+                exp_dur_int = int(exp_dur) if exp_dur else None
+            except (TypeError, ValueError):
+                exp_dur_int = None
+            exp_title = (body.get("title") or "").strip() or None
+            exp_artist = (body.get("artist") or "").strip() or None
+            exp_art = (body.get("artwork") or "").strip() or None
+
             requester = member or SimpleNamespace(
                 id=user_id,
                 name=user.get("username", "Dashboard User"),
@@ -588,7 +601,18 @@ class DashboardAPI:
             )
 
             # Start track extraction immediately in parallel with voice connection!
-            search_task = asyncio.create_task(service.search_and_extract(query, requester, limit=1))
+            search_kwargs: Dict[str, Any] = {"limit": 1}
+            if prefer_official:
+                search_kwargs["prefer_official"] = True
+            if exp_dur_int:
+                search_kwargs["expected_duration"] = exp_dur_int
+            if exp_title:
+                search_kwargs["expected_title"] = exp_title
+            if exp_artist:
+                search_kwargs["expected_artist"] = exp_artist
+            if exp_art:
+                search_kwargs["expected_artwork"] = exp_art
+            search_task = asyncio.create_task(service.search_and_extract(query, requester, **search_kwargs))
 
             async def _cancel_search():
                 if search_task and not search_task.done():
@@ -676,7 +700,8 @@ class DashboardAPI:
         elif action == "pause":
             if vc and vc.is_playing():
                 vc.pause()
-                queue.paused_at = time.time()
+                if queue.paused_at is None:
+                    queue.paused_at = time.time()
 
         elif action == "resume":
             if vc and vc.is_paused():
@@ -684,6 +709,22 @@ class DashboardAPI:
                 if queue.paused_at is not None:
                     queue.total_paused_duration += (time.time() - queue.paused_at)
                     queue.paused_at = None
+
+        elif action == "seek":
+            target_pos = body.get("position")
+            if target_pos is not None and queue.current_track and not queue.current_track.is_radio and not queue.current_track.is_live:
+                try:
+                    clamped_pos = max(0.0, float(target_pos))
+                except (TypeError, ValueError):
+                    clamped_pos = 0.0
+                dur = float(queue.current_track.duration or 0)
+                if dur > 0:
+                    clamped_pos = min(max(0.0, dur - 1.0), clamped_pos)
+                music_cog = bot.get_cog("Music") if bot else None
+                if music_cog:
+                    started = await music_cog.play_track(queue, queue.current_track, start_position=clamped_pos)
+                    if started is False:
+                        return aiohttp.web.json_response({"error": "Could not seek in this track right now."}, status=502)
 
         elif action == "skip":
             if queue.current_track:
@@ -714,6 +755,11 @@ class DashboardAPI:
             queue.active_country_stations = None
             queue.autoplay = False
             queue.current_track = None
+            queue.active_audio_source = None
+            queue.start_time = 0.0
+            queue.paused_at = None
+            queue.total_paused_duration = 0.0
+            queue.seek_offset = 0.0
             if vc:
                 vc.stop()
 
@@ -1588,125 +1634,293 @@ class DashboardAPI:
 
     @classmethod
     async def handle_search_suggestions(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
-        """Real-time instant autocomplete song search. Strictly returns songs only."""
+        """
+        Real-time song autocomplete strictly returning official studio music with verified lyrics support.
+        Excludes arbitrary YouTube videos, reactions, slowed/reverb/covers, and raw upload titles.
+        """
         q = request.query.get("q", "").strip()
         if not q or len(q) < 2:
             return aiohttp.web.json_response({"suggestions": []})
 
-        import urllib.parse
-        import re
-        import json
+        from services.lyrics_service import clean_lyrics_metadata
 
-        suggestions = []
-        clean_yt_candidates = []
+        q_low = q.lower()
+        q_tokens = [w for w in re.findall(r"\w+", q_low) if len(w) >= 2]
+        spam_re = re.compile(
+            r"\b(karaoke|tribute|ringtone|made\s+famous|lullaby|covered\s+by|cover\s+version|nightcore|"
+            r"slowed|reverb|8d\s*audio|sped\s+up|mashup|jukebox|nonstop|non-stop|reaction|trailer|"
+            r"full\s+movie|vlog|episode|funny|news|whatsapp\s+status|shorts|podcast|gameplay)\b",
+            re.IGNORECASE,
+        )
+
+        def _is_official_song_clean(title_val: str, artist_val: str, dur_sec: int) -> bool:
+            if not title_val or not artist_val:
+                return False
+            t_low = title_val.lower().strip()
+            a_low = artist_val.lower().strip()
+            if a_low in ("unknown", "unknown artist", "various artists", "song", "youtube"):
+                return False
+            if dur_sec and (dur_sec < 45 or dur_sec > 720):
+                return False
+            m_t = spam_re.search(t_low)
+            if m_t and m_t.group(0).lower() not in q_low:
+                return False
+            m_a = spam_re.search(a_low)
+            if m_a and m_a.group(0).lower() not in q_low:
+                return False
+            return True
+
+        def _norm_key(val: str) -> str:
+            return re.sub(r"[^a-z0-9]+", " ", (val or "").lower()).strip()
+
         top_keyword = None
+        timeout_fast = aiohttp.ClientTimeout(total=2.5, connect=1.2)
 
-        # 1. Query YouTube autocomplete (Google Suggest) to resolve prefixes (e.g. "yalga" -> "yalgaar")
-        try:
-            yt_suggest_url = f"https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={urllib.parse.quote(q)}"
-            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
-                async with session.get(yt_suggest_url, headers={"User-Agent": "Mozilla/5.0"}) as resp:
-                    if resp.status == 200:
-                        raw = await resp.json(content_type=None)
-                        if len(raw) > 1 and isinstance(raw[1], list):
-                            for s in raw[1]:
-                                s_text = s.strip() if isinstance(s, str) else ""
-                                if not s_text:
-                                    continue
-                                # Filter out non-song videos (reaction, trailer, movie, vlog, full movie, etc.)
-                                if re.search(r'\b(reaction|movie|film|trailer|full movie|vlog|scene|episode|funny|news)\b', s_text, re.I):
-                                    continue
-                                clean_s = re.sub(r'(?i)\s+(song|songs|audio|official video|video|lyrics|status|full song)$', '', s_text).strip()
-                                if clean_s and clean_s.lower() not in [x.lower() for x in clean_yt_candidates]:
-                                    clean_yt_candidates.append(clean_s)
-                                    if not top_keyword and clean_s.lower() != q.lower():
+        async with aiohttp.ClientSession(
+            timeout=timeout_fast,
+            headers={"User-Agent": "SyncInkRadio/2.5 (+https://syncink.site)"},
+        ) as session:
+            # 1. Optional prefix completion ONLY (never surfaced as a YouTube result)
+            if len(q) <= 22:
+                try:
+                    yt_suggest_url = f"https://suggestqueries.google.com/complete/search?client=firefox&ds=yt&q={urllib.parse.quote(q)}"
+                    async with session.get(yt_suggest_url) as resp:
+                        if resp.status == 200:
+                            raw = await resp.json(content_type=None)
+                            if len(raw) > 1 and isinstance(raw[1], list):
+                                for s in raw[1]:
+                                    s_text = s.strip() if isinstance(s, str) else ""
+                                    if not s_text or spam_re.search(s_text):
+                                        continue
+                                    clean_s = re.sub(
+                                        r"(?i)\s+(song|songs|audio|official video|video|lyrics|status|full song)$",
+                                        "",
+                                        s_text,
+                                    ).strip()
+                                    if clean_s and clean_s.lower() != q_low:
                                         top_keyword = clean_s
-        except Exception as yt_err:
-            log.debug(f"[Search Suggestions YT Autocomplete Error] {yt_err}")
+                                        break
+                except Exception as yt_err:
+                    log.debug(f"[Search Suggestions Prefix Helper] {yt_err}")
 
-        # 2. Query iTunes song database with enriched keyword (top_keyword) and q itself
-        terms_to_search = []
-        if top_keyword:
-            terms_to_search.append(top_keyword)
-        if q.lower() not in [t.lower() for t in terms_to_search]:
-            terms_to_search.append(q)
+            terms_to_search: List[str] = []
+            if top_keyword:
+                terms_to_search.append(top_keyword)
+            if q_low not in [t.lower() for t in terms_to_search]:
+                terms_to_search.append(q)
+            tk_tokens = [w for w in re.findall(r"\w+", (top_keyword or "").lower()) if len(w) >= 2]
 
-        itunes_results = []
-        seen_titles = set()
-        q_tokens = [w for w in re.findall(r'\w+', q.lower()) if len(w) >= 2]
-        tk_tokens = [w for w in re.findall(r'\w+', (top_keyword or "").lower()) if len(w) >= 2]
-
-        for term in terms_to_search[:2]:
-            try:
-                itunes_url = f"https://itunes.apple.com/search?term={urllib.parse.quote(term)}&entity=song&limit=5"
-                async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=2.0)) as session:
-                    async with session.get(itunes_url) as resp:
+            async def _fetch_itunes(term: str) -> List[Dict[str, Any]]:
+                try:
+                    url = f"https://itunes.apple.com/search?term={urllib.parse.quote(term)}&entity=song&limit=10"
+                    async with session.get(url) as resp:
                         if resp.status == 200:
                             data = await resp.json(content_type=None)
-                            for item in data.get("results", []):
-                                track_name = item.get("trackName")
-                                artist_name = item.get("artistName")
-                                if track_name and artist_name:
-                                    t_low = track_name.lower()
-                                    a_low = artist_name.lower()
-                                    # Strictly verify query matches track title or artist to prevent unrelated songs (e.g. Stand Tall)
-                                    matches = (
-                                        any(tok in t_low or tok in a_low for tok in q_tokens)
-                                        or (q.lower() in t_low or q.lower() in a_low)
-                                        or any(tok in t_low or tok in a_low for tok in tk_tokens)
-                                    )
-                                    if not matches:
-                                        continue
+                            return list(data.get("results") or [])
+                except Exception as it_err:
+                    log.debug(f"[Search Suggestions iTunes Error] {it_err}")
+                return []
 
-                                    k = (t_low, a_low)
-                                    if k not in seen_titles:
-                                        seen_titles.add(k)
-                                        duration_sec = int((item.get("trackTimeMillis") or 0) / 1000)
-                                        thumb = item.get("artworkUrl100") or "static/syncink-main.jpg"
-                                        itunes_results.append({
-                                            "title": track_name,
-                                            "artist": artist_name,
-                                            "duration": duration_sec,
-                                            "thumbnail": thumb,
-                                            "source": "itunes"
-                                        })
-            except Exception as it_err:
-                log.debug(f"[Search Suggestions iTunes Error] {it_err}")
+            async def _fetch_lrclib(term: str) -> Tuple[List[Dict[str, Any]], bool]:
+                try:
+                    url = f"https://lrclib.net/api/search?q={urllib.parse.quote(term)}"
+                    async with session.get(url) as resp:
+                        if resp.status == 200:
+                            data = await resp.json(content_type=None)
+                            return (data if isinstance(data, list) else []), True
+                except Exception as lrc_err:
+                    log.debug(f"[Search Suggestions LRCLIB Error] {lrc_err}")
+                return [], False
 
-        # Prioritize matching YouTube candidates (e.g. "Yalgaar") when available
-        for cand in clean_yt_candidates:
-            cand_title = cand.title()
-            if not any(cand.lower() == s["title"].lower() for s in suggestions) and not any(cand.lower() == s["title"].lower() for s in itunes_results):
-                suggestions.append({
-                    "title": cand_title,
-                    "artist": "Song",
-                    "duration": 0,
-                    "thumbnail": "",
-                    "source": "youtube"
-                })
+            tasks = []
+            for term in terms_to_search[:2]:
+                tasks.append(_fetch_itunes(term))
+                tasks.append(_fetch_lrclib(term))
 
-        # Combine with verified iTunes results and enrich any missing posters
-        suggestions.extend(itunes_results)
+            fetched = await asyncio.gather(*tasks, return_exceptions=True)
+
+        itunes_raw: List[Dict[str, Any]] = []
+        lrc_raw: List[Dict[str, Any]] = []
+        lrc_ok = False
+        for i in range(0, len(fetched), 2):
+            it_res = fetched[i]
+            lrc_pair = fetched[i + 1] if i + 1 < len(fetched) else ([], False)
+            if isinstance(it_res, list):
+                itunes_raw.extend(it_res)
+            if isinstance(lrc_pair, tuple):
+                lrc_list, ok_flag = lrc_pair
+                if isinstance(lrc_list, list):
+                    lrc_raw.extend(lrc_list)
+                lrc_ok = lrc_ok or bool(ok_flag)
+
+        # Build lyrics index from LRCLIB official matches
+        lrc_exact: Dict[Tuple[str, str], Dict[str, Any]] = {}
+        lrc_by_title: Dict[str, List[Dict[str, Any]]] = {}
+        lrc_verified_items: List[Dict[str, Any]] = []
+
+        for item in lrc_raw:
+            if not isinstance(item, dict):
+                continue
+            if item.get("instrumental"):
+                continue
+            has_sync = bool((item.get("syncedLyrics") or "").strip())
+            has_plain = bool((item.get("plainLyrics") or "").strip())
+            if not has_sync and not has_plain:
+                continue
+
+            raw_t = str(item.get("trackName") or item.get("name") or "").strip()
+            raw_a = str(item.get("artistName") or "").strip()
+            clean_t, clean_a = clean_lyrics_metadata(raw_t, raw_a)
+            title_use = clean_t or raw_t
+            artist_use = clean_a or raw_a
+            dur_val = int(round(float(item.get("duration") or 0)))
+            if not _is_official_song_clean(title_use, artist_use, dur_val):
+                continue
+
+            nt = _norm_key(title_use)
+            na = _norm_key(artist_use)
+            entry = {
+                "title": title_use,
+                "artist": artist_use,
+                "duration": dur_val,
+                "synced": has_sync,
+                "has_lyrics": True,
+                "norm_t": nt,
+                "norm_a": na,
+            }
+            pair = (nt, na)
+            prev = lrc_exact.get(pair)
+            if prev is None or (entry["synced"] and not prev["synced"]):
+                lrc_exact[pair] = entry
+            lrc_by_title.setdefault(nt, []).append(entry)
+            lrc_verified_items.append(entry)
+
+        def _match_lyrics(title_val: str, artist_val: str) -> Tuple[bool, bool]:
+            ct, ca = clean_lyrics_metadata(title_val, artist_val)
+            nt = _norm_key(ct or title_val)
+            na = _norm_key(ca or artist_val)
+            if not nt:
+                return False, False
+            exact = lrc_exact.get((nt, na))
+            if exact:
+                return True, exact["synced"]
+            for cand in lrc_by_title.get(nt, []):
+                ca_key = cand["norm_a"]
+                if na and ca_key and (na in ca_key or ca_key in na):
+                    return True, cand["synced"]
+            # Partial clean title match with primary artist token overlap
+            a_toks = {w for w in na.split() if len(w) >= 3}
+            if a_toks:
+                for cand in lrc_verified_items:
+                    if cand["norm_t"] == nt or (nt in cand["norm_t"] and len(nt) >= 5):
+                        c_toks = {w for w in cand["norm_a"].split() if len(w) >= 3}
+                        if a_toks & c_toks:
+                            return True, cand["synced"]
+            return False, False
+
+        def _matches_query(t_low: str, a_low: str) -> bool:
+            return (
+                any(tok in t_low or tok in a_low for tok in q_tokens)
+                or (q_low in t_low or q_low in a_low)
+                or any(tok in t_low or tok in a_low for tok in tk_tokens)
+            )
+
+        candidates: List[Dict[str, Any]] = []
+        seen_keys = set()
+
+        for item in itunes_raw:
+            track_name = str(item.get("trackName") or "").strip()
+            artist_name = str(item.get("artistName") or "").strip()
+            clean_t, clean_a = clean_lyrics_metadata(track_name, artist_name)
+            t_disp = clean_t or track_name
+            a_disp = clean_a or artist_name
+            dur_sec = int((item.get("trackTimeMillis") or 0) / 1000)
+
+            if not _is_official_song_clean(t_disp, a_disp, dur_sec):
+                continue
+            t_low, a_low = t_disp.lower(), a_disp.lower()
+            if not _matches_query(t_low, a_low):
+                continue
+
+            dedupe = (_norm_key(t_disp), _norm_key(a_disp))
+            if dedupe in seen_keys:
+                continue
+            seen_keys.add(dedupe)
+
+            has_lyr, is_synced = _match_lyrics(t_disp, a_disp)
+            raw_thumb = item.get("artworkUrl100") or ""
+            thumb = raw_thumb.replace("100x100bb", "600x600bb") if raw_thumb else "static/syncink-main.jpg"
+
+            relevance = (2 if q_low in t_low else 0) + (1 if any(t_low.startswith(tok) for tok in q_tokens) else 0)
+            candidates.append({
+                "title": t_disp,
+                "artist": a_disp,
+                "duration": dur_sec,
+                "thumbnail": thumb,
+                "source": "itunes",
+                "official": True,
+                "has_lyrics": has_lyr,
+                "lyrics_synced": is_synced,
+                "_score": (100 if is_synced else (50 if has_lyr else 0)) + 20 + relevance,
+            })
+
+        # Add verified lyrics-supported LRCLIB official songs not already covered by iTunes
+        for item in lrc_verified_items:
+            t_disp = item["title"]
+            a_disp = item["artist"]
+            t_low, a_low = t_disp.lower(), a_disp.lower()
+            if not _matches_query(t_low, a_low):
+                continue
+            dedupe = (_norm_key(t_disp), _norm_key(a_disp))
+            if dedupe in seen_keys:
+                continue
+            seen_keys.add(dedupe)
+            relevance = (2 if q_low in t_low else 0) + (1 if any(t_low.startswith(tok) for tok in q_tokens) else 0)
+            candidates.append({
+                "title": t_disp,
+                "artist": a_disp,
+                "duration": item["duration"],
+                "thumbnail": "",
+                "source": "lrclib",
+                "official": True,
+                "has_lyrics": True,
+                "lyrics_synced": item["synced"],
+                "_score": (100 if item["synced"] else 50) + relevance,
+            })
+
+        # Enforce lyrics-supported official tracks whenever LRCLIB returned lyrics hits
+        lyrics_only = [c for c in candidates if c["has_lyrics"]]
+        if lyrics_only:
+            final_list = lyrics_only
+        elif not lrc_ok:
+            # LRCLIB temporarily unreachable -> still return official iTunes catalog songs only (never YouTube junk)
+            final_list = candidates
+        else:
+            final_list = []
+
+        final_list.sort(key=lambda c: c.get("_score", 0), reverse=True)
+        final_list = final_list[:8]
+        for c in final_list:
+            c.pop("_score", None)
+
         try:
             from services.artwork_service import ArtworkService
             await ArtworkService.enrich_records(
-                suggestions,
+                final_list,
                 db_conn=None,
                 key_title="title",
                 key_author="artist",
                 key_url="",
                 key_thumb="thumbnail",
-                max_network_lookups=6,
+                max_network_lookups=5,
             )
-            for s in suggestions:
-                if not s.get("thumbnail"):
-                    s["thumbnail"] = "static/syncink-main.jpg"
         except Exception:
-            for s in suggestions:
-                if not s.get("thumbnail"):
-                    s["thumbnail"] = "static/syncink-main.jpg"
+            pass
+        for s in final_list:
+            if not s.get("thumbnail"):
+                s["thumbnail"] = "static/syncink-main.jpg"
 
-        return aiohttp.web.json_response({"suggestions": suggestions[:8]})
+        return aiohttp.web.json_response({"suggestions": final_list})
 
     @classmethod
     async def handle_play_playlist(cls, request: aiohttp.web.Request) -> aiohttp.web.Response:
@@ -2855,10 +3069,8 @@ class DashboardAPI:
                 vc = (guild.voice_client if guild else None) or queue.voice_client
                 is_playing = bool(vc and vc.is_connected() and vc.is_playing())
                 is_paused = bool(vc and vc.is_connected() and vc.is_paused())
-                if is_playing and queue.start_time:
-                    playback_position = max(0.0, float(time.time() - queue.start_time - queue.total_paused_duration))
-                elif is_paused and queue.paused_at is not None and queue.start_time:
-                    playback_position = max(0.0, float(queue.paused_at - queue.start_time - queue.total_paused_duration))
+                if is_playing or is_paused:
+                    playback_position = queue.get_playback_time_exact(is_playing=is_playing, is_paused=is_paused)
 
                 cur = queue.current_track
                 if cur:

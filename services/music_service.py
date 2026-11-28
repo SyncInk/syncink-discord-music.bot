@@ -210,6 +210,8 @@ class GuildMusicQueue:
         self.start_time: float = 0.0
         self.paused_at: Optional[float] = None
         self.total_paused_duration: float = 0.0
+        self.seek_offset: float = 0.0
+        self.active_audio_source: Optional["BufferedAudioSource"] = None
         self.inactivity_task: Optional[asyncio.Task] = None
         self.active_radio_station: Optional[str] = None
         self.active_radio_station_info: Optional[Dict[str, Any]] = None
@@ -231,14 +233,27 @@ class GuildMusicQueue:
     def size(self) -> int:
         return len(self.tracks)
 
-    def get_playback_time(self) -> int:
-        if not self.current_track or self.start_time == 0.0:
-            return 0
-        if self.paused_at is not None:
+    def get_playback_time_exact(self, is_playing: Optional[bool] = None, is_paused: Optional[bool] = None) -> float:
+        """Returns sub-second audio position locked to delivered 20ms PCM frames (or wall clock fallback)."""
+        if not self.current_track:
+            return 0.0
+        active_src = getattr(self, "active_audio_source", None)
+        if active_src is not None and hasattr(active_src, "elapsed_audio_seconds"):
+            if not getattr(active_src, "audio_started", False) and self.seek_offset <= 0.0:
+                return 0.0
+            pos = float(self.seek_offset or 0.0) + float(active_src.elapsed_audio_seconds)
+            return max(0.0, pos)
+        if self.start_time == 0.0:
+            return max(0.0, float(self.seek_offset or 0.0))
+        paused = (self.paused_at is not None) if is_paused is None else (bool(is_paused) and self.paused_at is not None)
+        if paused:
             active = self.paused_at - self.start_time - self.total_paused_duration
         else:
             active = time.time() - self.start_time - self.total_paused_duration
-        return max(0, int(active))
+        return max(0.0, float(self.seek_offset or 0.0) + float(active))
+
+    def get_playback_time(self) -> int:
+        return max(0, int(self.get_playback_time_exact()))
 
     def get_progress_bar(self, width: int = 16) -> str:
         current_sec = self.get_playback_time()
@@ -266,17 +281,30 @@ class BufferedAudioSource(discord.AudioSource):
     Buffers audio frames in a dedicated background worker thread.
     Absorbs CPU spikes (such as yt-dlp querying metadata for next songs)
     and network jitter, permanently eliminating audio stutter and distortion.
+    Also tracks exact 20ms real PCM frames delivered to Discord so timers & lyrics stay frame-locked.
     """
-    def __init__(self, source: discord.AudioSource, buffer_size: int = 150):
+    def __init__(
+        self,
+        source: discord.AudioSource,
+        buffer_size: int = 150,
+        on_first_frame: Optional[Callable[[], None]] = None,
+    ):
         # 150 frames * 20ms = 3.0 seconds of audio pre-buffering
         self.original = source
         self._buffer: queue.Queue = queue.Queue(maxsize=buffer_size)
         self._stopped = threading.Event()
         self._finished = False
+        self._on_first_frame = on_first_frame
+        self.real_frames_read: int = 0
+        self.audio_started: bool = False
 
         self._thread = threading.Thread(target=self._fill_buffer, daemon=True)
         self._thread.start()
         self._underrun_count = 0
+
+    @property
+    def elapsed_audio_seconds(self) -> float:
+        return self.real_frames_read * 0.02
 
     @property
     def volume(self) -> float:
@@ -312,6 +340,16 @@ class BufferedAudioSource(discord.AudioSource):
         try:
             data = self._buffer.get_nowait()
             self._underrun_count = 0
+            self.real_frames_read += 1
+            if not self.audio_started:
+                self.audio_started = True
+                if self._on_first_frame:
+                    cb = self._on_first_frame
+                    self._on_first_frame = None
+                    try:
+                        cb()
+                    except Exception:
+                        pass
             return data
         except queue.Empty:
             if self._finished:
@@ -321,7 +359,7 @@ class BufferedAudioSource(discord.AudioSource):
             if self._underrun_count > 50 and not self._thread.is_alive():
                 self._finished = True
                 return b""
-            # Buffer underrun safeguard: output 20ms of silence (3840 bytes)
+            # Buffer underrun safeguard: output 20ms of silence (3840 bytes) without advancing audio clock
             return b"\x00" * 3840
 
     def cleanup(self):
@@ -401,17 +439,93 @@ class MusicService:
             log.warning(f"Spotify oEmbed resolve error: {e}")
         return None
 
+    @staticmethod
+    def _score_official_candidate(
+        entry: Dict[str, Any],
+        query: str,
+        expected_duration: Optional[int] = None,
+    ) -> float:
+        """Scores YouTube search candidates so official studio audio/Topic tracks beat trailers & compilations."""
+        title = str(entry.get("title") or "").strip()
+        channel = str(entry.get("channel") or entry.get("uploader") or "").strip()
+        if not title:
+            return -9999.0
+
+        title_low = title.lower()
+        channel_low = channel.lower()
+        q_low = (query or "").lower()
+
+        banned_terms = (
+            "jukebox", "nonstop", "non-stop", "mashup", "slowed", "reverb",
+            "nightcore", "8d audio", "bass boosted", "karaoke", "reaction",
+            "whatsapp status", "full movie", "trailer", "vlog", "episode",
+            "1 hour", "8 hours", "#shorts", "shorts", "ringtone",
+        )
+        for bad in banned_terms:
+            if bad in title_low and bad not in q_low:
+                return -9999.0
+
+        dur = entry.get("duration")
+        if isinstance(dur, (int, float)) and dur > 0:
+            if dur < 25:
+                return -9999.0
+            if dur > 900 and (not expected_duration or expected_duration < 600):
+                return -9999.0
+
+        score = 0.0
+        if channel_low.endswith(" - topic") or channel_low == "topic":
+            score += 70.0
+        if any(lbl in channel_low for lbl in (
+            "vevo", "sony music", "t-series", "zee music", "yrf", "tips",
+            "universal music", "warner music", "atlantic records", "saregama", "official"
+        )):
+            score += 30.0
+        if "official audio" in title_low:
+            score += 26.0
+        elif "audio" in title_low:
+            score += 14.0
+        if "lyric" in title_low:
+            score += 10.0
+        if ("official video" in title_low or "music video" in title_low or "4k video" in title_low) and "audio" not in title_low:
+            score -= 8.0
+        for soft_bad in ("cover", "remix", "unplugged", "lofi flip", "live performance"):
+            if soft_bad in title_low and soft_bad not in q_low:
+                score -= 45.0
+
+        if expected_duration and expected_duration > 20 and isinstance(dur, (int, float)) and dur > 20:
+            diff = abs(float(dur) - float(expected_duration))
+            if diff <= 3.0:
+                score += 80.0
+            elif diff <= 7.0:
+                score += 55.0
+            elif diff <= 15.0:
+                score += 20.0
+            elif diff > 25.0:
+                score -= 85.0
+
+        q_tokens = [tok for tok in re.findall(r"\w+", q_low) if len(tok) >= 2]
+        haystack = f"{title_low} {channel_low}"
+        for tok in q_tokens:
+            if tok in haystack:
+                score += 6.0
+        return score
+
     async def search_and_extract(
         self,
         query: str,
         requester: discord.Member,
         platform: str = "auto",
-        limit: int = 1
+        limit: int = 1,
+        prefer_official: bool = False,
+        expected_duration: Optional[int] = None,
+        expected_title: Optional[str] = None,
+        expected_artist: Optional[str] = None,
+        expected_artwork: Optional[str] = None,
     ) -> List[Track]:
         """Extracts playable Tracks using yt-dlp with official Spotify API & oEmbed fallback."""
         query = query.strip()
         detected_platform = platform.lower()
-        forced_thumbnail = None
+        forced_thumbnail = expected_artwork if (expected_artwork and str(expected_artwork).startswith("http")) else None
 
         # Check for Spotify links / URIs
         from services.spotify import SpotifyResolver
@@ -463,16 +577,26 @@ class MusicService:
             detected_platform = "youtube"
 
         search_query = query
+        use_official_scoring = (
+            prefer_official
+            and limit == 1
+            and not query.startswith("http://")
+            and not query.startswith("https://")
+            and detected_platform != "soundcloud"
+        )
         if not query.startswith("http://") and not query.startswith("https://"):
             if detected_platform == "soundcloud":
                 search_query = f"scsearch{limit}:{query}"
+            elif use_official_scoring:
+                official_term = query if any(k in query.lower() for k in ("official", "audio", "topic")) else f"{query} official audio"
+                search_query = f"ytsearch5:{official_term}"
             else:
                 search_query = f"ytsearch{limit}:{query}"
 
         loop = asyncio.get_event_loop()
         opts = dict(self.ydl_opts)
         q_low = query.lower()
-        is_single_fast = (limit <= 1) and ("list=" not in q_low) and ("/playlist" not in q_low) and ("/sets/" not in q_low)
+        is_single_fast = (limit <= 1) and (not use_official_scoring) and ("list=" not in q_low) and ("/playlist" not in q_low) and ("/sets/" not in q_low)
         opts['extract_flat'] = False if is_single_fast else 'in_playlist'
 
         def _extract(opts_to_use):
@@ -516,7 +640,13 @@ class MusicService:
         if not info:
             return []
 
-        entries = info.get("entries") if "entries" in info else [info]
+        entries = [e for e in (info.get("entries") if "entries" in info else [info]) if e]
+        if use_official_scoring and len(entries) > 1:
+            entries.sort(
+                key=lambda item: self._score_official_candidate(item, query, expected_duration=expected_duration),
+                reverse=True,
+            )
+            entries = [entries[0]]
         tracks: List[Track] = []
 
         for entry in entries:
@@ -525,9 +655,15 @@ class MusicService:
             raw_title = entry.get("title") or "Unknown Track"
             raw_uploader = entry.get("uploader") or entry.get("artist") or entry.get("channel") or ""
             c_title, c_artist = clean_track_metadata(raw_title, raw_uploader, entry)
-            artist = c_artist
-            duration = entry.get("duration")
-            webpage_url = entry.get("webpage_url") or entry.get("url") or query
+            if expected_title:
+                raw_title = expected_title
+                c_title = clean_title(expected_title) or expected_title
+            artist = expected_artist or c_artist
+            duration = entry.get("duration") or expected_duration
+            raw_url = entry.get("webpage_url") or entry.get("url") or query
+            if entry.get("id") and (not isinstance(raw_url, str) or not raw_url.startswith("http")):
+                raw_url = f"https://www.youtube.com/watch?v={entry['id']}"
+            webpage_url = raw_url
             stream_url = entry.get("url") or webpage_url
             thumb = forced_thumbnail or entry.get("thumbnail")
             if not thumb and entry.get("thumbnails"):
@@ -667,7 +803,13 @@ class MusicService:
             track.thumbnail = info["thumbnails"][-1].get("url")
         return track.stream_url
 
-    def create_audio_source(self, track: Track, volume: int = 100) -> discord.AudioSource:
+    def create_audio_source(
+        self,
+        track: Track,
+        volume: int = 100,
+        seek_seconds: float = 0.0,
+        on_first_frame: Optional[Callable[[], None]] = None,
+    ) -> discord.AudioSource:
         """Constructs an FFmpeg-backed PCMVolumeTransformer with resilient streaming options and memory buffer."""
         ffmpeg_bin = get_ffmpeg_path()
         before_options = (
@@ -684,6 +826,8 @@ class MusicService:
             '-user_agent "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" '
             "-nostdin"
         )
+        if seek_seconds and seek_seconds > 0 and not track.is_radio and not track.is_live:
+            before_options = f"-ss {float(seek_seconds):.2f} " + before_options
         options = "-vn -ar 48000 -ac 2 -nostats -loglevel error"
 
         pcm = discord.FFmpegPCMAudio(
@@ -694,7 +838,7 @@ class MusicService:
         )
         vol_normalized = max(0.01, min(2.0, volume / 100.0))
         vol_transformed = discord.PCMVolumeTransformer(pcm, volume=vol_normalized)
-        return BufferedAudioSource(vol_transformed, buffer_size=150)
+        return BufferedAudioSource(vol_transformed, buffer_size=150, on_first_frame=on_first_frame)
 
     async def start_radio_station(
         self,

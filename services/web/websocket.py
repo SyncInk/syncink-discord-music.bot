@@ -12,6 +12,8 @@ class DashboardWebSocketManager:
     def __init__(self):
         self._active_sockets: Set[aiohttp.web.WebSocketResponse] = set()
         self._socket_guild_subscriptions: Dict[aiohttp.web.WebSocketResponse, Optional[int]] = {}
+        self._sync_task: Optional[asyncio.Task] = None
+        self._last_bot: Any = None
 
     @classmethod
     def get_instance(cls) -> 'DashboardWebSocketManager':
@@ -19,15 +21,79 @@ class DashboardWebSocketManager:
             cls._instance = DashboardWebSocketManager()
         return cls._instance
 
+    def _ensure_sync_loop(self):
+        if self._sync_task is None or self._sync_task.done():
+            try:
+                loop = asyncio.get_running_loop()
+                self._sync_task = loop.create_task(self._playback_sync_loop())
+            except RuntimeError:
+                pass
+
+    async def _playback_sync_loop(self):
+        """Pushes compact 1-second frame-exact playback_tick updates to active subscribed clients."""
+        try:
+            while self._active_sockets:
+                await asyncio.sleep(1.0)
+                if not self._active_sockets:
+                    break
+                bot = self._last_bot
+                service = MusicService.get_instance()
+                guild_sockets: Dict[int, list] = {}
+                for ws in list(self._active_sockets):
+                    gid = self._socket_guild_subscriptions.get(ws)
+                    if gid and not str(gid).startswith("110000"):
+                        guild_sockets.setdefault(gid, []).append(ws)
+                if not guild_sockets:
+                    continue
+
+                now = time.time()
+                for gid, sockets in guild_sockets.items():
+                    queue = service.queues.get(gid)
+                    if not queue or not queue.current_track:
+                        continue
+                    guild = bot.get_guild(gid) if bot else None
+                    vc = (guild.voice_client if guild else None) or queue.voice_client
+                    is_connected = bool(vc and vc.is_connected())
+                    is_playing = bool(is_connected and vc and vc.is_playing())
+                    is_paused = bool(is_connected and vc and vc.is_paused())
+                    pos = queue.get_playback_time_exact(is_playing=is_playing, is_paused=is_paused)
+                    active_src = getattr(queue, "active_audio_source", None)
+                    audio_started = bool(getattr(active_src, "audio_started", True))
+                    payload = json.dumps({
+                        "event": "playback_tick",
+                        "guild_id": str(gid),
+                        "data": {
+                            "position": round(pos, 2),
+                            "duration": queue.current_track.duration or 0,
+                            "is_playing": is_playing,
+                            "is_paused": is_paused,
+                            "audio_started": audio_started,
+                            "playback_token": getattr(queue, "playback_token", 0),
+                            "repeat_mode": queue.repeat_mode,
+                            "server_time": now,
+                        },
+                    })
+                    for ws in sockets:
+                        try:
+                            await ws.send_str(payload)
+                        except Exception:
+                            pass
+        except asyncio.CancelledError:
+            pass
+        finally:
+            self._sync_task = None
+
     async def handle_ws(self, request: aiohttp.web.Request) -> aiohttp.web.WebSocketResponse:
         ws = aiohttp.web.WebSocketResponse(heartbeat=25.0)
         await ws.prepare(request)
 
         self._active_sockets.add(ws)
         self._socket_guild_subscriptions[ws] = None
-        log.debug(f"[Dashboard WS] Client connected. Total clients: {len(self._active_sockets)}")
-
         bot = request.app.get("bot")
+        if bot is not None:
+            self._last_bot = bot
+        self._ensure_sync_loop()
+        log.debug(f"[Dashboard WS] Client connected. Total clients: {len(self._active_sockets)}")
 
         try:
             # Send initial system welcome
@@ -91,6 +157,8 @@ class DashboardWebSocketManager:
         finally:
             self._active_sockets.discard(ws)
             self._socket_guild_subscriptions.pop(ws, None)
+            if not self._active_sockets and self._sync_task and not self._sync_task.done():
+                self._sync_task.cancel()
             log.debug(f"[Dashboard WS] Client disconnected. Total clients: {len(self._active_sockets)}")
 
         return ws
@@ -235,10 +303,8 @@ class DashboardWebSocketManager:
                 "requested_by": str(current.requested_by) if current.requested_by else None,
             }
 
-        if is_playing and queue.start_time:
-            position = max(0.0, time.time() - queue.start_time - queue.total_paused_duration)
-        elif is_paused and queue.paused_at is not None and queue.start_time:
-            position = max(0.0, queue.paused_at - queue.start_time - queue.total_paused_duration)
+        if is_playing or is_paused:
+            position = queue.get_playback_time_exact(is_playing=is_playing, is_paused=is_paused)
         else:
             position = 0.0
 
@@ -304,7 +370,9 @@ class DashboardWebSocketManager:
             "is_playing": is_playing,
             "is_paused": is_paused,
             "current_track": current_data,
-            "position": round(position, 1),
+            "position": round(position, 2),
+            "playback_token": getattr(queue, "playback_token", 0),
+            "audio_started": bool(getattr(queue.active_audio_source, "audio_started", True)),
             "duration": current.duration if current else 0,
             "volume": queue.volume,
             "repeat_mode": queue.repeat_mode,
@@ -322,6 +390,8 @@ class DashboardWebSocketManager:
         }
 
     async def send_guild_snapshot(self, ws: aiohttp.web.WebSocketResponse, guild_id: int, bot: Any):
+        if bot is not None:
+            self._last_bot = bot
         state = self.serialize_guild_playback(guild_id, bot)
         try:
             await ws.send_json({
@@ -334,6 +404,8 @@ class DashboardWebSocketManager:
 
     async def broadcast_playback_update(self, guild_id: int, bot: Any):
         """Broadcasts playback state updates to all subscribed web clients in <1 second."""
+        if bot is not None:
+            self._last_bot = bot
         if not self._active_sockets:
             return
 

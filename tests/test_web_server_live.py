@@ -561,6 +561,198 @@ class TestLiveWebServer(AioHTTPTestCase):
             service.queues.pop(999111222, None)
             await auth_mgr.destroy_session(session_id)
 
+    async def test_frame_exact_audio_clock_and_official_search(self):
+        """Verifies 20ms PCM frame timing, pause/repeat reset tokens, official audio scoring, and lyrics-filtered search."""
+        import threading
+        import time
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        from services.music_service import MusicService, BufferedAudioSource, Track
+        from services.web.websocket import DashboardWebSocketManager
+
+        # 1. BufferedAudioSource counts ONLY real decoded PCM frames (20ms/frame), immune to startup silence & underruns
+        pause_feed_evt = threading.Event()
+        class _DummyPCM:
+            def __init__(self):
+                self.n = 0
+            def read(self):
+                if self.n < 5:
+                    self.n += 1
+                    return b"\x01" * 3840
+                pause_feed_evt.wait(timeout=2.0)
+                return b""
+            def cleanup(self):
+                pause_feed_evt.set()
+
+        first_hits = []
+        src = BufferedAudioSource(_DummyPCM(), buffer_size=5, on_first_frame=lambda: first_hits.append(True))
+        service = MusicService.get_instance()
+        q = service.get_queue(999111222)
+        try:
+            q.current_track = Track(
+                title="Test Track",
+                clean_title="Test Track",
+                author="Test Artist",
+                duration=200,
+                url="https://youtube.com/watch?v=test",
+                stream_url="https://stream.example.com/test",
+                thumbnail=None,
+                platform="youtube",
+                requested_by=SimpleNamespace(id=1, display_name="User"),
+            )
+            q.active_audio_source = src
+            q.seek_offset = 0.0
+            q.playback_token = 4
+
+            # Wait briefly for background reader to prebuffer frames, position MUST still be 0.0 before read()
+            for _ in range(30):
+                if src._buffer.qsize() >= 3:
+                    break
+                await asyncio.sleep(0.01)
+            self.assertFalse(src.audio_started)
+            self.assertEqual(q.get_playback_time_exact(), 0.0)
+
+            for _ in range(5):
+                pkt = src.read()
+                self.assertEqual(len(pkt), 3840)
+            self.assertTrue(src.audio_started)
+            self.assertEqual(len(first_hits), 1)
+            self.assertEqual(src.real_frames_read, 5)
+            self.assertAlmostEqual(q.get_playback_time_exact(), 0.10, places=2)
+
+            # Empty buffer underrun returns silence WITHOUT incrementing real_frames_read
+            while not src._buffer.empty():
+                try:
+                    src._buffer.get_nowait()
+                except Exception:
+                    break
+            src._finished = False
+            underrun_pkt = src.read()
+            self.assertEqual(underrun_pkt, b"\x00" * 3840)
+            self.assertEqual(src.real_frames_read, 5)
+
+            snap = DashboardWebSocketManager.get_instance().serialize_guild_playback(999111222, self.app["bot"])
+            self.assertEqual(snap["playback_token"], 4)
+            self.assertTrue(snap["audio_started"])
+
+            # Verify paused state preserves exact PCM frame position without advancing
+            guild = self.app["bot"].get_guild(999111222)
+            orig_vc = guild.voice_client
+            pause_vc = MagicMock()
+            pause_vc.is_connected.return_value = True
+            pause_vc.is_playing.return_value = False
+            pause_vc.is_paused.return_value = True
+            pause_vc.channel = None
+            guild.voice_client = pause_vc
+            try:
+                paused_snap = DashboardWebSocketManager.get_instance().serialize_guild_playback(999111222, self.app["bot"])
+                self.assertTrue(paused_snap["is_paused"])
+                self.assertFalse(paused_snap["is_playing"])
+                self.assertAlmostEqual(paused_snap["position"], 0.10, places=2)
+            finally:
+                guild.voice_client = orig_vc
+        finally:
+            src.cleanup()
+            service.queues.pop(999111222, None)
+
+        # 2. Official studio audio candidate scorer rejects jukeboxes/trailers and prefers Topic/VEVO exact duration
+        score_jukebox = MusicService._score_official_candidate(
+            {"title": "Arijit Singh Nonstop Jukebox Songs 2022", "channel": "RandomMix", "duration": 5468},
+            "Kesariya Arijit Singh",
+            expected_duration=268,
+        )
+        score_short_teaser = MusicService._score_official_candidate(
+            {"title": "Kesariya Official Music Video", "channel": "SonyMusicIndiaVEVO", "duration": 173},
+            "Kesariya Arijit Singh",
+            expected_duration=268,
+        )
+        score_official_master = MusicService._score_official_candidate(
+            {"title": "Kesariya (Official Audio)", "channel": "Arijit Singh - Topic", "duration": 268},
+            "Kesariya Arijit Singh",
+            expected_duration=268,
+        )
+        self.assertLess(score_jukebox, -1000)
+        self.assertGreater(score_official_master, score_short_teaser)
+
+        # 3. Search suggestions exclude raw YouTube junk & tracks without lyrics when lyrics-backed official matches exist
+        class _FakeResp:
+            def __init__(self, payload):
+                self.status = 200
+                self._payload = payload
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+            async def json(self, **kwargs):
+                return self._payload
+
+        class _FakeSession:
+            def __init__(self, *args, **kwargs):
+                pass
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *args):
+                return False
+            def get(self, url, **kwargs):
+                if "suggestqueries.google.com" in url:
+                    return _FakeResp(["kesar", ["kesariya", "kesariya whatsapp status", "kesariya full movie"]])
+                if "itunes.apple.com" in url:
+                    return _FakeResp({
+                        "results": [
+                            {
+                                "trackName": "Kesariya (From \"Brahmastra\")",
+                                "artistName": "Arijit Singh",
+                                "trackTimeMillis": 268000,
+                                "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg",
+                            },
+                            {
+                                "trackName": "Kesariya Karaoke Instrumental Cover",
+                                "artistName": "Karaoke Studio",
+                                "trackTimeMillis": 260000,
+                                "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg",
+                            },
+                            {
+                                "trackName": "Kesariya Unsynced Track",
+                                "artistName": "Obscure Artist",
+                                "trackTimeMillis": 210000,
+                                "artworkUrl100": "https://is1-ssl.mzstatic.com/image/thumb/100x100bb.jpg",
+                            },
+                        ]
+                    })
+                if "lrclib.net/api/search" in url:
+                    return _FakeResp([
+                        {
+                            "trackName": "Kesariya",
+                            "artistName": "Arijit Singh",
+                            "duration": 268,
+                            "instrumental": False,
+                            "syncedLyrics": "[00:12.00] Mujhko itna bataye koi\n[00:16.50] Kaise tujhse dil na lagaye koi",
+                            "plainLyrics": "Mujhko itna bataye koi",
+                        }
+                    ])
+                return _FakeResp({})
+
+        with patch("aiohttp.ClientSession", _FakeSession):
+            r_sug = await self.client.request("GET", "/api/search/suggestions?q=kesar")
+            self.assertEqual(r_sug.status, 200)
+            sug_data = await r_sug.json()
+            items = sug_data.get("suggestions", [])
+            self.assertEqual(len(items), 1)
+            self.assertEqual(items[0]["title"], "Kesariya")
+            self.assertEqual(items[0]["artist"], "Arijit Singh")
+            self.assertTrue(items[0]["official"])
+            self.assertTrue(items[0]["has_lyrics"])
+            self.assertTrue(items[0]["lyrics_synced"])
+            self.assertIn("600x600bb", items[0]["thumbnail"])
+
+        # 4. Verify unified single-clock & official-music search hooks in static/app.js
+        js_text = await (await self.client.request("GET", "/static/app.js")).text()
+        self.assertIn("function syncPlaybackClockFromState", js_text)
+        self.assertIn("function applyPlaybackTick", js_text)
+        self.assertIn("playback_tick", js_text)
+        self.assertIn("prefer_official_music", js_text)
+        self.assertNotIn("state.playback.position += 1;", js_text)
+
 
 if __name__ == "__main__":
     unittest.main()
